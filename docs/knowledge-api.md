@@ -1,0 +1,20 @@
+# Этап 2: API и зависимости
+
+Перед реализацией модулей определён следующий контракт. Markdown-файлы остаются источником истины; SQLite полностью восстанавливается из файлов.
+
+| Модуль     | Контракт                                                                                                                                     | Зависимости                                                       |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `markdown` | `parse(content) -> ParsedNote {title, text, tags, properties, headings, links, warning}`; wiki-ссылки содержат alias, anchor, embedded, line | pulldown-cmark (CommonMark/GFM/wiki), serde_yaml_ng (frontmatter) |
+| `links`    | `resolve(connection, source, target) -> Resolution {status, path, candidates, createPath}`                                                   | SQLite metadata; Unicode case-folded keys вычисляются Rust        |
+| `indexing` | `open(db_path)`, `scan(vault)`, `update(vault,path)`, `remove(path)`, `inspect(path)`, `search(query,filters,limit,offset)`                  | rusqlite + bundled SQLite/FTS5, walkdir                           |
+| `watching` | владение watcher и фоновым потоком, debounce событий, отмена при смене vault; события статуса и изменений                                    | notify, std channels, существующий blocking runtime Tauri         |
+
+IPC: `search_notes`, `inspect_note`, `resolve_link`, `index_status`. Все команды принимают `vaultId`, проверяют активную сессию и выполняются вне UI-потока. Результаты поиска ограничены 50 строками; backlinks — 100. Frontend отбрасывает ответы устаревших запросов.
+
+Поиск FTS5 использует Unicode61; русский и английский проверяются тестами. Введённый текст превращается в quoted prefix terms, не исполняется как SQL/произвольный FTS-синтаксис. Фильтры пути, тега и свойства передаются параметрами. Подсветка совпадений возвращается как текстовые маркеры, которые React рендерит через `<mark>`, без HTML injection.
+
+Правила wiki resolution: точный путь от корня, затем соседняя заметка, затем единственное совпадение basename во всём vault. Для `./`/`../` сначала применяется путь от исходной папки, выход за корень запрещён. При нескольких совпадениях возвращаются кандидаты; произвольный выбор запрещён. `#Раздел` и `#^block-id` отделяются от цели; alias не влияет на разрешение. Пустая цель относится к текущей заметке.
+
+Индекс использует отдельный файл в app data (в E2E — свой test data). Фоновая первичная индексация не удерживает mutex файловых команд. Сохранение обновляет одну заметку, а зависимости пересчитываются для затронутых basename. Watcher не записывает исходные заметки и не подменяет dirty-буфер внешними изменениями.
+
+Контракт реализованного preview/rollback и навигации описан в [stage2-completion.md](stage2-completion.md). Новые IPC: `preview_rename`, `rename_preview_page`, `apply_rename`, `rename_state`, `undo_rename`, `locate_anchor`. Прямая команда переименования без предпросмотра удалена из IPC. После успешного применения/отмены индекс затронутых путей обновляется до разблокировки интерфейса; ошибка кеша не отменяет уже выполненную файловую операцию.

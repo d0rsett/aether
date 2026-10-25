@@ -1,0 +1,52 @@
+{
+  "name": "aether",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 1420 --strictPort",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "test": "vitest run",
+    "test:rust": "cargo test --manifest-path src-tauri/crates/aether-core/Cargo.toml",
+    "build:e2e": "node scripts/build-e2e.mjs",
+    "test:e2e": "playwright test --config playwright.native.config.ts",
+    "format": "prettier --write src tests *.json *.ts *.html *.md docs scripts .github",
+    "format:check": "prettier --check src tests *.json *.ts *.html *.md docs scripts .github",
+    "repo:check": "node scripts/check-repository.mjs"
+  },
+  "dependencies": {
+    "@codemirror/autocomplete": "^6.20.4",
+    "@codemirror/commands": "^6.8.1",
+    "@codemirror/lang-markdown": "^6.3.3",
+    "@codemirror/language": "^6.11.3",
+    "@codemirror/search": "^6.5.11",
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/view": "^6.38.6",
+    "@lezer/highlight": "^1.2.5",
+    "@lezer/markdown": "1.8.1",
+    "@tauri-apps/api": "^2.8.0",
+    "katex": "^0.19.1",
+    "lucide-react": "^0.468.0",
+    "mermaid": "^12.2.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@tauri-apps/cli": "^2.8.4",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/katex": "^0.16.8",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.3",
+    "jsdom": "^26.1.0",
+    "prettier": "^3.6.2",
+    "typescript": "~5.9.2",
+    "vite": "^7.1.7",
+    "vitest": "^5.0.5"
+  }
+}

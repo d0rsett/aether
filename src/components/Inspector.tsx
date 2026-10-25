@@ -1,0 +1,59 @@
+import { Link2 } from "lucide-react";
+import type { useWorkspace } from "../app/useWorkspace";
+import { NoteRelations } from "./NoteRelations";
+import type { Inspection } from "../services/api";
+import { api } from "../services/api";
+import { useContextMenu } from "./ContextMenu";
+type Controller = ReturnType<typeof useWorkspace>;
+export function Inspector({
+  app,
+  inspection,
+  knowledgeError,
+}: {
+  app: Pick<Controller, "active" | "open" | "openWiki" | "vault" | "setError">;
+  inspection: Inspection | null;
+  knowledgeError: string;
+}) {
+  const context = useContextMenu(app.setError);
+  return (
+    <aside className="inspector">
+      <div className="inspector-header">
+        <Link2 size={15} />
+        <span>Связи и свойства</span>
+      </div>
+      <div className="inspector-content">
+        {app.active ? (
+          <>
+            {knowledgeError && (
+              <p className="tree-error">
+                Сведения индекса недоступны: {knowledgeError}
+              </p>
+            )}
+            <NoteRelations
+              onContext={(event, path) =>
+                context.show(event, "Действия ссылки", [
+                  { label: "Открыть заметку", run: () => app.open(path) },
+                  {
+                    label: "Открыть в проводнике",
+                    disabled: !app.vault,
+                    run: () => api.reveal(app.vault!.id, path),
+                  },
+                ])
+              }
+              data={inspection}
+              onOpen={(path) => void app.open(path)}
+              onWiki={(target) => {
+                if (app.active) void app.openWiki(app.active.path, target);
+              }}
+            />
+          </>
+        ) : (
+          <p className="relations-hint">
+            Откройте заметку, чтобы увидеть её связи.
+          </p>
+        )}
+      </div>
+      {context.menu}
+    </aside>
+  );
+}

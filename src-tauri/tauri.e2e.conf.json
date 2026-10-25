@@ -1,0 +1,19 @@
+{
+  "identifier": "app.aether.notes.e2e",
+  "productName": "Aether E2E",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Aether E2E",
+        "width": 1320,
+        "height": 860,
+        "visible": false,
+        "focus": false,
+        "decorations": false,
+        "resizable": true,
+        "dragDropEnabled": false
+      }
+    ]
+  }
+}

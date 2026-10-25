@@ -1,0 +1,21 @@
+[package]
+name = "aether-core"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+resolver = "2"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tempfile = "3"
+thiserror = "2"
+pulldown-cmark = "0.13"
+serde_yaml_ng = "0.10"
+rusqlite = { version = "0.40", features = ["bundled"] }
+walkdir = "2"
+notify = "8"
+same-file = "1"
+base64 = "0.23"
