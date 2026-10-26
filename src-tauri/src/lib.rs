@@ -332,27 +332,36 @@ async fn switch_vault(state: State<'_, AppState>, vault_id: String) -> Result<Va
     .await
 }
 #[tauri::command]
-async fn create_vault(
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-    name: String,
-) -> Result<Option<VaultInfo>> {
-    let state = state.inner().clone();
+async fn choose_vault_parent(app: tauri::AppHandle) -> Result<Option<String>> {
     blocking(move || {
-        let parent = app
-            .dialog()
+        app.dialog()
             .file()
             .set_title("Выберите папку для нового хранилища")
-            .blocking_pick_folder();
-        parent
-            .map(|parent| {
-                let parent = parent
-                    .into_path()
-                    .map_err(|e| Error::InvalidPath(e.to_string()))?;
-                let created = Vault::create_child(&parent, &name)?;
-                activate(&state, created.root().to_path_buf())
+            .blocking_pick_folder()
+            .map(|path| {
+                path.into_path()
+                    .map(|path| path.to_string_lossy().into_owned())
+                    .map_err(|e| Error::InvalidPath(e.to_string()))
             })
             .transpose()
+    })
+    .await
+}
+
+#[tauri::command]
+async fn create_vault(
+    state: State<'_, AppState>,
+    name: String,
+    parent: String,
+) -> Result<VaultInfo> {
+    let state = state.inner().clone();
+    blocking(move || {
+        let parent = PathBuf::from(parent.trim());
+        if !parent.is_absolute() {
+            return Err(Error::InvalidPath("Укажите полный путь к папке.".into()));
+        }
+        let created = Vault::create_child(&parent, &name)?;
+        activate(&state, created.root().to_path_buf())
     })
     .await
 }
@@ -799,6 +808,52 @@ pub fn run() {
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            #[cfg(windows)]
+            if let Some(window) = app.get_webview_window("main") {
+                window.with_webview(|webview| {
+                    use webview2_com::Microsoft::Web::WebView2::Win32::{
+                        ICoreWebView2Settings3, ICoreWebView2Settings4, ICoreWebView2Settings6,
+                    };
+                    use windows_core::Interface;
+                    // Keep native browser UI out of the workspace; app menus and dialogs
+                    // are rendered by React and do not depend on these WebView features.
+                    let configure = || -> windows_core::Result<()> {
+                        unsafe {
+                            let core = webview.controller().CoreWebView2()?;
+                            let settings = core.Settings()?;
+                            settings.SetAreDefaultContextMenusEnabled(false)?;
+                            settings.SetAreDefaultScriptDialogsEnabled(false)?;
+                            settings.SetIsStatusBarEnabled(false)?;
+                            settings.SetAreDevToolsEnabled(cfg!(debug_assertions))?;
+                            settings
+                                .cast::<ICoreWebView2Settings3>()?
+                                .SetAreBrowserAcceleratorKeysEnabled(false)?;
+                            settings
+                                .cast::<ICoreWebView2Settings4>()?
+                                .SetIsGeneralAutofillEnabled(false)?;
+                            settings
+                                .cast::<ICoreWebView2Settings6>()?
+                                .SetIsPasswordAutosaveEnabled(false)?;
+                            let mut token = 0;
+                            core.add_NewWindowRequested(
+                                &webview2_com::NewWindowRequestedEventHandler::create(Box::new(
+                                    |_, args| {
+                                        if let Some(args) = args {
+                                            args.SetHandled(true)?;
+                                        }
+                                        Ok(())
+                                    },
+                                )),
+                                &mut token,
+                            )?;
+                        }
+                        Ok(())
+                    };
+                    if let Err(error) = configure() {
+                        eprintln!("Could not configure workspace WebView: {error}");
+                    }
+                })?;
+            }
             let settings_path = app.path().app_data_dir()?.join("settings.json");
             // Compiled only into the isolated native acceptance binary, never the shipped app.
             #[cfg(feature = "e2e")]
@@ -819,6 +874,7 @@ pub fn run() {
             list_vaults,
             switch_vault,
             create_vault,
+            choose_vault_parent,
             list_directory,
             read_note,
             save_note,

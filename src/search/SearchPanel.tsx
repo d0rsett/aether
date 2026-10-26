@@ -144,7 +144,7 @@ export function SearchPanel({
           : `${status?.indexed ?? 0} заметок в индексе`}
       </div>
       {status?.errors ? (
-        <p className="tree-error" title={status.message ?? undefined}>
+        <p className="tree-error" data-tooltip={status.message ?? undefined}>
           Ошибки индексации: {status.errors}
         </p>
       ) : null}
@@ -159,7 +159,7 @@ export function SearchPanel({
             className="search-hit"
             key={hit.path}
             onClick={() => onOpen(hit.path)}
-            title={hit.path}
+            data-tooltip={hit.path}
           >
             <strong>
               <FileText size={13} />
@@ -181,27 +181,31 @@ export function SearchPanel({
           </p>
         )}
       </div>
-      <div className="search-pagination">
-        <button
-          className="text-button"
-          disabled={query.offset === 0 || busy}
-          onClick={() =>
-            setQuery((q) => ({ ...q, offset: Math.max(0, q.offset - 50) }))
-          }
-        >
-          Назад
-        </button>
-        <span>
-          {query.offset + 1}–{query.offset + result.hits.length}
-        </span>
-        <button
-          className="text-button"
-          disabled={!result.hasMore || busy}
-          onClick={() => setQuery((q) => ({ ...q, offset: q.offset + 50 }))}
-        >
-          Далее
-        </button>
-      </div>
+      {(query.offset > 0 || result.hasMore) && (
+        <div className="search-pagination">
+          <button
+            className="text-button"
+            disabled={query.offset === 0 || busy}
+            onClick={() =>
+              setQuery((q) => ({ ...q, offset: Math.max(0, q.offset - 50) }))
+            }
+          >
+            Назад
+          </button>
+          <span>
+            {result.hits.length
+              ? `${query.offset + 1}–${query.offset + result.hits.length}`
+              : "Нет результатов"}
+          </span>
+          <button
+            className="text-button"
+            disabled={!result.hasMore || busy}
+            onClick={() => setQuery((q) => ({ ...q, offset: q.offset + 50 }))}
+          >
+            Далее
+          </button>
+        </div>
+      )}
     </section>
   );
 }

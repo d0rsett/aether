@@ -6,6 +6,7 @@ import {
   keymap,
   lineNumbers,
   highlightActiveLine,
+  highlightActiveLineGutter,
   drawSelection,
   highlightSpecialChars,
   rectangularSelection,
@@ -36,6 +37,7 @@ import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 import { tags } from "@lezer/highlight";
 import {
   formatSelection,
+  activeFormats,
   livePreview,
   linkCompletion,
   wikiSyntax,
@@ -74,7 +76,9 @@ interface Props {
   visible?: boolean;
   theme?: string;
   onError?: (message: string) => void;
+  onFormatsChange?: (formats: FormatCommand[]) => void;
   showLineNumbers?: boolean;
+  lineWrapping?: boolean;
 }
 
 export function MarkdownEditor({
@@ -92,14 +96,30 @@ export function MarkdownEditor({
   theme = "dark",
   onError,
   showLineNumbers = false,
+  lineWrapping = true,
+  onFormatsChange,
 }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorView | null>(null);
   const context = useContextMenu((message) =>
     callbacks.current.onError?.(message),
   );
-  const callbacks = useRef({ onChange, onSave, onWikiLink, onError });
-  callbacks.current = { onChange, onSave, onWikiLink, onError };
+  const callbacks = useRef({
+    onChange,
+    onSave,
+    onWikiLink,
+    onError,
+    onFormatsChange,
+    visible,
+  });
+  callbacks.current = {
+    onChange,
+    onSave,
+    onWikiLink,
+    onError,
+    onFormatsChange,
+    visible,
+  };
   const initial = useRef(content);
   const lastText = useRef(content);
   const replacing = useRef(false);
@@ -107,6 +127,7 @@ export function MarkdownEditor({
   const lastNavigation = useRef<number | null>(null);
   const presentation = useRef(new Compartment());
   const gutter = useRef(new Compartment());
+  const wrapping = useRef(new Compartment());
 
   useEffect(() => {
     if (!host.current) return;
@@ -119,6 +140,7 @@ export function MarkdownEditor({
           history(),
           drawSelection(),
           highlightActiveLine(),
+          highlightActiveLineGutter(),
           highlightSpecialChars(),
           rectangularSelection(),
           markdown({ extensions: [Strikethrough] }),
@@ -132,7 +154,7 @@ export function MarkdownEditor({
           wikiSyntax,
           syntaxHighlighting(highlight),
           highlightSelectionMatches(),
-          EditorView.lineWrapping,
+          wrapping.current.of(lineWrapping ? EditorView.lineWrapping : []),
           presentation.current.of(live ? livePreview : []),
           ...(vaultId && path ? [linkCompletion(vaultId, path)] : []),
           EditorView.domEventHandlers({
@@ -202,6 +224,11 @@ export function MarkdownEditor({
             indentWithTab,
           ]),
           EditorView.updateListener.of((update) => {
+            if (
+              (update.docChanged || update.selectionSet) &&
+              callbacks.current.visible
+            )
+              callbacks.current.onFormatsChange?.(activeFormats(update.state));
             if (update.docChanged && !replacing.current) {
               const text = update.state.sliceDoc();
               lastText.current = text;
@@ -212,6 +239,8 @@ export function MarkdownEditor({
       }),
     });
     editor.current = view;
+    if (callbacks.current.visible)
+      callbacks.current.onFormatsChange?.(activeFormats(view.state));
     view.focus();
     return () => {
       view.destroy();
@@ -304,6 +333,17 @@ export function MarkdownEditor({
       effects: gutter.current.reconfigure(showLineNumbers ? lineNumbers() : []),
     });
   }, [showLineNumbers]);
+  useEffect(() => {
+    editor.current?.dispatch({
+      effects: wrapping.current.reconfigure(
+        lineWrapping ? EditorView.lineWrapping : [],
+      ),
+    });
+  }, [lineWrapping]);
+  useEffect(() => {
+    if (visible && editor.current)
+      callbacks.current.onFormatsChange?.(activeFormats(editor.current.state));
+  }, [visible]);
   return (
     <>
       <div
@@ -332,6 +372,34 @@ export function MarkdownEditor({
             if (view.state.doc !== snapshot)
               throw new Error("Текст изменился. Откройте меню ещё раз.");
           };
+          const formats = activeFormats(view.state);
+          const formatting = selected.empty
+            ? []
+            : (
+                [
+                  ["bold", "Жирный", "Ctrl B"],
+                  ["italic", "Курсив", "Ctrl I"],
+                  ["code", "Код", ""],
+                  ["heading", "Заголовок", ""],
+                  ["quote", "Цитата", ""],
+                  ["list", "Список", ""],
+                  ["link", "Wiki-ссылка", ""],
+                ] as const
+              ).map(([type, label, shortcut], index) => ({
+                label,
+                shortcut,
+                heading: index === 0 ? "Форматирование" : undefined,
+                divider: index === 0,
+                checked: formats.includes(type),
+                disabled: view.state.readOnly,
+                run: () => {
+                  ensureCurrent();
+                  view.dispatch({
+                    selection: { anchor: selected.anchor, head: selected.head },
+                  });
+                  formatSelection(view, type);
+                },
+              }));
           context.show(event, "Действия редактора", [
             {
               label: "Отменить",
@@ -394,6 +462,7 @@ export function MarkdownEditor({
                 });
               },
             },
+            ...formatting,
             {
               label: "Выделить всё",
               shortcut: "Ctrl A",

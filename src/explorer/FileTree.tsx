@@ -170,7 +170,7 @@ function TreeEntry({
             if (canDrop) props.onMove?.(props.dragged, directory);
             else props.onDrag?.(null);
           }}
-          title={entry.path}
+          data-tooltip={entry.path}
           aria-expanded={entry.isDirectory ? expanded : undefined}
           onContextMenu={(event) => props.onContext?.(event, entry)}
           onClick={() => {

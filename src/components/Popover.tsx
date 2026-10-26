@@ -112,7 +112,7 @@ export function Popover({
         ref={trigger}
         className={triggerClassName}
         aria-label={label}
-        title={title ?? label}
+        data-tooltip={title ?? label}
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         disabled={disabled}

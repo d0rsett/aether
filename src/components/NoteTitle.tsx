@@ -58,7 +58,7 @@ export function NoteTitle({
       <input
         ref={input}
         aria-label="Название заметки"
-        title="Название заметки · Enter — переименовать, Escape — отменить"
+        data-tooltip="Название заметки · Enter — переименовать, Escape — отменить"
         value={value}
         disabled={disabled}
         spellCheck={false}

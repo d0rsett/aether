@@ -67,7 +67,7 @@ Output: `src-tauri/target/release/bundle/nsis/`. The first installer build may d
 
 ### Vaults and files
 
-Open a folder with Ctrl+O or the vault menu. **Создать хранилище** asks for a name, then opens the parent-folder picker. Existing folders are not overwritten. Vault switching separates tabs/drafts and warns about unsaved work.
+Open a folder with Ctrl+O or the vault menu. **Создать хранилище** opens a form with a name and parent-folder path; enter the path or choose it with **Обзор**. The new folder is created only after submitting **Создать хранилище**. Existing folders are not overwritten. Vault switching separates tabs/drafts and warns about unsaved work.
 
 The tab-bar plus creates `Новая заметка` in the root. Edit the large title to rename it. Use folder context menus to create notes/subfolders inside that folder. New folders appear immediately as `Новая папка` with inline naming. File/folder names in the tree use Enter/blur to apply and Escape to cancel. Enter names without full paths; collisions produce an error rather than overwriting.
 
@@ -95,18 +95,19 @@ Back up vaults separately. Rename recovery validates journal entries and version
 
 ## Shortcuts
 
-| Action                | Shortcut        |
-| --------------------- | --------------- |
-| Open vault / new note | Ctrl+O / Ctrl+N |
-| Save / close tab      | Ctrl+S / Ctrl+W |
-| Command palette       | Ctrl+P          |
-| Vault search          | Ctrl+Shift+F    |
-| Find / replace        | Ctrl+F / Ctrl+H |
-| Reading / source      | Ctrl+E          |
-| Toggle left sidebar   | Ctrl+\          |
-| Bold / italic         | Ctrl+B / Ctrl+I |
-| Undo / redo           | Ctrl+Z / Ctrl+Y |
-| Link completion       | Ctrl+Space      |
+| Action                 | Shortcut        |
+| ---------------------- | --------------- |
+| Open vault / new note  | Ctrl+O / Ctrl+N |
+| Create vault           | Ctrl+Shift+N    |
+| Save / close tab       | Ctrl+S / Ctrl+W |
+| Command palette        | Ctrl+P          |
+| Vault search           | Ctrl+Shift+F    |
+| Find / replace         | Ctrl+F / Ctrl+H |
+| Reading / Live Preview | Ctrl+E          |
+| Toggle left sidebar    | Ctrl+\          |
+| Bold / italic          | Ctrl+B / Ctrl+I |
+| Undo / redo            | Ctrl+Z / Ctrl+Y |
+| Link completion        | Ctrl+Space      |
 
 ## Storage and boundaries
 

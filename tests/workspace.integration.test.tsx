@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { api } from "../src/services/api";
 import { useWorkspace, type Ask } from "../src/app/useWorkspace";
+import type { RequestVault } from "../src/components/CreateVaultDialog";
 
 vi.mock("../src/services/api", () => ({
   desktop: true,
@@ -257,24 +258,24 @@ it("cancels a dirty vault switch, then keeps and restores its draft when switchi
   );
 });
 
-it("new-vault creation asks for a name, supports cancellation and rejects paths", async () => {
-  const question = vi.fn<Ask>(async () => null);
-  const { result } = renderHook(() => useWorkspace(question));
+it("new-vault creation accepts name and parent together, supports cancellation and rejects names containing paths", async () => {
+  const request = vi.fn<RequestVault>(async () => null);
+  const { result } = renderHook(() => useWorkspace(ask, undefined, request));
   await waitFor(() => expect(result.current.busy).toBe(false));
   await act(async () => result.current.createVault());
   expect(api.createVault).not.toHaveBeenCalled();
-  question.mockResolvedValue("../escape");
+  request.mockResolvedValue({ name: "../escape", parent: "C:/" });
   await act(async () => result.current.createVault());
   expect(api.createVault).not.toHaveBeenCalled();
   expect(result.current.error).toContain("имя папки без пути");
-  question.mockResolvedValue("Проект");
+  request.mockResolvedValue({ name: "Проект", parent: "C:/" });
   vi.mocked(api.createVault).mockResolvedValue({
     id: "new",
     name: "Проект",
     path: "C:/Проект",
   });
   await act(async () => result.current.createVault());
-  expect(api.createVault).toHaveBeenCalledWith("Проект");
+  expect(api.createVault).toHaveBeenCalledWith("Проект", "C:/");
   expect(result.current.vault?.name).toBe("Проект");
 });
 

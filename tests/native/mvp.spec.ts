@@ -21,6 +21,394 @@ import { createHash } from "node:crypto";
 
 const root = resolve(import.meta.dirname, "../..");
 const executable = resolve(root, "src-tauri/target/e2e/release/aether.exe");
+
+test("editor modes toggle reading/live, active line number follows the caret and formatting preserves selection", async () => {
+  const run = await mkdtemp(join(root, ".build-cache/native-editor-controls-"));
+  const vault = join(run, "Native-MVP"),
+    data = join(run, "data");
+  await mkdir(vault);
+  await mkdir(data);
+  const content = "Первая строка\nВторая строка\nТретья строка\n";
+  await writeFile(join(vault, "Редактор.md"), content);
+  await writeFile(
+    join(data, "settings.json"),
+    JSON.stringify({ lastVault: vault }),
+  );
+  let app: RunningApp | undefined;
+  try {
+    app = await launch(data, join(run, "profile"), false);
+    const page = app.page;
+    await page.getByRole("button", { name: "Редактор", exact: true }).click();
+    const editor = page.getByRole("textbox", { name: "Markdown-редактор" });
+    const toggle = page.getByRole("button", {
+      name: "Переключить режим чтения",
+    });
+    await expect(page.locator(".is-live")).toBeVisible();
+    await toggle.click();
+    await expect(
+      page.getByRole("region", { name: "Просмотр заметки" }),
+    ).toBeVisible();
+    await toggle.click();
+    await expect(page.locator(".is-live")).toBeVisible();
+    await setMode(page, "Исходник");
+    await expect(page.locator(".is-live")).toHaveCount(0);
+    await page.keyboard.press("Control+e");
+    await page.keyboard.press("Control+e");
+    await expect(page.locator(".is-live")).toBeVisible();
+    await setMode(page, "Исходник");
+    await noteAction(page, "Номера строк");
+    await editor.press("Control+Home");
+    const activeLine = page.locator(".cm-lineNumbers .cm-activeLineGutter");
+    await expect(activeLine).toHaveText("1");
+    await editor.press("ArrowDown");
+    await expect(activeLine).toHaveText("2");
+    expect(
+      await activeLine.evaluate(
+        (element) => getComputedStyle(element).paddingTop,
+      ),
+    ).toBe("4px");
+    expect(
+      await activeLine.evaluate(
+        (element) => getComputedStyle(element).backgroundColor,
+      ),
+    ).not.toBe("rgba(0, 0, 0, 0)");
+    await noteAction(page, "Панель форматирования");
+    const toolbar = page.getByRole("toolbar", { name: "Форматирование" });
+    await expect(toolbar.getByRole("group")).toHaveCount(3);
+    await editor.press("Control+Home");
+    await editor.press("Shift+End");
+    const selectionAlignment = async () =>
+      page.evaluate(() => {
+        const selection = window.getSelection();
+        if (!selection?.rangeCount) return 1000;
+        const text = selection.getRangeAt(0).getBoundingClientRect();
+        const background = [
+          ...document.querySelectorAll(".cm-selectionBackground"),
+        ]
+          .map((element) => element.getBoundingClientRect())
+          .find((rect) => rect.width > 2 && rect.height > 2);
+        return background
+          ? Math.max(
+              Math.abs(background.left - text.left),
+              Math.abs(background.right - text.right),
+            )
+          : 1000;
+      });
+    await expect.poll(selectionAlignment).toBeLessThan(2);
+    await toolbar.getByRole("button", { name: "Жирный", exact: true }).click();
+    await expect(
+      toolbar.getByRole("button", { name: "Жирный", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await editor.press("Control+s");
+    await expect
+      .poll(() => readFile(join(vault, "Редактор.md"), "utf8"))
+      .toBe("**Первая строка**\nВторая строка\nТретья строка\n");
+    const columnGap = await page.locator(".cm-editor").evaluate((element) => {
+      const line = element.querySelector(".cm-line")!;
+      const range = document.createRange();
+      range.selectNodeContents(line);
+      return (
+        range.getBoundingClientRect().left -
+        element.querySelector(".cm-gutters")!.getBoundingClientRect().right
+      );
+    });
+    expect(columnGap).toBeGreaterThanOrEqual(0);
+    expect(columnGap).toBeLessThan(24);
+    await expect(page.locator(".breadcrumbs")).toHaveText("");
+    await editor.hover();
+    await toolbar.getByRole("button", { name: "Жирный", exact: true }).hover();
+    await expect(page.getByRole("tooltip")).toContainText("Ctrl+B");
+    await expect(
+      toolbar.getByRole("button", { name: "Жирный", exact: true }),
+    ).not.toHaveAttribute("title");
+    await editor.press("Control+Home");
+    await editor.press("ArrowDown");
+    await editor.press("Home");
+    await editor.press("Shift+End");
+    await expect.poll(selectionAlignment).toBeLessThan(2);
+    const dragText = async () => {
+      await editor.press("ArrowLeft");
+      const bounds = await editor
+        .locator(".cm-line")
+        .nth(1)
+        .evaluate((line) => {
+          const text = line.firstChild!;
+          const range = document.createRange();
+          range.setStart(text, 2);
+          range.setEnd(text, 6);
+          const rect = range.getBoundingClientRect();
+          return {
+            from: rect.left + 0.1,
+            to: rect.right - 0.1,
+            y: (rect.top + rect.bottom) / 2,
+          };
+        });
+      await page.mouse.move(bounds.from, bounds.y);
+      await page.mouse.down();
+      await page.mouse.move(bounds.to, bounds.y, { steps: 5 });
+      await page.mouse.up();
+      await expect
+        .poll(() => editor.evaluate(() => window.getSelection()?.toString()))
+        .toBe("орая");
+      await expect.poll(selectionAlignment).toBeLessThan(2);
+    };
+    await dragText();
+    await editor.press("Home");
+    await editor.press("Shift+End");
+    await expect(
+      toolbar.getByRole("button", { name: "Жирный", exact: true }),
+    ).toHaveAttribute("aria-pressed", "false");
+    await editor
+      .locator(".cm-line")
+      .nth(1)
+      .click({ button: "right", position: { x: 24, y: 10 } });
+    const menu = page.getByRole("menu", { name: "Действия редактора" });
+    await expect(menu).toContainText("Форматирование");
+    await menu
+      .getByRole("menuitemcheckbox", { name: "Цитата", exact: true })
+      .click();
+    await expect(
+      toolbar.getByRole("button", { name: "Цитата", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await editor.press("Control+z");
+    await expect(
+      toolbar.getByRole("button", { name: "Цитата", exact: true }),
+    ).toHaveAttribute("aria-pressed", "false");
+    await setMode(page, "Live Preview");
+    await dragText();
+    await page.screenshot({
+      path: test.info().outputPath("editor-toolbar-dark.png"),
+    });
+    await page.getByRole("button", { name: "Переключить тему" }).click();
+    await page.screenshot({
+      path: test.info().outputPath("editor-toolbar-light.png"),
+    });
+    await page.setViewportSize({ width: 800, height: 650 });
+    await editor.focus();
+    await expect.poll(selectionAlignment).toBeLessThan(2);
+    expect(
+      await toolbar.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth,
+      ),
+    ).toBe(true);
+    await page
+      .getByRole("button", { name: "Переключить правую панель" })
+      .click();
+    const linkBox = (await toolbar
+      .getByRole("button", { name: "Wiki-ссылка" })
+      .boundingBox())!;
+    const closeBox = (await toolbar
+      .getByRole("button", { name: "Скрыть панель форматирования" })
+      .boundingBox())!;
+    const boldBox = (await toolbar
+      .getByRole("button", { name: "Жирный", exact: true })
+      .boundingBox())!;
+    expect(linkBox.y).toBe(closeBox.y);
+    expect(linkBox.y).toBeGreaterThan(boldBox.y);
+    await page.screenshot({
+      path: test.info().outputPath("editor-toolbar-narrow.png"),
+    });
+    await page
+      .getByRole("button", { name: "Переключить правую панель" })
+      .click();
+    await toolbar
+      .getByRole("button", { name: "Скрыть панель форматирования" })
+      .click();
+    await expect(toolbar).toHaveCount(0);
+    await setMode(page, "Исходник");
+    await page
+      .getByRole("button", { name: "Переключить правую панель" })
+      .click();
+    await editor.fill(
+      Array.from(
+        { length: 8 },
+        (_, index) =>
+          `${index + 1} ${"длиннаястрока".repeat(25)} [[Без названия]]`,
+      ).join("\n"),
+    );
+    const scroller = page.locator(".cm-scroller");
+    const gutterClearance = () =>
+      page.locator(".cm-editor").evaluate((element) => {
+        const gutter = element
+          .querySelector(".cm-gutters")!
+          .getBoundingClientRect();
+        return (
+          element.querySelector(".cm-content")!.getBoundingClientRect().left -
+          gutter.right
+        );
+      });
+    await expect.poll(gutterClearance).toBeGreaterThanOrEqual(0);
+    await expect
+      .poll(() =>
+        scroller.evaluate(
+          (element) => element.scrollWidth - element.clientWidth,
+        ),
+      )
+      .toBeLessThan(2);
+    await noteAction(page, "Перенос строк");
+    await expect(editor).not.toHaveClass(/cm-lineWrapping/);
+    await expect
+      .poll(() =>
+        scroller.evaluate(
+          (element) => element.scrollWidth - element.clientWidth,
+        ),
+      )
+      .toBeGreaterThan(100);
+    expect(
+      await page.evaluate(() => localStorage.getItem("aether.ui.lineWrapping")),
+    ).toBe("false");
+    await scroller.evaluate((element) => {
+      element.scrollLeft = 150;
+    });
+    expect(
+      await page.locator(".cm-gutters").evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        const viewport = element.parentElement!.getBoundingClientRect();
+        return !!document
+          .elementFromPoint(
+            rect.left + rect.width / 2,
+            (viewport.top + viewport.bottom) / 2,
+          )
+          ?.closest(".cm-gutters");
+      }),
+    ).toBe(true);
+    await noteAction(page, "Перенос строк");
+    await expect(editor).toHaveClass(/cm-lineWrapping/);
+    await expect.poll(gutterClearance).toBeGreaterThanOrEqual(0);
+    await expect
+      .poll(() => scroller.evaluate((element) => element.scrollLeft))
+      .toBe(0);
+    const numberAlignment = await page
+      .locator(".cm-editor")
+      .evaluate((element) => {
+        const number = [
+          ...element.querySelectorAll(".cm-lineNumbers .cm-gutterElement"),
+        ].find(
+          (entry) =>
+            entry.textContent === "1" &&
+            entry.getBoundingClientRect().height > 0,
+        )!;
+        const glyph = document.createRange();
+        glyph.selectNodeContents(number);
+        const text = document.createRange();
+        text.selectNodeContents(element.querySelector(".cm-line")!);
+        return Math.abs(
+          glyph.getClientRects()[0].top - text.getClientRects()[0].top,
+        );
+      });
+    // Different font metrics and the optical offset still keep the digit on the first visual row.
+    expect(numberAlignment).toBeLessThan(12);
+    await page.screenshot({
+      path: test.info().outputPath("narrow-editor-wrapping.png"),
+    });
+  } finally {
+    await stop(app);
+  }
+});
+
+test("welcome creates notes immediately and vault creation uses a single name/location form", async () => {
+  const temporary = await mkdtemp(join(root, ".build-cache/native-welcome-"));
+  const vault = join(temporary, "Native-MVP");
+  const data = join(temporary, "data");
+  await mkdir(vault);
+  await mkdir(data);
+  await writeFile(
+    join(data, "settings.json"),
+    JSON.stringify({ lastVault: vault }),
+  );
+  let app: RunningApp | undefined;
+  try {
+    app = await launch(data, join(temporary, "profile"), false);
+    const page = app.page;
+    const welcome = page.locator(".quiet-welcome");
+    const noteButton = welcome.getByRole("button", { name: /Создать заметку/ });
+    const vaultButton = welcome.getByRole("button", {
+      name: "Создать хранилище",
+      exact: true,
+    });
+    expect((await noteButton.boundingBox())!.width).toBe(
+      (await vaultButton.boundingBox())!.width,
+    );
+    const actionButtons = welcome.locator(".button");
+    await expect(actionButtons).toHaveCount(3);
+    const bounds = await actionButtons.evaluateAll((buttons) =>
+      buttons.map((button) => {
+        const label = button
+          .querySelector(".welcome-action-label")!
+          .getBoundingClientRect();
+        const shortcut = button.querySelector("kbd")!.getBoundingClientRect();
+        return { left: label.left, right: shortcut.right };
+      }),
+    );
+    expect(new Set(bounds.map((value) => value.left)).size).toBe(1);
+    expect(new Set(bounds.map((value) => value.right)).size).toBe(1);
+    const pageCount = page.context().pages().length;
+    expect(
+      await page.evaluate(() => {
+        window.open("about:blank", "_blank");
+        window.alert("Native browser dialog should be suppressed");
+        return window.confirm(
+          "Native browser confirmation should be suppressed",
+        );
+      }),
+    ).toBe(false);
+    expect(page.context().pages().length).toBe(pageCount);
+    await page.screenshot({
+      path: test.info().outputPath("welcome-actions.png"),
+    });
+    await noteButton.click();
+    await expect(page.locator("dialog[open]")).toHaveCount(0);
+    await expect(
+      page.getByRole("textbox", { name: "Название заметки" }),
+    ).toHaveValue("Новая заметка");
+    expect(await readFile(join(vault, "Новая заметка.md"), "utf8")).toBe("");
+    await page.keyboard.press("Control+w");
+    await page.keyboard.press("Control+Shift+n");
+    let dialog = page.getByRole("dialog");
+    await expect(
+      dialog.getByRole("button", { name: "Создать хранилище", exact: true }),
+    ).toBeDisabled();
+    await dialog
+      .getByRole("textbox", { name: "Название хранилища" })
+      .fill("Новый архив");
+    await dialog
+      .getByRole("textbox", { name: "Расположение", exact: true })
+      .fill(temporary);
+    await page.screenshot({ path: test.info().outputPath("create-vault.png") });
+    await dialog.getByRole("button", { name: "Отмена", exact: true }).click();
+    expect(await readdir(temporary)).not.toContain("Новый архив");
+    await vaultButton.click();
+    dialog = page.getByRole("dialog");
+    await dialog
+      .getByRole("textbox", { name: "Название хранилища" })
+      .fill("Новый архив");
+    await dialog
+      .getByRole("textbox", { name: "Расположение", exact: true })
+      .fill(temporary);
+    await dialog
+      .getByRole("button", { name: "Создать хранилище", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "Хранилище: Новый архив" }),
+    ).toBeVisible();
+    expect(await readdir(temporary)).toContain("Новый архив");
+    await page.keyboard.press("Control+n");
+    await expect(page.locator("dialog[open]")).toHaveCount(0);
+    await expect(
+      page.getByRole("textbox", { name: "Название заметки" }),
+    ).toHaveValue("Новая заметка");
+    expect(
+      await readFile(
+        join(temporary, "Новый архив", "Новая заметка.md"),
+        "utf8",
+      ),
+    ).toBe("");
+    await page.keyboard.press("Control+Shift+f");
+    await expect(page.locator(".search-pagination")).toHaveCount(0);
+  } finally {
+    await stop(app);
+  }
+});
 type RunningApp = {
   child: ChildProcess;
   browser: Browser;
@@ -176,7 +564,9 @@ async function create(page: Page, path: string, directory = false) {
     const name = page.getByRole("textbox", { name: "Имя папки" });
     await name.fill(path);
     await name.press("Enter");
-    await expect(page.locator(`.tree-item[title="${path}"]`)).toBeVisible();
+    await expect(
+      page.locator(`.tree-item[data-tooltip="${path}"]`),
+    ).toBeVisible();
     return;
   }
   const dialog = page.locator("dialog[open]");
@@ -535,6 +925,8 @@ test("stage 2: native anchor navigation, rename preview, dirty guards, undo, con
     };
     await test.step("headings and blocks navigate in existing dirty buffers and preserve undo", async () => {
       await page.getByRole("button", { name: "Ref", exact: true }).click();
+      // This scenario inspects literal Markdown around the caret.
+      await setMode(page, "Исходник");
       await link("К заголовку").click();
       await expect.poll(caretLine).toBe("## **Секция**");
       await editor().fill(
@@ -597,7 +989,10 @@ test("stage 2: native anchor navigation, rename preview, dirty guards, undo, con
       );
       await page.getByRole("tab", { name: /^Ref(?: |$)/ }).click();
       await expect(editor()).toContainText("B/New#Секция");
-      await expect(link("К заголовку")).toHaveAttribute("title", "B/New");
+      await expect(link("К заголовку")).toHaveAttribute(
+        "data-tooltip",
+        "B/New",
+      );
       await link("К заголовку").click();
       await page.screenshot({
         path: test.info().outputPath("after-rename-navigation.png"),
@@ -1791,6 +2186,17 @@ test("inline title rename, clean tabs and caret-scoped Live Preview", async () =
     await expect(section).toBeVisible();
     await section.locator("summary").click();
     await expect(section).not.toHaveAttribute("open", "");
+    const outgoing = page.locator(".relations-section").nth(1);
+    await outgoing.locator("summary").click();
+    await expect(outgoing).not.toHaveAttribute("open", "");
+    const incomingBounds = (await section.boundingBox())!;
+    const outgoingBounds = (await outgoing.boundingBox())!;
+    expect(incomingBounds.height).toBe(outgoingBounds.height);
+    expect(outgoingBounds.y - incomingBounds.y).toBe(incomingBounds.height);
+    await page.screenshot({
+      path: test.info().outputPath("collapsed-inspector.png"),
+    });
+    await outgoing.locator("summary").click();
     await section.locator("summary").click();
     await page.screenshot({
       path: test.info().outputPath("inline-title-and-inspector.png"),
@@ -2035,7 +2441,8 @@ test("move notes by dragging, update links, reveal menus and root-only plus", as
   try {
     app = await launch(data, profile);
     const page = app.page;
-    const file = (path: string) => page.locator(`.tree-item[title="${path}"]`);
+    const file = (path: string) =>
+      page.locator(`.tree-item[data-tooltip="${path}"]`);
     const expand = async (path: string) => {
       if ((await file(path).getAttribute("aria-expanded")) !== "true")
         await file(path).click();
@@ -2045,7 +2452,7 @@ test("move notes by dragging, update links, reveal menus and root-only plus", as
     await file("A/Note.md").dragTo(file("B"));
     await expect(
       page.getByRole("tab", { name: "Note", exact: true }),
-    ).toHaveAttribute("title", "B/Note.md");
+    ).toHaveAttribute("data-tooltip", "B/Note.md");
     expect(await readFile(join(vault, "B", "Note.md"), "utf8")).toContain(
       "![image](../A/image.png)",
     );
@@ -2060,7 +2467,7 @@ test("move notes by dragging, update links, reveal menus and root-only plus", as
     await file("B/Note.md").dragTo(file("B/Nested"));
     await expect(
       page.getByRole("tab", { name: "Note", exact: true }),
-    ).toHaveAttribute("title", "B/Nested/Note.md");
+    ).toHaveAttribute("data-tooltip", "B/Nested/Note.md");
     expect(
       await readFile(join(vault, "B", "Nested", "Note.md"), "utf8"),
     ).toContain("../../A/image.png");
@@ -2070,7 +2477,7 @@ test("move notes by dragging, update links, reveal menus and root-only plus", as
     });
     await expect(
       page.getByRole("tab", { name: "Note", exact: true }),
-    ).toHaveAttribute("title", "Note.md");
+    ).toHaveAttribute("data-tooltip", "Note.md");
     expect(await readFile(join(vault, "Note.md"), "utf8")).toContain(
       "![image](A/image.png)",
     );
@@ -2150,7 +2557,7 @@ test("move notes by dragging, update links, reveal menus and root-only plus", as
       .getByRole("button", { name: "Открыть хранилище в проводнике" })
       .click();
     const backlink = page
-      .locator('.inspector .relation-link[title^="Ref.md:"]')
+      .locator('.inspector .relation-link[data-tooltip^="Ref.md:"]')
       .first();
     await expect(backlink).toBeVisible();
     await backlink.click({ button: "right" });
@@ -2204,7 +2611,8 @@ test("instant folders and inline tree file renaming without path dialogs", async
   try {
     app = await launch(data, profile, false);
     const page = app.page;
-    const file = (path: string) => page.locator(`.tree-item[title="${path}"]`);
+    const file = (path: string) =>
+      page.locator(`.tree-item[data-tooltip="${path}"]`);
     await page
       .locator(".sidebar-toolbar")
       .getByRole("button", { name: "Новая папка", exact: true })
@@ -2311,7 +2719,8 @@ test("folder context rename and trash preserve contents and refresh nested tabs"
   try {
     app = await launch(data, profile, false);
     const page = app.page;
-    const entry = (path: string) => page.locator(`.tree-item[title="${path}"]`);
+    const entry = (path: string) =>
+      page.locator(`.tree-item[data-tooltip="${path}"]`);
     await entry("Проект").click();
     await entry("Проект/Вложено").click();
     await entry("Проект/Вложено/Заметка.md").click();
@@ -2338,7 +2747,7 @@ test("folder context rename and trash preserve contents and refresh nested tabs"
     await rename("Проект", "Архив");
     await expect(
       page.getByRole("tab", { name: "Заметка", exact: true }),
-    ).toHaveAttribute("title", "Архив/Вложено/Заметка.md");
+    ).toHaveAttribute("data-tooltip", "Архив/Вложено/Заметка.md");
     await expect(editor).toContainText("Архив/Вложено/Заметка");
     expect(
       await readFile(join(vault, "Архив", "Вложено", "Заметка.md"), "utf8"),
@@ -2354,7 +2763,7 @@ test("folder context rename and trash preserve contents and refresh nested tabs"
     await expect(entry("Проект")).toBeVisible();
     await expect(
       page.getByRole("tab", { name: "Заметка", exact: true }),
-    ).toHaveAttribute("title", "Проект/Вложено/Заметка.md");
+    ).toHaveAttribute("data-tooltip", "Проект/Вложено/Заметка.md");
     await expect(editor).toContainText("Проект/Вложено/Заметка");
     await rename("Проект", "Архив");
     await entry("Архив").click({ button: "right" });

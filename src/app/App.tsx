@@ -1,4 +1,5 @@
 import { Welcome } from "../components/Welcome";
+import { FormattingToolbar } from "../components/FormattingToolbar";
 import { Inspector } from "../components/Inspector";
 import { Titlebar } from "../components/Titlebar";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
@@ -34,6 +35,7 @@ import {
 import { Popover } from "../components/Popover";
 import { MoreHorizontal, Moon, Sun } from "lucide-react";
 import { BrandMark } from "../components/BrandMark";
+import { useVaultCreation } from "../components/CreateVaultDialog";
 import { VaultSwitcher } from "../components/VaultSwitcher";
 import { PaneResizeHandle, usePaneWidth } from "../components/PaneResizeHandle";
 import type { CSSProperties } from "react";
@@ -70,7 +72,8 @@ function initialTheme(): string {
 export function App() {
   const { ask, dialog } = useQuestion();
   const renameReview = useRenameReview();
-  const app = useWorkspace(ask, renameReview.review);
+  const vaultCreation = useVaultCreation();
+  const app = useWorkspace(ask, renameReview.review, vaultCreation.request);
   const context = useContextMenu(app.setError);
   const [dragged, setDragged] = useState<string | null>(null);
   const [rootDrop, setRootDrop] = useState(false);
@@ -94,6 +97,9 @@ export function App() {
   const [lineNumbers, setLineNumbers] = useState(() =>
     readFlag("lineNumbers", false),
   );
+  const [lineWrapping, setLineWrapping] = useState(() =>
+    readFlag("lineWrapping", true),
+  );
   const shellRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -103,12 +109,13 @@ export function App() {
         right,
         formatting,
         lineNumbers,
+        lineWrapping,
       }))
         localStorage.setItem(`aether.ui.${key}`, String(value));
     } catch {
       /* Layout remains usable without persistence. */
     }
-  }, [left, right, formatting, lineNumbers]);
+  }, [left, right, formatting, lineNumbers, lineWrapping]);
   useEffect(() => {
     if (!sidebarRef.current || typeof ResizeObserver === "undefined") return;
     const node = sidebarRef.current;
@@ -125,13 +132,17 @@ export function App() {
   const [query, setQuery] = useState("");
   const [help, setHelp] = useState(false);
   const [stats, setStats] = useState({ words: 0, chars: 0, lines: 0 });
-  const [mode, setMode] = useState<Mode>("source");
+  const [mode, setMode] = useState<Mode>("live");
   const [formatCommand, setFormatCommand] = useState<{
     id: number;
     type: FormatCommand;
     path: string;
   } | null>(null);
   const formatId = useRef(0);
+  const [formatState, setFormatState] = useState<{
+    path: string;
+    formats: FormatCommand[];
+  }>({ path: "", formats: [] });
   const format = (type: FormatCommand) => {
     if (app.active)
       setFormatCommand({ id: ++formatId.current, type, path: app.active.path });
@@ -144,7 +155,7 @@ export function App() {
         !document.querySelector("dialog[open]")
       ) {
         event.preventDefault();
-        setMode((previous) => (previous === "reading" ? "source" : "reading"));
+        setMode((previous) => (previous === "reading" ? "live" : "reading"));
       }
     };
     window.addEventListener("keydown", onKey);
@@ -211,7 +222,8 @@ export function App() {
       }
       if (key === "n") {
         event.preventDefault();
-        void actionRef.current.create();
+        if (event.shiftKey) void actionRef.current.createVault();
+        else void actionRef.current.createQuick();
       }
       if (key === "w" && actionRef.current.active) {
         event.preventDefault();
@@ -234,7 +246,7 @@ export function App() {
   const commands = [
     {
       title: "Создать хранилище",
-      shortcut: "",
+      shortcut: "Ctrl Shift N",
       action: () => void app.createVault(),
       enabled: true,
     },
@@ -463,7 +475,7 @@ export function App() {
             className="icon-button"
             aria-label="Переключить левую панель"
             aria-expanded={left}
-            title="Левая панель · Ctrl+\\"
+            data-tooltip="Левая панель · Ctrl+\\"
             onClick={() => setLeft(!left)}
           >
             {left ? <PanelLeftClose size={17} /> : <PanelLeftOpen size={17} />}
@@ -472,7 +484,7 @@ export function App() {
             className="icon-button chrome-right-toggle"
             aria-label="Переключить правую панель"
             aria-expanded={right}
-            title="Связи и свойства"
+            data-tooltip="Связи и свойства"
             onClick={() => setRight(!right)}
           >
             {right ? (
@@ -492,7 +504,7 @@ export function App() {
             }
             aria-label="Показать проводник"
             aria-pressed={left && leftView === "explorer"}
-            title="Файлы"
+            data-tooltip="Файлы"
             onClick={() => {
               setLeft(true);
               setLeftView("explorer");
@@ -506,7 +518,7 @@ export function App() {
             }
             aria-label="Поиск по хранилищу"
             aria-pressed={left && leftView === "search"}
-            title="Поиск · Ctrl+Shift+F"
+            data-tooltip="Поиск · Ctrl+Shift+F"
             onClick={() => {
               setLeft(true);
               setLeftView("search");
@@ -517,7 +529,7 @@ export function App() {
           <button
             className="rail-button"
             aria-label="Палитра команд"
-            title="Команды · Ctrl+P"
+            data-tooltip="Команды · Ctrl+P"
             onClick={() => {
               setPalette(true);
               setQuery("");
@@ -529,7 +541,7 @@ export function App() {
             <button
               className="rail-button"
               aria-label="Переключить тему"
-              title="Переключить тему"
+              data-tooltip="Переключить тему"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
             >
               {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
@@ -537,7 +549,7 @@ export function App() {
             <button
               className="rail-button"
               aria-label="Справка"
-              title="Справка"
+              data-tooltip="Справка"
               onClick={() => setHelp(true)}
             >
               <CircleHelp size={18} />
@@ -557,7 +569,7 @@ export function App() {
                     <button
                       className="icon-button"
                       aria-label="Новая заметка"
-                      title="Новая заметка · Ctrl+N"
+                      data-tooltip="Новая заметка · Ctrl+N"
                       disabled={!app.vault || app.busy}
                       onClick={() => void app.create()}
                     >
@@ -566,7 +578,7 @@ export function App() {
                     <button
                       className="icon-button"
                       aria-label="Новая папка"
-                      title="Новая папка"
+                      data-tooltip="Новая папка"
                       disabled={!app.vault || app.busy}
                       onClick={() => void app.createFolderQuick()}
                     >
@@ -799,35 +811,20 @@ export function App() {
                 setFormatting={setFormatting}
                 lineNumbers={lineNumbers}
                 setLineNumbers={setLineNumbers}
+                lineWrapping={lineWrapping}
+                setLineWrapping={setLineWrapping}
               />
               {formatting && mode !== "reading" && (
-                <div
-                  className="format-toolbar"
-                  role="toolbar"
-                  aria-label="Форматирование"
-                >
-                  {(
-                    [
-                      { type: "bold", label: "Жирный", text: "B" },
-                      { type: "italic", label: "Курсив", text: "I" },
-                      { type: "heading", label: "Заголовок", text: "H₂" },
-                      { type: "code", label: "Код", text: "<>" },
-                      { type: "quote", label: "Цитата", text: "❞" },
-                      { type: "list", label: "Список", text: "☷" },
-                      { type: "link", label: "Wiki-ссылка", text: "[[ ]]" },
-                    ] as const
-                  ).map((item) => (
-                    <button
-                      key={item.type}
-                      disabled={app.busy}
-                      title={item.label}
-                      aria-label={item.label}
-                      onClick={() => format(item.type)}
-                    >
-                      {item.text}
-                    </button>
-                  ))}
-                </div>
+                <FormattingToolbar
+                  active={
+                    formatState.path === app.active.path
+                      ? formatState.formats
+                      : []
+                  }
+                  disabled={app.busy}
+                  onFormat={format}
+                  onClose={() => setFormatting(false)}
+                />
               )}
               <div className="document-area" inert={app.busy}>
                 <Suspense
@@ -858,7 +855,18 @@ export function App() {
                       />
                       <div className="editor-host" hidden={mode === "reading"}>
                         <MarkdownEditor
+                          onFormatsChange={(formats) => {
+                            if (actionRef.current.workspace.active !== tab.path)
+                              return;
+                            setFormatState((previous) =>
+                              previous.path === tab.path &&
+                              previous.formats.join() === formats.join()
+                                ? previous
+                                : { path: tab.path, formats },
+                            );
+                          }}
                           showLineNumbers={lineNumbers}
+                          lineWrapping={lineWrapping}
                           visible={
                             mode !== "reading" &&
                             tab.path === app.workspace.active
@@ -930,7 +938,7 @@ export function App() {
               {app.notice && (
                 <button
                   className="status-notice"
-                  title={app.notice}
+                  data-tooltip={app.notice}
                   onClick={() => app.setNotice("")}
                 >
                   {app.notice}
@@ -968,6 +976,7 @@ export function App() {
       </div>
 
       {dialog}
+      {vaultCreation.dialog}
       {context.menu}
       {renameReview.dialog}
       {palette && (
@@ -1013,13 +1022,14 @@ export function App() {
           <div className="shortcut-list">
             {[
               ["Открыть хранилище", "Ctrl O"],
+              ["Создать хранилище", "Ctrl Shift N"],
               ["Новая заметка", "Ctrl N"],
               ["Сохранить", "Ctrl S"],
               ["Закрыть вкладку", "Ctrl W"],
               ["Палитра команд", "Ctrl P"],
               ["Поиск в заметке", "Ctrl F"],
               ["Замена", "Ctrl H"],
-              ["Чтение / исходник", "Ctrl E"],
+              ["Чтение / Live Preview", "Ctrl E"],
               ["Жирный / курсив", "Ctrl B / Ctrl I"],
               ["Отмена / повтор", "Ctrl Z / Ctrl Y"],
             ].map(([label, shortcut]) => (

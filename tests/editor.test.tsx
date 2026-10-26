@@ -5,11 +5,58 @@ import { undo } from "@codemirror/commands";
 import { MarkdownEditor } from "../src/editor/MarkdownEditor";
 import {
   formatSelection,
+  activeFormats,
   applyWikiCompletion,
 } from "../src/editor/enhancements";
 import { insertBracket, deleteBracketPair } from "@codemirror/autocomplete";
 
 afterEach(cleanup);
+it("switches line wrapping without replacing text, selection or undo history", () => {
+  const props = {
+    content: "длинная строка",
+    onChange: vi.fn(),
+    onSave: vi.fn(),
+  };
+  const { rerender } = render(<MarkdownEditor {...props} />);
+  const dom = screen.getByRole("textbox", { name: "Markdown-редактор" });
+  const view = EditorView.findFromDOM(dom)!;
+  view.dispatch({
+    changes: { from: view.state.doc.length, insert: "!" },
+    selection: { anchor: 3, head: 6 },
+  });
+  rerender(<MarkdownEditor {...props} lineWrapping={false} />);
+  expect(EditorView.findFromDOM(dom)).toBe(view);
+  expect(dom.classList.contains("cm-lineWrapping")).toBe(false);
+  expect(view.state.selection.main.from).toBe(3);
+  expect(view.state.selection.main.to).toBe(6);
+  expect(view.state.sliceDoc()).toBe(props.content + "!");
+  rerender(<MarkdownEditor {...props} lineWrapping />);
+  expect(dom.classList.contains("cm-lineWrapping")).toBe(true);
+  undo(view);
+  expect(view.state.sliceDoc()).toBe(props.content);
+});
+it("reports formatting of the whole selection without marking mixed text active", () => {
+  const content =
+    "## Heading\n\n**bold** plain **other**\n\n> quote\n\n- list\n\n`code`\n\n[[Note]]";
+  render(
+    <MarkdownEditor content={content} onChange={vi.fn()} onSave={vi.fn()} />,
+  );
+  const view = EditorView.findFromDOM(
+    screen.getByRole("textbox", { name: "Markdown-редактор" }),
+  )!;
+  const select = (text: string) => {
+    const from = content.indexOf(text);
+    view.dispatch({ selection: { anchor: from, head: from + text.length } });
+    return activeFormats(view.state);
+  };
+  expect(select("bold")).toContain("bold");
+  expect(select("bold** plain **other")).not.toContain("bold");
+  expect(select("Heading")).toContain("heading");
+  expect(select("quote")).toContain("quote");
+  expect(select("list")).toContain("list");
+  expect(select("code")).toContain("code");
+  expect(select("Note")).toContain("link");
+});
 it("toggles live formatting without remounting the editor or rewriting Markdown", () => {
   const props = {
     content: "# Heading\n\n**bold** and *italic*",

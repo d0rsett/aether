@@ -77,7 +77,7 @@ export function PaneResizeHandle({
       aria-valuemin={minimum}
       aria-valuemax={420}
       aria-valuenow={Math.round(width)}
-      title="Потяните для изменения ширины; уменьшите до края, чтобы скрыть. Двойной щелчок — сброс."
+      data-tooltip="Потяните для изменения ширины; уменьшите до края, чтобы скрыть. Двойной щелчок — сброс."
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         event.preventDefault();

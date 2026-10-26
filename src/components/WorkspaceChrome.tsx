@@ -128,14 +128,14 @@ export function WorkspaceTabs({
               aria-selected={app.workspace.active === tab.path}
               disabled={app.busy}
               onClick={() => app.dispatch({ type: "activate", path: tab.path })}
-              title={tab.path}
+              data-tooltip={tab.path}
             >
               <FileText size={14} />
               <span className="tab-name">{titleOf(tab.path)}</span>
               {dirty(tab) && (
                 <span
                   className="dirty-dot"
-                  title="Есть несохранённые изменения"
+                  data-tooltip="Есть несохранённые изменения"
                 />
               )}
             </button>
@@ -153,7 +153,7 @@ export function WorkspaceTabs({
       {app.vault && app.workspace.tabs.length > 0 && (
         <button
           className="icon-button new-tab"
-          title="Новая заметка"
+          data-tooltip="Новая заметка"
           aria-label="Открыть новую заметку"
           disabled={app.busy}
           onClick={() => void app.createQuick()}
@@ -173,6 +173,8 @@ export function NoteHeader({
   setFormatting,
   lineNumbers,
   setLineNumbers,
+  lineWrapping,
+  setLineWrapping,
 }: {
   app: Controller;
   mode: Mode;
@@ -181,22 +183,26 @@ export function NoteHeader({
   setFormatting: (value: boolean) => void;
   lineNumbers: boolean;
   setLineNumbers: (value: boolean) => void;
+  lineWrapping: boolean;
+  setLineWrapping: (value: boolean) => void;
 }) {
   if (!app.active) return null;
   const parts = app.active.path.split("/");
-  const file = parts.pop() ?? app.active.path;
+  parts.pop();
   return (
     <div className="document-toolbar">
-      <div className="breadcrumbs" title={app.active.path}>
-        {parts.length > 0 && <span>{parts.join(" / ")} / </span>}
-        <span>{file.replace(/\.(md|markdown)$/i, "")}</span>
+      <div
+        className="breadcrumbs"
+        data-tooltip={parts.length ? parts.join(" / ") : undefined}
+      >
+        {parts.length > 0 && <span>{parts.join(" / ")}</span>}
       </div>
       <div className="document-actions">
         {dirty(app.active) && (
           <button
             className="icon-button note-save"
             aria-label="Сохранить"
-            title="Сохранить · Ctrl+S"
+            data-tooltip="Сохранить · Ctrl+S"
             disabled={app.busy}
             onClick={() => void app.save()}
           >
@@ -207,11 +213,11 @@ export function NoteHeader({
           className="icon-button"
           aria-label="Переключить режим чтения"
           aria-pressed={mode === "reading"}
-          title={
+          data-tooltip={
             mode === "reading" ? "Редактировать · Ctrl+E" : "Читать · Ctrl+E"
           }
           disabled={app.busy}
-          onClick={() => setMode(mode === "reading" ? "source" : "reading")}
+          onClick={() => setMode(mode === "reading" ? "live" : "reading")}
         >
           {mode === "reading" ? (
             <PencilLine size={16} />
@@ -277,6 +283,13 @@ export function NoteHeader({
           >
             <span>Номера строк</span>
             {lineNumbers && <Check size={13} />}
+          </button>
+          <button
+            aria-pressed={lineWrapping}
+            onClick={() => setLineWrapping(!lineWrapping)}
+          >
+            <span>Перенос строк</span>
+            {lineWrapping && <Check size={13} />}
           </button>
           <hr />
           <button className="danger-action" onClick={() => void app.remove()}>

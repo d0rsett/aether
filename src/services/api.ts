@@ -139,8 +139,9 @@ export const api = {
   vaults: () => invoke<VaultInfo[]>("list_vaults"),
   switchVault: (vaultId: string) =>
     invoke<VaultInfo>("switch_vault", { vaultId }),
-  createVault: (name: string) =>
-    invoke<VaultInfo | null>("create_vault", { name }),
+  chooseVaultParent: () => invoke<string | null>("choose_vault_parent"),
+  createVault: (name: string, parent: string) =>
+    invoke<VaultInfo>("create_vault", { name, parent }),
   list: (vaultId: string, path: string) =>
     invoke<FileEntry[]>("list_directory", { vaultId, path }),
   read: (vaultId: string, path: string) =>

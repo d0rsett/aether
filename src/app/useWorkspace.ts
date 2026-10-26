@@ -10,6 +10,7 @@ import {
   type RenameState,
 } from "../services/api";
 import type { ReviewRename } from "../components/RenameDialog";
+import type { RequestVault } from "../components/CreateVaultDialog";
 import { dirty, initialWorkspace, workspaceReducer } from "../workspace/model";
 import { readWorkspace, writeWorkspace } from "../workspace/storage";
 
@@ -22,7 +23,11 @@ export interface Question {
 }
 export type Ask = (question: Question) => Promise<string | null>;
 
-export function useWorkspace(ask: Ask, reviewRename?: ReviewRename) {
+export function useWorkspace(
+  ask: Ask,
+  reviewRename?: ReviewRename,
+  requestVault?: RequestVault,
+) {
   const [vault, setVault] = useState<VaultInfo | null>(null);
   const [knownVaults, setKnownVaults] = useState<VaultInfo[]>([]);
   const [workspace, dispatch] = useReducer(workspaceReducer, initialWorkspace);
@@ -235,16 +240,11 @@ export function useWorkspace(ask: Ask, reviewRename?: ReviewRename) {
   };
   const createVault = () =>
     changeVault(async () => {
-      const name = await ask({
-        title: "Новое хранилище",
-        description: "Введите имя новой папки. Затем выберите, где её создать.",
-        initial: "Мои заметки",
-        label: "Выбрать расположение",
-      });
-      if (name === null) return null;
-      if (!name.trim() || /[\\/]/.test(name))
+      const options = await requestVault?.();
+      if (!options) return null;
+      if (!options.name.trim() || /[\\/]/.test(options.name))
         throw new Error("Введите имя папки без пути.");
-      return api.createVault(name.trim());
+      return api.createVault(options.name.trim(), options.parent.trim());
     });
 
   const open = (path: string) =>

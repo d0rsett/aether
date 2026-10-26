@@ -38,7 +38,7 @@ export function VaultSwitcher({
             aria-label={`Переключиться на ${vault.name}`}
             aria-current={vault.id === app.vault?.id ? "true" : undefined}
             disabled={app.busy || vault.id === app.vault?.id}
-            title={displayPath(vault.path)}
+            data-tooltip={displayPath(vault.path)}
             onClick={() => void app.switchVault(vault.id)}
           >
             <span>

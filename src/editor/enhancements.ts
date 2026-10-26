@@ -1,5 +1,5 @@
 import { syntaxTree } from "@codemirror/language";
-import type { Range } from "@codemirror/state";
+import type { EditorState, Range } from "@codemirror/state";
 import {
   Decoration,
   EditorView,
@@ -17,6 +17,50 @@ import {
 import { api } from "../services/api";
 export type FormatCommand =
   "bold" | "italic" | "code" | "heading" | "quote" | "list" | "link";
+export function activeFormats(state: EditorState): FormatCommand[] {
+  const tree = syntaxTree(state);
+  const { from, to } = state.selection.main;
+  const at = (position: number) => {
+    const formats = new Set<FormatCommand>();
+    let node: ReturnType<typeof tree.resolveInner> | null = tree.resolveInner(
+      position,
+      1,
+    );
+    while (node) {
+      if (node.from > from || node.to < to) {
+        node = node.parent;
+        continue;
+      }
+      if (node.name === "StrongEmphasis") formats.add("bold");
+      if (node.name === "Emphasis") formats.add("italic");
+      if (/^(InlineCode|FencedCode|CodeBlock)$/.test(node.name))
+        formats.add("code");
+      if (/^(ATXHeading|SetextHeading)/.test(node.name)) formats.add("heading");
+      if (node.name === "Blockquote") formats.add("quote");
+      if (/^(BulletList|OrderedList|ListItem)$/.test(node.name))
+        formats.add("list");
+      if (node.name === "Link") formats.add("link");
+      node = node.parent;
+    }
+    if (!formats.has("code")) {
+      const line = state.doc.lineAt(position);
+      for (const match of line.text.matchAll(/!?\[\[[^\]\n]+\]\]/g)) {
+        const start = line.from + match.index!;
+        if (
+          position >= start &&
+          position < start + match[0].length &&
+          from >= start &&
+          to <= start + match[0].length
+        )
+          formats.add("link");
+      }
+    }
+    return formats;
+  };
+  const start = at(from),
+    end = at(Math.max(from, to - 1));
+  return [...start].filter((format) => end.has(format));
+}
 export function formatSelection(
   view: EditorView,
   command: FormatCommand,
@@ -222,8 +266,20 @@ export const livePreview = ViewPlugin.fromClass(
                 }).range(line.from),
               );
             if (node.name === "Blockquote")
+              for (
+                let number = line.number;
+                number <=
+                view.state.doc.lineAt(Math.max(node.from, node.to - 1)).number;
+                number++
+              )
+                spans.push(
+                  Decoration.line({ class: "live-quote" }).range(
+                    view.state.doc.line(number).from,
+                  ),
+                );
+            if (node.name === "ListItem")
               spans.push(
-                Decoration.line({ class: "live-quote" }).range(line.from),
+                Decoration.line({ class: "live-list-item" }).range(line.from),
               );
             if (
               [

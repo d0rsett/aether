@@ -198,13 +198,16 @@ export function renderNode(
         /^[a-z][a-z0-9+.-]*:/i.test(node.target) &&
         !safeExternal(node.target);
       return blocked ? (
-        <span className="blocked-link" title="Недопустимый протокол ссылки">
+        <span
+          className="blocked-link"
+          data-tooltip="Недопустимый протокол ссылки"
+        >
           {children}
         </span>
       ) : (
         <a
           href="#"
-          title={node.target}
+          data-tooltip={node.target}
           onClick={(e) => {
             e.preventDefault();
             open(node.target, node.kind === "wiki");

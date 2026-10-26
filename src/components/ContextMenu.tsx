@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { Check } from "lucide-react";
 
 export interface ContextAction {
   label: string;
@@ -17,6 +18,8 @@ export interface ContextAction {
   shortcut?: string;
   icon?: ReactNode;
   divider?: boolean;
+  heading?: string;
+  checked?: boolean;
 }
 
 export function useContextMenu(onError?: (message: string) => void) {
@@ -169,14 +172,19 @@ function ContextMenuItem({
   return (
     <>
       {action.divider && <hr role="separator" />}
+      {action.heading && (
+        <div className="context-menu-heading">{action.heading}</div>
+      )}
       <button
-        role="menuitem"
+        role={action.checked === undefined ? "menuitem" : "menuitemcheckbox"}
+        aria-checked={action.checked}
         className={action.danger ? "danger-action" : undefined}
         disabled={action.disabled}
         onClick={select}
       >
         {action.icon}
         <span>{action.label}</span>
+        {action.checked && <Check size={13} />}
         {action.shortcut && <kbd>{action.shortcut}</kbd>}
       </button>
     </>

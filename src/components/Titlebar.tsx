@@ -79,7 +79,7 @@ export function Titlebar({ leading, children, onError }: Props) {
           className="window-control"
           disabled={!desktop}
           aria-label="Свернуть окно"
-          title="Свернуть"
+          data-tooltip="Свернуть"
           onClick={() => void run("minimize")}
         >
           <Minus size={15} strokeWidth={1.5} />
@@ -90,7 +90,7 @@ export function Titlebar({ leading, children, onError }: Props) {
           aria-label={
             maximized ? "Восстановить размер окна" : "Развернуть окно"
           }
-          title={maximized ? "Восстановить размер" : "Развернуть"}
+          data-tooltip={maximized ? "Восстановить размер" : "Развернуть"}
           onClick={() => void run("maximize")}
         >
           {maximized ? (
@@ -103,7 +103,7 @@ export function Titlebar({ leading, children, onError }: Props) {
           className="window-control window-close"
           disabled={!desktop}
           aria-label="Закрыть окно"
-          title="Закрыть"
+          data-tooltip="Закрыть"
           onClick={() => void run("close")}
         >
           <X size={17} strokeWidth={1.5} />

@@ -1,4 +1,11 @@
-import { ArrowDownLeft, ArrowUpRight, Hash, Link2, Plus } from "lucide-react";
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  ChevronRight,
+  Hash,
+  Link2,
+  Plus,
+} from "lucide-react";
 import type { Inspection } from "../services/api";
 import type { MouseEvent } from "react";
 
@@ -15,7 +22,10 @@ export function NoteRelations({
 }) {
   if (!data) return <p className="relations-hint">Подготовка сведений…</p>;
   return (
-    <div className="note-relations" title="Связи по сохранённой версии заметки">
+    <div
+      className="note-relations"
+      data-tooltip="Связи по сохранённой версии заметки"
+    >
       {data.metadata.warning && (
         <p className="tree-error">{data.metadata.warning}</p>
       )}
@@ -44,6 +54,11 @@ export function NoteRelations({
       )}
       <details className="relations-section" open>
         <summary className="relations-heading">
+          <ChevronRight
+            className="relations-chevron"
+            size={12}
+            aria-hidden="true"
+          />
           <ArrowDownLeft size={13} />
           <span>Обратные ссылки</span>
           <small>{data.backlinks.length}</small>
@@ -53,7 +68,7 @@ export function NoteRelations({
             <button
               className="relation-link"
               key={link.path}
-              title={`${link.path}:${link.line}`}
+              data-tooltip={`${link.path}:${link.line}`}
               onClick={() => onOpen(link.path)}
               onContextMenu={(event) => onContext?.(event, link.path)}
             >
@@ -72,6 +87,11 @@ export function NoteRelations({
       </details>
       <details className="relations-section" open>
         <summary className="relations-heading">
+          <ChevronRight
+            className="relations-chevron"
+            size={12}
+            aria-hidden="true"
+          />
           <ArrowUpRight size={13} />
           <span>Исходящие ссылки</span>
           <small>{data.outgoing.length}</small>
@@ -81,7 +101,7 @@ export function NoteRelations({
             <div key={`${link.target}:${index}`}>
               <button
                 className={`relation-link ${link.resolution.status === "missing" ? "missing-link" : ""}`}
-                title={
+                data-tooltip={
                   link.resolution.status === "missing"
                     ? "Создать связанную заметку"
                     : link.target
