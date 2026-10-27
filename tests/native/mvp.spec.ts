@@ -22,6 +22,537 @@ import { createHash } from "node:crypto";
 const root = resolve(import.meta.dirname, "../..");
 const executable = resolve(root, "src-tauri/target/e2e/release/aether.exe");
 
+test("live attachments: source paths stay above all cards while typing and selecting", async () => {
+  const run = await mkdtemp(
+    join(root, ".build-cache/native-live-attachments-"),
+  );
+  const vault = join(run, "Native-MVP"),
+    data = join(run, "data");
+  await mkdir(join(vault, "Media"), { recursive: true });
+  await mkdir(data);
+  for (const name of ["Report.pdf", "Sound.wav", "Data.csv", "Archive.zip"])
+    await writeFile(join(vault, "Media", name), "test attachment");
+  await writeFile(join(vault, "Other.md"), "Other note");
+  const examples = [
+    ["![[Media/Report.pdf|Отчёт]]", "Отчёт"],
+    ["![Звук](Media/Sound.wav)", "Звук"],
+    ["![[Media/Data.csv]]", "Media/Data.csv"],
+    ["![[Media/Archive.zip]]", "Media/Archive.zip"],
+    ["![[Other]]", "Other"],
+  ];
+  await writeFile(
+    join(vault, "Заметка.md"),
+    examples.map(([source]) => source).join("\n\n") + "\n",
+  );
+  await writeFile(
+    join(data, "settings.json"),
+    JSON.stringify({ lastVault: vault }),
+  );
+  let app: RunningApp | undefined;
+  try {
+    app = await launch(data, join(run, "profile"), false);
+    const page = app.page;
+    await page.getByRole("button", { name: "Заметка", exact: true }).click();
+    await setMode(page, "Live Preview");
+    const editor = page.getByRole("textbox", { name: "Markdown-редактор" });
+    await expect(
+      page.locator(".live-block-preview[data-source-visible]"),
+    ).toHaveCount(5);
+    for (const [source, label] of examples) {
+      const line = editor.locator(".cm-line").filter({ hasText: source });
+      const preview = page
+        .locator(".live-block-preview")
+        .filter({ hasText: label });
+      await expect(line).toBeVisible();
+      await expect(preview).toBeVisible();
+      const bounds = (await line.boundingBox())!;
+      expect(bounds.y + bounds.height).toBeLessThanOrEqual(
+        (await preview.boundingBox())!.y,
+      );
+    }
+    const report = page
+      .locator(".live-block-preview .attachment-card")
+      .filter({ hasText: "Отчёт" });
+    await report.evaluate((button) =>
+      button.setAttribute("data-edit-check", "persistent"),
+    );
+    await editor.press("Control+Home");
+    await editor.press("End");
+    await editor.press("ArrowLeft");
+    await editor.press("ArrowLeft");
+    for (const character of " дополнение") {
+      await editor.pressSequentially(character);
+      await expect(
+        page.locator('[data-edit-check="persistent"]'),
+      ).toBeVisible();
+    }
+    await expect(report).toHaveText("Отчёт дополнение");
+    await editor.press("Control+a");
+    await expect(
+      page.locator(".live-block-preview[data-source-visible]"),
+    ).toHaveCount(5);
+    await page.screenshot({
+      path: test.info().outputPath("live-attachment-sources.png"),
+    });
+  } finally {
+    await stop(app);
+  }
+});
+
+test("attachment sidebar: unique files, live aliases, note-only outgoing links and opening image tabs", async () => {
+  const run = await mkdtemp(
+    join(root, ".build-cache/native-attachment-sidebar-"),
+  );
+  const vault = join(run, "Native-MVP"),
+    data = join(run, "data");
+  await mkdir(vault);
+  await mkdir(data);
+  await writeFile(
+    join(vault, "Photo.png"),
+    await readFile(join(root, "src-tauri/icons/icon.png")),
+  );
+  await writeFile(join(vault, "Report.pdf"), "%PDF-1.4\nfixture");
+  await writeFile(
+    join(vault, "Other.md"),
+    "Other note\n[[Список]]\n[[Список|Обратно]]\n",
+  );
+  const source =
+    "![[Photo.png|Моя подпись|64]]\n\n![[Photo.png|Другая подпись|64]]\n\n![Markdown](Photo.png)\n\n![[Report.pdf]]\n\n[[Other]] [[Other|Other alias]] [[./Other.md|Ещё имя]]\n";
+  await writeFile(join(vault, "Список.md"), source);
+  await writeFile(
+    join(data, "settings.json"),
+    JSON.stringify({ lastVault: vault }),
+  );
+  let app: RunningApp | undefined;
+  try {
+    app = await launch(data, join(run, "profile"), true);
+    const page = app.page;
+    await page.getByRole("button", { name: "Список", exact: true }).click();
+    const attachments = page.locator(".note-attachments");
+    await expect(attachments.locator(".attachment-link")).toHaveCount(2);
+    await expect(
+      attachments.getByRole("button", {
+        name: "Вложение: Моя подпись",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      attachments.getByRole("button", {
+        name: "Вложение: Report.pdf",
+        exact: true,
+      }),
+    ).toBeVisible();
+    const outgoing = page.locator(".relations-section").filter({
+      has: page.locator("summary").filter({ hasText: "Исходящие ссылки" }),
+    });
+    await expect(outgoing.locator(".relation-link")).toHaveCount(1);
+    await expect(outgoing.locator(".relation-link")).toContainText("Other");
+    await expect(outgoing.locator(".relation-repeat-count")).toHaveText("×3");
+    const incoming = page.locator(".relations-section").filter({
+      has: page.locator("summary").filter({ hasText: "Обратные ссылки" }),
+    });
+    await expect(incoming.locator(".relation-link")).toHaveCount(1);
+    await expect(incoming.locator(".relation-repeat-count")).toHaveText("×2");
+    await setMode(page, "Исходник");
+    const editor = page.getByRole("textbox", { name: "Markdown-редактор" });
+    await editor.press("Control+Home");
+    await editor.press("Shift+End");
+    await editor.pressSequentially("![[Photo.png|Изменённая подпись|64]]");
+    await expect(
+      attachments.getByRole("button", {
+        name: "Вложение: Изменённая подпись",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(attachments.locator(".attachment-link")).toHaveCount(2);
+    expect(await readFile(join(vault, "Список.md"), "utf8")).toBe(source);
+    await attachments.locator("summary").click();
+    await expect(
+      attachments.locator(".attachment-link").first(),
+    ).not.toBeVisible();
+    await attachments.locator("summary").click();
+    await page.screenshot({
+      path: test.info().outputPath("attachment-sidebar.png"),
+    });
+    await attachments
+      .getByRole("button", {
+        name: "Вложение: Изменённая подпись",
+        exact: true,
+      })
+      .click();
+    await expect(
+      page.getByRole("tab", { name: "Photo.png", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator("dialog[open]")).toHaveCount(0);
+    expect(
+      (await readdir(vault)).filter((name) => name.endsWith(".png.md")),
+    ).toEqual([]);
+  } finally {
+    await stop(app);
+  }
+});
+
+test("Obsidian vault: paste/drop attachments, preserve config and CRLF, preview short names and use Markdown links", async () => {
+  const run = await mkdtemp(join(root, ".build-cache/native-attachments-"));
+  const vault = join(run, "Native-MVP"),
+    data = join(run, "data");
+  await mkdir(join(vault, "Notes"), { recursive: true });
+  await mkdir(join(vault, "Media"));
+  await mkdir(join(vault, ".obsidian"));
+  await mkdir(data);
+  const png = await readFile(join(root, "src-tauri/icons/icon.png"));
+  await writeFile(join(vault, "Media/Old.png"), png);
+  const config = {
+    attachmentFolderPath: "./assets",
+    newLinkFormat: "shortest",
+    useMarkdownLinks: false,
+    unrelated: "preserve",
+  };
+  const configPath = join(vault, ".obsidian/app.json");
+  await writeFile(configPath, JSON.stringify(config));
+  const notePath = join(vault, "Notes/Заметка.md");
+  const seed =
+    "\uFEFF# Вложения\r\n\r\n![[Old.png|120]]\r\n\r\nМесто вставки\r\n";
+  await writeFile(notePath, seed);
+  await writeFile(
+    join(data, "settings.json"),
+    JSON.stringify({ lastVault: vault }),
+  );
+  let app: RunningApp | undefined;
+  try {
+    app = await launch(data, join(run, "profile"), false);
+    const page = app.page;
+    await expect(
+      page.getByRole("button", { name: ".obsidian", exact: true }),
+    ).toHaveCount(0);
+    await page.getByRole("button", { name: "Notes", exact: true }).click();
+    await page.getByRole("button", { name: "Заметка", exact: true }).click();
+    await setMode(page, "Чтение");
+    const reading = page.getByRole("region", { name: "Просмотр заметки" });
+    await expect(
+      reading.getByRole("img", { name: "Old.png", exact: true }),
+    ).toBeVisible();
+    expect(
+      (await reading
+        .getByRole("img", { name: "Old.png", exact: true })
+        .boundingBox())!.width,
+    ).toBe(120);
+    await reading
+      .getByRole("button", {
+        name: "Открыть изображение: Old.png",
+        exact: true,
+      })
+      .click();
+    const lightbox = page.getByRole("dialog", {
+      name: "Просмотр изображения: Old.png",
+    });
+    await expect(lightbox).toBeVisible();
+    await expect(lightbox.locator(".modal-header")).toHaveCount(0);
+    await expect(
+      lightbox.getByRole("img", { name: "Old.png", exact: true }),
+    ).toBeVisible();
+    await page.screenshot({
+      path: test.info().outputPath("image-lightbox.png"),
+    });
+    await page.keyboard.press("Escape");
+    await expect(lightbox).toHaveCount(0);
+    await expect(
+      reading.getByRole("button", {
+        name: "Открыть изображение: Old.png",
+        exact: true,
+      }),
+    ).toBeFocused();
+    await reading
+      .getByRole("button", {
+        name: "Открыть изображение: Old.png",
+        exact: true,
+      })
+      .click();
+    await lightbox.click({ position: { x: 8, y: 8 } });
+    await expect(lightbox).toHaveCount(0);
+    await setMode(page, "Исходник");
+    const editor = page.getByRole("textbox", { name: "Markdown-редактор" });
+    await editor.press("Control+End");
+    const send = async (type: "paste" | "drop", names: string[]) => {
+      await editor.evaluate(
+        (element, payload) => {
+          const transfer = new DataTransfer();
+          const bytes = Uint8Array.from(atob(payload.png), (char) =>
+            char.charCodeAt(0),
+          );
+          for (const name of payload.names)
+            transfer.items.add(
+              new File(
+                [
+                  name.endsWith(".pdf")
+                    ? new TextEncoder().encode("%PDF-1.4\nfixture")
+                    : bytes,
+                ],
+                name,
+                {
+                  type: name.endsWith(".pdf") ? "application/pdf" : "image/png",
+                },
+              ),
+            );
+          if (payload.type === "paste")
+            element.dispatchEvent(
+              new ClipboardEvent("paste", {
+                clipboardData: transfer,
+                bubbles: true,
+                cancelable: true,
+              }),
+            );
+          else {
+            const rect = element.getBoundingClientRect();
+            element.dispatchEvent(
+              new DragEvent("drop", {
+                dataTransfer: transfer,
+                clientX: rect.left + 20,
+                clientY: rect.bottom - 5,
+                bubbles: true,
+                cancelable: true,
+              }),
+            );
+          }
+        },
+        { type, names, png: png.toString("base64") },
+      );
+    };
+    await send("paste", ["image.png"]);
+    let pasted = "";
+    await expect
+      .poll(async () => {
+        try {
+          pasted =
+            (await readdir(vault)).find(
+              (name) => name === "Новое изображение.png",
+            ) ?? "";
+          return !!pasted;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+          throw error;
+        }
+      })
+      .toBe(true);
+    await expect(editor).toContainText(`![[${pasted}]]`);
+    expect(await readFile(join(vault, pasted))).toEqual(png);
+    await editor.press("Control+s");
+    await expect
+      .poll(() => readFile(notePath, "utf8"))
+      .toContain(`![[${pasted}]]`);
+    const saved = await readFile(notePath, "utf8");
+    expect(saved.startsWith("\uFEFF")).toBe(true);
+    expect(saved).not.toMatch(/[^\r]\n/);
+    await editor.press("Control+z");
+    await expect(editor).not.toContainText(pasted);
+    expect(await readFile(join(vault, pasted))).toEqual(png);
+    const imageRow = page.getByRole("button", { name: pasted, exact: true });
+    await expect(imageRow).toBeVisible();
+    await expect(imageRow.locator(".tree-file-type")).toHaveText("PNG");
+    await imageRow.click();
+    const imageDocument = page.getByRole("region", {
+      name: `Изображение: ${pasted}`,
+    });
+    await expect(
+      imageDocument.getByRole("img", { name: pasted, exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("tab", { name: pasted, exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator("dialog[open]")).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Режим заметки", exact: true }),
+    ).toHaveCount(0);
+    await page.screenshot({
+      path: test.info().outputPath("image-document-tab.png"),
+    });
+    await page.getByRole("tab", { name: "Заметка", exact: true }).click();
+    await expect(editor).toBeVisible();
+    await page.getByRole("tab", { name: pasted, exact: true }).click();
+    await expect(imageDocument).toBeVisible();
+    await imageRow.click();
+    await expect(
+      page.getByRole("tab", { name: pasted, exact: true }),
+    ).toHaveCount(1);
+    await page.keyboard.press("Control+w");
+    await expect(
+      page.getByRole("tab", { name: pasted, exact: true }),
+    ).toHaveCount(0);
+    await expect(editor).toBeVisible();
+    await editor.press("Control+Home");
+    const dropLine = editor
+      .locator(".cm-line")
+      .filter({ hasText: "Место вставки" });
+    await imageRow.dragTo(dropLine, { targetPosition: { x: 180, y: 8 } });
+    await expect(dropLine).toContainText(`![[${pasted}]]`);
+    expect((await dropLine.textContent())!.replace(`![[${pasted}]]`, "")).toBe(
+      "Место вставки",
+    );
+    expect(
+      (await readdir(vault)).filter((name) =>
+        /^Новое изображение.*\.png$/.test(name),
+      ),
+    ).toEqual([pasted]);
+    await page.screenshot({
+      path: test.info().outputPath("image-tree-drag.png"),
+    });
+    await editor.press("Control+z");
+    await expect(editor).not.toContainText(pasted);
+    await send("drop", ["photo.png", "photo.png", "Report.pdf"]);
+    await expect(editor).toContainText("![[photo 1.png]]");
+    await expect(editor).toContainText("![[Report.pdf]]");
+    expect(await readFile(join(vault, "Notes/assets/photo.png"))).toEqual(png);
+    expect(await readFile(join(vault, "Notes/assets/photo 1.png"))).toEqual(
+      png,
+    );
+    expect(JSON.parse(await readFile(configPath, "utf8"))).toEqual(config);
+    const markdownConfig = {
+      ...config,
+      attachmentFolderPath: "Media",
+      useMarkdownLinks: true,
+      newLinkFormat: "relative",
+    };
+    await writeFile(configPath, JSON.stringify(markdownConfig));
+    await editor.press("Control+End");
+    await send("paste", ["новое фото.png"]);
+    await expect(editor).toContainText("![](../%D0");
+    expect(await readFile(join(vault, "Новое изображение 1.png"))).toEqual(png);
+    await editor.press("Control+s");
+    await setMode(page, "Live Preview");
+    await editor.press("Control+Home");
+    await expect(page.locator(".live-block-preview img").first()).toBeVisible();
+    const sourceLine = editor
+      .locator(".cm-line")
+      .filter({ hasText: "![[Old.png|120]]" });
+    await expect(sourceLine).toBeVisible();
+    const oldPreview = page.locator('.live-block-preview img[alt="Old.png"]');
+    const sourceBounds = (await sourceLine.boundingBox())!;
+    expect(sourceBounds.y + sourceBounds.height).toBeLessThanOrEqual(
+      (await oldPreview.boundingBox())!.y,
+    );
+    await sourceLine.click();
+    await editor.press("Home");
+    await editor.press("Shift+End");
+    await editor.pressSequentially("![[Old.png|160]]");
+    await expect
+      .poll(async () => (await oldPreview.boundingBox())?.width)
+      .toBe(160);
+    await expect(
+      editor.locator(".cm-line").filter({ hasText: "![[Old.png|160]]" }),
+    ).toBeVisible();
+    await editor.press("Home");
+    await editor.press("Shift+End");
+    await editor.pressSequentially("![[Old.png|Фото из хранилища|160]]");
+    const caption = page.locator(".live-block-preview .image-caption").filter({
+      hasText: "Фото из хранилища",
+    });
+    await expect(caption).toBeVisible();
+    const captionImage = page.locator(
+      '.live-block-preview img[alt="Фото из хранилища"]',
+    );
+    await expect
+      .poll(async () => (await captionImage.boundingBox())?.width)
+      .toBe(160);
+    const imageBounds = (await captionImage.boundingBox())!;
+    expect((await caption.boundingBox())!.y).toBeGreaterThanOrEqual(
+      imageBounds.y + imageBounds.height,
+    );
+    const captionBounds = (await caption.boundingBox())!;
+    expect(
+      Math.abs(
+        captionBounds.x +
+          captionBounds.width / 2 -
+          imageBounds.x -
+          imageBounds.width / 2,
+      ),
+    ).toBeLessThan(2);
+    await captionImage.evaluate((image) =>
+      image.setAttribute("data-edit-check", "stable"),
+    );
+    const persistentImage = page.locator('img[data-edit-check="stable"]');
+    await editor.press("End");
+    for (let i = 0; i < 6; i++) await editor.press("ArrowLeft");
+    for (const character of " дополнение") {
+      await editor.pressSequentially(character);
+      await expect(persistentImage).toBeVisible();
+      expect(
+        await persistentImage.evaluate(
+          (image) => (image as HTMLImageElement).complete,
+        ),
+      ).toBe(true);
+    }
+    await expect(caption).toHaveText("Фото из хранилища дополнение");
+    await expect(persistentImage).toBeVisible();
+    await expect(
+      editor.locator(".cm-line").filter({ hasText: "![](../%D0" }),
+    ).toBeVisible();
+    await page.screenshot({
+      path: test.info().outputPath("live-image-source.png"),
+    });
+    await editor.press("Control+s");
+    await setMode(page, "Чтение");
+    await expect(
+      reading
+        .locator(".image-caption")
+        .filter({ hasText: "Фото из хранилища" }),
+    ).toBeVisible();
+    await expect(
+      reading.locator(".attachment-card").filter({ hasText: "Report.pdf" }),
+    ).toBeVisible();
+    await reading.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await expect
+      .poll(() =>
+        reading
+          .locator("img")
+          .evaluateAll(
+            (images) =>
+              images.filter(
+                (image) =>
+                  (image as HTMLImageElement).complete &&
+                  (image as HTMLImageElement).naturalWidth > 0,
+              ).length,
+          ),
+      )
+      .toBeGreaterThanOrEqual(4);
+    await page.screenshot({
+      path: test.info().outputPath("obsidian-attachments.png"),
+    });
+    expect(JSON.parse(await readFile(configPath, "utf8"))).toEqual(
+      markdownConfig,
+    );
+    expect(await readFile(join(vault, "Media/Old.png"))).toEqual(png);
+    const noteBeforeImage = await readFile(notePath);
+    await imageRow.click();
+    await expect(imageDocument).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          Object.keys(localStorage)
+            .filter((key) => key.startsWith("aether.workspace.v1:"))
+            .map((key) => JSON.parse(localStorage.getItem(key)!).active),
+        ),
+      )
+      .toContain(pasted);
+    await stop(app);
+    app = await launch(data, join(run, "profile"), false);
+    await expect(
+      app.page.getByRole("tab", { name: pasted, exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(
+      app.page
+        .getByRole("region", { name: `Изображение: ${pasted}` })
+        .getByRole("img", { name: pasted, exact: true }),
+    ).toBeVisible();
+    await expect(app.page.locator("dialog[open]")).toHaveCount(0);
+    expect(await readFile(notePath)).toEqual(noteBeforeImage);
+    expect(await readFile(join(vault, pasted))).toEqual(png);
+  } finally {
+    await stop(app);
+  }
+});
+
 test("editor modes toggle reading/live, active line number follows the caret and formatting preserves selection", async () => {
   const run = await mkdtemp(join(root, ".build-cache/native-editor-controls-"));
   const vault = join(run, "Native-MVP"),
@@ -374,9 +905,21 @@ test("welcome creates notes immediately and vault creation uses a single name/lo
     await dialog
       .getByRole("textbox", { name: "Расположение", exact: true })
       .fill(temporary);
+    await expect(dialog).toHaveAccessibleName("Новое хранилище");
+    await page.screenshot({
+      path: test.info().outputPath("redesigned-vault-dialog.png"),
+    });
     await page.screenshot({ path: test.info().outputPath("create-vault.png") });
     await dialog.getByRole("button", { name: "Отмена", exact: true }).click();
     expect(await readdir(temporary)).not.toContain("Новый архив");
+    await page.keyboard.press("Control+p");
+    await expect(
+      page.getByRole("dialog", { name: "Палитра команд" }),
+    ).toBeVisible();
+    await page.screenshot({
+      path: test.info().outputPath("redesigned-command-palette.png"),
+    });
+    await page.keyboard.press("Escape");
     await vaultButton.click();
     dialog = page.getByRole("dialog");
     await dialog
@@ -745,7 +1288,14 @@ test("native MVP: real files, Unicode, conflicts, trash, tabs, close guard and r
         .getByRole("button", { name: "Создать", exact: true })
         .click();
       await expect
-        .poll(() => readFile(join(vault, "Создано/Копия.md"), "utf8"))
+        .poll(async () => {
+          try {
+            return await readFile(join(vault, "Создано/Копия.md"), "utf8");
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+            throw error;
+          }
+        })
         .toBe("Версия редактора");
       await page
         .getByRole("button", { name: "Закрыть Переименовано", exact: true })
@@ -774,7 +1324,17 @@ test("native MVP: real files, Unicode, conflicts, trash, tabs, close guard and r
       expect(
         await readFile(join(vault, ".aether/trash", trashed), "utf8"),
       ).toBe("Версия редактора");
-      await expect(access(join(vault, "Создано/Копия.md"))).rejects.toThrow();
+      await expect
+        .poll(async () => {
+          try {
+            await access(join(vault, "Создано/Копия.md"));
+            return false;
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
+            throw error;
+          }
+        })
+        .toBe(true);
       await create(page, "../outside.md");
       await expect(page.getByRole("alert")).toBeVisible();
       await expect(access(join(run, "outside.md"))).rejects.toThrow();
@@ -991,7 +1551,7 @@ test("stage 2: native anchor navigation, rename preview, dirty guards, undo, con
       await expect(editor()).toContainText("B/New#Секция");
       await expect(link("К заголовку")).toHaveAttribute(
         "data-tooltip",
-        "B/New",
+        "B/New.md\nК заголовку",
       );
       await link("К заголовку").click();
       await page.screenshot({
@@ -1322,7 +1882,9 @@ test("live rich blocks: inline/display math, table, image, Mermaid, source editi
     await expect(display().locator(".katex")).toHaveCount(1);
     await editor.press("Control+a");
     await expect(
-      page.locator(".live-block-preview,.live-inline-preview"),
+      page.locator(
+        ".live-block-preview:not([data-source-visible]),.live-inline-preview",
+      ),
     ).toHaveCount(0);
     await expect(editor).toContainText("```mermaid");
     expect(await readFile(join(vault, "Live.md"), "utf8")).toBe(content);

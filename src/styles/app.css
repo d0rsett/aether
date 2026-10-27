@@ -1065,46 +1065,6 @@ h1 > span {
   width: 18px;
   height: 18px;
 }
-.modal {
-  padding: 0;
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  width: 470px;
-  max-width: calc(100vw - 40px);
-  box-shadow: 0 24px 90px #0005;
-}
-.modal::backdrop {
-  background: #080e0b88;
-  backdrop-filter: blur(4px);
-}
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 17px 20px;
-  border-bottom: 1px solid var(--border);
-}
-.modal h2 {
-  font-size: 14px;
-  font-weight: 500;
-  margin: 0;
-}
-.modal-description {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.8;
-  margin: 20px;
-}
-.input-label {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-  padding: 0 20px;
-  color: var(--muted);
-  font-size: 11px;
-}
 input {
   color: var(--text);
   border: 1px solid var(--border);
@@ -1113,12 +1073,6 @@ input {
   padding: 10px;
   width: 100%;
   outline: none;
-}
-.modal-actions {
-  display: flex;
-  gap: 10px;
-  justify-content: flex-end;
-  padding: 23px 20px 20px;
 }
 .palette-search {
   margin: 17px 20px 8px;

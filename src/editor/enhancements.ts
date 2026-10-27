@@ -232,6 +232,15 @@ export const livePreview = ViewPlugin.fromClass(
             }
             if (code) continue;
             wiki.push({ from, to });
+            if (match[0].startsWith("!")) {
+              spans.push(
+                Decoration.mark({ class: "live-attachment-source" }).range(
+                  from,
+                  to,
+                ),
+              );
+              continue;
+            }
             spans.push(
               Decoration.mark({ class: "live-wiki-link" }).range(from, to),
             );
@@ -258,6 +267,15 @@ export const livePreview = ViewPlugin.fromClass(
               wiki.some((link) => node.from >= link.from && node.to <= link.to)
             )
               return false;
+            if (node.name === "Image") {
+              spans.push(
+                Decoration.mark({ class: "live-attachment-source" }).range(
+                  node.from,
+                  node.to,
+                ),
+              );
+              return false;
+            }
             const line = view.state.doc.lineAt(node.from);
             if (/^ATXHeading\d$/.test(node.name))
               spans.push(

@@ -1,45 +1,37 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { X } from "lucide-react";
+import { DialogSurface } from "./DialogSurface";
 
 export function Modal({
   title,
   onClose,
   children,
+  className = "",
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  className?: string;
 }) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const node = dialog.current;
-    node?.showModal();
-    node?.querySelector("input")?.focus();
-    return () => node?.close();
-  }, []);
+  const titleId = useId();
   return (
-    <dialog
-      ref={dialog}
-      className="modal"
-      onCancel={(e) => {
-        e.preventDefault();
-        onClose();
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+    <DialogSurface
+      className={`modal ${className}`.trim()}
+      labelledBy={titleId}
+      onClose={onClose}
     >
       <div className="modal-header">
-        <h2>{title}</h2>
+        <h2 id={titleId}>{title}</h2>
         <button
           className="icon-button"
           aria-label="Закрыть диалог"
+          type="button"
           onClick={onClose}
         >
           <X size={18} />
         </button>
       </div>
-      {children}
-    </dialog>
+      <div className="modal-body">{children}</div>
+    </DialogSurface>
   );
 }

@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import type { Inspection } from "../services/api";
 import type { MouseEvent } from "react";
+import { groupRelations } from "../services/relations";
 
 export function NoteRelations({
   data,
@@ -21,6 +22,7 @@ export function NoteRelations({
   onContext?: (event: MouseEvent<HTMLElement>, path: string) => void;
 }) {
   if (!data) return <p className="relations-hint">Подготовка сведений…</p>;
+  const { incoming, outgoing } = groupRelations(data);
   return (
     <div
       className="note-relations"
@@ -61,10 +63,10 @@ export function NoteRelations({
           />
           <ArrowDownLeft size={13} />
           <span>Обратные ссылки</span>
-          <small>{data.backlinks.length}</small>
+          <small>{incoming.length}</small>
         </summary>
-        {data.backlinks.length ? (
-          data.backlinks.map((link) => (
+        {incoming.length ? (
+          incoming.map((link) => (
             <button
               className="relation-link"
               key={link.path}
@@ -79,6 +81,15 @@ export function NoteRelations({
                   {link.path} · строка {link.line}
                 </small>
               </span>
+              {link.mentions > 1 && (
+                <span
+                  className="relation-repeat-count"
+                  aria-label={`Упоминаний: ${link.mentions}`}
+                  data-tooltip={`Упоминаний: ${link.mentions}`}
+                >
+                  ×{link.mentions}
+                </span>
+              )}
             </button>
           ))
         ) : (
@@ -94,18 +105,19 @@ export function NoteRelations({
           />
           <ArrowUpRight size={13} />
           <span>Исходящие ссылки</span>
-          <small>{data.outgoing.length}</small>
+          <small>{outgoing.length}</small>
         </summary>
-        {data.outgoing.length ? (
-          data.outgoing.map((link, index) => (
+        {outgoing.length ? (
+          outgoing.map((link, index) => (
             <div key={`${link.target}:${index}`}>
               <button
                 className={`relation-link ${link.resolution.status === "missing" ? "missing-link" : ""}`}
-                data-tooltip={
+                data-tooltip={[
                   link.resolution.status === "missing"
                     ? "Создать связанную заметку"
-                    : link.target
-                }
+                    : link.resolution.path || link.target,
+                  ...link.aliases,
+                ].join("\n")}
                 onContextMenu={(event) => {
                   if (link.resolution.path)
                     onContext?.(event, link.resolution.path);
@@ -126,6 +138,15 @@ export function NoteRelations({
                     <small>Уточните путь</small>
                   )}
                 </span>
+                {link.mentions > 1 && (
+                  <span
+                    className="relation-repeat-count"
+                    aria-label={`Упоминаний: ${link.mentions}`}
+                    data-tooltip={`Упоминаний: ${link.mentions}`}
+                  >
+                    ×{link.mentions}
+                  </span>
+                )}
               </button>
               {link.resolution.candidates.map((path) => (
                 <button

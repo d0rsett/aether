@@ -43,12 +43,8 @@ export const parsedPreview = StateEffect.define<{
   doc: Text;
   spans: RichSpan[];
 }>();
-function image(node: RenderNode) {
-  return (
-    node.kind === "image" ||
-    (node.kind === "embed" &&
-      /\.(png|jpe?g|gif|webp|svg)(?:#|$)/i.test(node.target))
-  );
+function attachment(node: RenderNode) {
+  return node.kind === "image" || node.kind === "embed";
 }
 function fingerprint(node: RenderNode): string {
   return JSON.stringify(node, (key, value: unknown) =>
@@ -94,14 +90,14 @@ export function collectRichSpans(nodes: RenderNode[], doc: Text): RichSpan[] {
       );
       if (
         meaningful.length === 1 &&
-        (image(meaningful[0]) ||
+        (attachment(meaningful[0]) ||
           (meaningful[0].kind === "math" && meaningful[0].level === 1))
       ) {
         add(meaningful[0], node, true);
         return;
       }
     }
-    if (node.kind === "math" || image(node)) {
+    if (node.kind === "math" || attachment(node)) {
       add(node, node, node.kind === "math" && node.level === 1);
       return;
     }
@@ -123,7 +119,11 @@ function active(state: EditorState, span: RichSpan): boolean {
 }
 const mounted = new WeakMap<
   HTMLElement,
-  { root: Root; observer: ResizeObserver | null }
+  {
+    root: Root;
+    observer: ResizeObserver | null;
+    attachmentIdentity: string | null;
+  }
 >();
 class RichWidget extends WidgetType {
   constructor(
@@ -144,6 +144,24 @@ class RichWidget extends WidgetType {
   get estimatedHeight() {
     return this.span.block ? (this.span.node.kind === "math" ? 90 : 220) : -1;
   }
+  private attachmentIdentity() {
+    return attachment(this.span.node)
+      ? JSON.stringify([
+          this.config.vaultId,
+          this.config.path,
+          this.span.node.kind,
+          this.span.node.target,
+        ])
+      : null;
+  }
+  updateDOM(dom: HTMLElement) {
+    const entry = mounted.get(dom);
+    const identity = this.attachmentIdentity();
+    if (!entry || !identity || entry.attachmentIdentity !== identity)
+      return false;
+    entry.root.render(renderNode(this.span.node, this.config));
+    return true;
+  }
   toDOM(view: EditorView): HTMLElement {
     const dom = document.createElement(this.span.block ? "div" : "span");
     dom.className = this.span.block
@@ -151,6 +169,7 @@ class RichWidget extends WidgetType {
       : "live-inline-preview";
     dom.contentEditable = "false";
     dom.dataset.liveKind = this.span.node.kind;
+    if (attachment(this.span.node)) dom.dataset.sourceVisible = "true";
     const label =
       this.span.node.kind === "table"
         ? "таблицу"
@@ -191,7 +210,7 @@ class RichWidget extends WidgetType {
       )
         reveal();
     });
-    dom.append(edit);
+    if (!attachment(this.span.node)) dom.append(edit);
     const content = document.createElement(this.span.block ? "div" : "span");
     content.className = this.span.block
       ? "live-render-content reading-document"
@@ -212,7 +231,11 @@ class RichWidget extends WidgetType {
             if (mounted.has(dom)) view.requestMeasure();
           });
     observer?.observe(dom);
-    mounted.set(dom, { root, observer });
+    mounted.set(dom, {
+      root,
+      observer,
+      attachmentIdentity: this.attachmentIdentity(),
+    });
     return dom;
   }
   ignoreEvent() {
@@ -230,14 +253,31 @@ function decorations(spans: RichSpan[], state: EditorState): DecorationSet {
   const config = state.facet(configuration);
   if (!config) return Decoration.none;
   return Decoration.set(
-    spans
-      .filter((span) => !active(state, span))
-      .map((span) =>
+    spans.flatMap((span) => {
+      if (attachment(span.node)) {
+        const line = state.doc.lineAt(span.to);
+        const preview = Decoration.widget({
+          widget: new RichWidget({ ...span, block: true }, config),
+          block: true,
+          side: 1,
+        }).range(line.to);
+        return span.block
+          ? [
+              Decoration.line({ class: "live-attachment-source-line" }).range(
+                state.doc.lineAt(span.from).from,
+              ),
+              preview,
+            ]
+          : [preview];
+      }
+      if (active(state, span)) return [];
+      return [
         Decoration.replace({
           widget: new RichWidget(span, config),
           block: span.block,
         }).range(span.from, span.to),
-      ),
+      ];
+    }),
     true,
   );
 }
@@ -246,13 +286,20 @@ export const richPreviewState = StateField.define<Preview>({
   update(value, tr) {
     let spans = value.spans;
     if (tr.docChanged)
-      spans = spans
-        .filter((span) => !tr.changes.touchesRange(span.from, span.to))
-        .map((span) => ({
-          ...span,
-          from: tr.changes.mapPos(span.from, 1),
-          to: tr.changes.mapPos(span.to, -1),
-        }));
+      spans = spans.flatMap((span) => {
+        const from = tr.changes.mapPos(span.from, 1);
+        const to = tr.changes.mapPos(span.to, -1);
+        if (from >= to) return [];
+        if (tr.changes.touchesRange(span.from, span.to)) {
+          if (!attachment(span.node)) return [];
+          const source = tr.state.doc.sliceString(from, to);
+          // Keep the preview while its label or adjacent prose is being edited.
+          // The asynchronous parser will refresh the label afterwards.
+          if (!source.includes(span.node.target) || !/!\[/.test(source))
+            return [];
+        }
+        return [{ ...span, from, to }];
+      });
     for (const effect of tr.effects)
       if (effect.is(parsedPreview) && effect.value.doc === tr.state.doc)
         spans = effect.value.spans;

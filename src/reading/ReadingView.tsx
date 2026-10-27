@@ -15,6 +15,18 @@ import {
   type RenderDocument,
   type AnchorLocation,
 } from "../services/api";
+import { createPortal } from "react-dom";
+import { ImageLightbox } from "../components/ImageLightbox";
+import { FileText } from "lucide-react";
+const imageTarget = /\.(png|jpe?g|gif|webp|svg|bmp)(?:#|$)/i;
+const attachmentTarget =
+  /\.(pdf|mp3|wav|ogg|m4a|flac|3gp|mp4|webm|mov|mkv|ogv|canvas|txt|csv|docx|xlsx|pptx|zip|png|jpe?g|gif|webp|svg|bmp)(?:#|$)/i;
+function revealAttachment(context: Context, target: string, wiki: boolean) {
+  void api
+    .resolveAttachment(context.vaultId, context.path, target, wiki)
+    .then((path) => api.reveal(context.vaultId, path))
+    .catch((error) => context.onError(errorMessage(error)));
+}
 const MathView = lazy(() =>
   import("./RichBlocks").then((m) => ({ default: m.MathView })),
 );
@@ -43,11 +55,13 @@ export function safeExternal(value: string): boolean {
 function LocalImage({
   target,
   alt,
+  caption,
   wiki,
   context,
 }: {
   target: string;
   alt: string;
+  caption: string;
   wiki: boolean;
   context: Context;
 }) {
@@ -55,6 +69,14 @@ function LocalImage({
   const [visible, setVisible] = useState(false);
   const [src, setSrc] = useState("");
   const [error, setError] = useState("");
+  const [expanded, setExpanded] = useState(false);
+  const button = useRef<HTMLButtonElement>(null);
+  const parts = caption.split("|");
+  const dimensions = /^(\d+)(?:x(\d+))?$/.exec(parts.at(-1)?.trim() || "");
+  const description = (
+    dimensions ? parts.slice(0, -1).join("|") : caption
+  ).trim();
+  const label = description || (dimensions ? target : alt || target);
   useEffect(() => {
     if (!ref.current) return;
     const observer = new IntersectionObserver(
@@ -89,12 +111,52 @@ function LocalImage({
   return (
     <span ref={ref} className="reading-image">
       {src ? (
-        <img src={src} alt={alt || target} loading="lazy" />
+        <button
+          className="image-open"
+          ref={button}
+          aria-label={`Открыть изображение: ${label}`}
+          data-tooltip="Открыть изображение"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setExpanded(true);
+          }}
+        >
+          <img
+            src={src}
+            alt={label}
+            loading="lazy"
+            style={
+              dimensions
+                ? {
+                    width: Math.min(Number(dimensions[1]), 8192),
+                    height: dimensions[2]
+                      ? Math.min(Number(dimensions[2]), 8192)
+                      : undefined,
+                    objectFit: "contain",
+                  }
+                : undefined
+            }
+          />
+        </button>
       ) : (
         <span className="image-placeholder">
           {error || `Изображение: ${alt || target}`}
         </span>
       )}
+      {description && <span className="image-caption">{description}</span>}
+      {expanded &&
+        createPortal(
+          <ImageLightbox
+            label={label}
+            src={src}
+            onClose={() => {
+              setExpanded(false);
+              button.current?.focus();
+            }}
+          />,
+          document.body,
+        )}
     </span>
   );
 }
@@ -124,6 +186,10 @@ export function renderNode(
     "data-source-end": node.endLine,
   };
   const open = (target: string, wiki: boolean) => {
+    if (!safeExternal(target) && attachmentTarget.test(target)) {
+      revealAttachment(context, target, wiki);
+      return;
+    }
     if (wiki) {
       context.onWiki(target);
       return;
@@ -219,22 +285,52 @@ export function renderNode(
     }
     case "image":
     case "embed": {
+      if (node.kind === "embed" && !imageTarget.test(node.target))
+        return (
+          <button
+            className={
+              attachmentTarget.test(node.target)
+                ? "note-embed attachment-card"
+                : "note-embed"
+            }
+            data-tooltip={
+              attachmentTarget.test(node.target)
+                ? "Открыть вложение в проводнике"
+                : undefined
+            }
+            onClick={() =>
+              attachmentTarget.test(node.target)
+                ? revealAttachment(context, node.target, true)
+                : context.onWiki(node.target)
+            }
+          >
+            <FileText size={17} /> {text(node) || node.target}
+          </button>
+        );
       if (
-        node.kind === "embed" &&
-        !/\.(png|jpe?g|gif|webp|svg)(?:#|$)/i.test(node.target)
+        node.kind === "image" &&
+        !imageTarget.test(node.target) &&
+        attachmentTarget.test(node.target)
       )
         return (
           <button
-            className="note-embed"
-            onClick={() => context.onWiki(node.target)}
+            className="note-embed attachment-card"
+            data-tooltip="Открыть вложение в проводнике"
+            onClick={() => revealAttachment(context, node.target, false)}
           >
-            ↗ {text(node) || node.target}
+            <FileText size={17} />
+            {text(node) || node.target}
           </button>
         );
       return (
         <LocalImage
           target={node.target}
           alt={node.children.map(text).join("")}
+          caption={
+            node.kind === "image" || node.hasAlias
+              ? node.children.map(text).join("")
+              : ""
+          }
           wiki={node.kind === "embed"}
           context={context}
         />

@@ -89,3 +89,41 @@ it("preview effects preserve source bytes and the document undo history", () => 
   });
   expect(state.doc.toString()).toBe("start\n\n$x$");
 });
+
+it.each(["photo.png", "Report.pdf", "Sound.wav", "Archive.zip", "Other.md"])(
+  "keeps %s visible during label and adjacent typing, but removes deleted attachments",
+  (target) => {
+    const source = `![[${target}|Caption]]`;
+    let state = EditorState.create({
+      doc: source,
+      extensions: [richPreviewState],
+    });
+    const image = {
+      ...node("embed", 0, source.length),
+      target,
+      hasAlias: true,
+    };
+    state = state.update({
+      effects: parsedPreview.of({
+        doc: state.doc,
+        spans: collectRichSpans([image], state.doc),
+      }),
+    }).state;
+    state = state.update({
+      changes: { from: source.indexOf("]]"), insert: " text" },
+    }).state;
+    expect(state.field(richPreviewState).spans).toHaveLength(1);
+    state = state.update({
+      changes: { from: state.doc.length, insert: " after image" },
+    }).state;
+    expect(state.field(richPreviewState).spans).toHaveLength(1);
+    state = state.update({
+      changes: { from: state.doc.length, insert: "\nNext line" },
+    }).state;
+    expect(state.field(richPreviewState).spans).toHaveLength(1);
+    state = state.update({
+      changes: { from: 0, to: state.doc.length, insert: "plain text" },
+    }).state;
+    expect(state.field(richPreviewState).spans).toHaveLength(0);
+  },
+);

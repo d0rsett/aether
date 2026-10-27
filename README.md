@@ -85,7 +85,15 @@ Use `[[Note]]`, `[[Note#Heading]]`, `[[Note#^block-id]]` or `[label](../Note.md#
 
 The right sidebar describes the saved/indexed version, which may differ from an unsaved buffer. Heading/block navigation can use the current buffer. Relation lists are limited to 100 links.
 
-PNG/JPEG/GIF/WebP attachments up to 8 MiB are loaded from inside the vault via `![](path)` or `![[path]]`. Remote images and SVG attachments are not loaded. Note embeds currently show link cards. Raw HTML is text. Mermaid uses a sandboxed iframe; KaTeX applies untrusted-input restrictions. HTTP(S) links open in the system browser only after user action.
+PNG/JPEG/GIF/WebP/BMP and passive SVG images up to 8 MiB load from inside the vault via `![](path)` or `![[path]]`. Click an image to enlarge it. Obsidian dimensions such as `![[image.png|300]]` and `![[image.png|300x200]]` are supported. Remote images are not loaded. Note embeds currently show link cards. Raw HTML is text. Mermaid uses a sandboxed iframe; KaTeX applies untrusted-input restrictions. HTTP(S) links open in the system browser only after user action.
+
+### Pasting images and Obsidian attachment compatibility
+
+Paste images with Ctrl+V or the editor's context-menu Paste command; drop files from your file manager into Source or Live Preview. Aether copies the file into the vault and inserts a regular reference. Clipboard images use `Новое изображение.png` in the vault root (with the appropriate format extension); collisions receive numeric suffixes without overwriting files. The file tree shows images with a format badge. Dragging an image from the tree inserts its reference at the drop position without copying the file; clicking it opens the viewer. Undo removes the inserted reference and retains the attachment. Save Markdown separately with Ctrl+S.
+
+When present, `.obsidian/app.json` supplies `attachmentFolderPath`, `useMarkdownLinks` and `newLinkFormat`; Aether does not modify that file. File-manager imports support root (`/`), current folder (`.`), a specified folder and a subfolder next to the note (`./assets`). Clipboard images always go into the root. Both insertion methods honor shortest, relative and vault-root link formats. Defaults are the vault root and `![[file.png]]` embeds. Existing images referenced by short names are found in subfolders; ambiguous names require a path. `.obsidian` is hidden in the file tree.
+
+An import accepts up to 20 files and 50 MiB total, with 8 MiB per image or 25 MiB per other attachment. PDF, audio, video and documents are copied with compatible references and shown as cards that reveal their location in the file manager; inline PDF/media players are not implemented. Scriptable SVG and SVG external resources are unsupported. Third-party Obsidian plugin behavior is not reproduced.
 
 ### Trash and recovery
 

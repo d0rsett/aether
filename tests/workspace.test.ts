@@ -7,6 +7,34 @@ import {
 
 const note = { path: "Заметки/Привет.md", content: "original", revision: "r1" };
 describe("workspace safety", () => {
+  it("keeps image tabs read-only, unique and separate from note drafts", () => {
+    let state = workspaceReducer(initialWorkspace, { type: "open", note });
+    state = workspaceReducer(state, {
+      type: "edit",
+      path: note.path,
+      content: "unsaved text",
+    });
+    state = workspaceReducer(state, { type: "openImage", path: "photo.png" });
+    state = workspaceReducer(state, { type: "openImage", path: "photo.png" });
+    state = workspaceReducer(state, {
+      type: "edit",
+      path: "photo.png",
+      content: "should be ignored",
+    });
+    expect(state.tabs).toHaveLength(2);
+    expect(dirty(state.tabs[1])).toBe(false);
+    expect(state.tabs[1].content).toBe("");
+    state = workspaceReducer(state, {
+      type: "relocateImage",
+      path: "photo.png",
+      destination: "Media/photo.png",
+    });
+    expect(state.active).toBe("Media/photo.png");
+    state = workspaceReducer(state, { type: "close", path: "Media/photo.png" });
+    expect(state.active).toBe(note.path);
+    expect(state.tabs[0].content).toBe("unsaved text");
+    expect(dirty(state.tabs[0])).toBe(true);
+  });
   it("opens a note only once and switches tabs", () => {
     let state = workspaceReducer(initialWorkspace, { type: "open", note });
     state = workspaceReducer(state, {

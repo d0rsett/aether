@@ -23,6 +23,7 @@ import {
   selectAll,
 } from "@codemirror/commands";
 import { useContextMenu } from "../components/ContextMenu";
+import { attachmentInput, pasteClipboard } from "./attachments";
 import { markdown } from "@codemirror/lang-markdown";
 import { Strikethrough } from "@lezer/markdown";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
@@ -77,6 +78,7 @@ interface Props {
   theme?: string;
   onError?: (message: string) => void;
   onFormatsChange?: (formats: FormatCommand[]) => void;
+  onAttachmentsImported?: () => void;
   showLineNumbers?: boolean;
   lineWrapping?: boolean;
 }
@@ -98,6 +100,7 @@ export function MarkdownEditor({
   showLineNumbers = false,
   lineWrapping = true,
   onFormatsChange,
+  onAttachmentsImported,
 }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorView | null>(null);
@@ -105,6 +108,7 @@ export function MarkdownEditor({
     callbacks.current.onError?.(message),
   );
   const callbacks = useRef({
+    onAttachmentsImported,
     onChange,
     onSave,
     onWikiLink,
@@ -113,6 +117,7 @@ export function MarkdownEditor({
     visible,
   });
   callbacks.current = {
+    onAttachmentsImported,
     onChange,
     onSave,
     onWikiLink,
@@ -138,6 +143,16 @@ export function MarkdownEditor({
         extensions: [
           gutter.current.of(showLineNumbers ? lineNumbers() : []),
           history(),
+          ...(vaultId && path
+            ? [
+                attachmentInput({
+                  vaultId,
+                  path,
+                  onError: (message) => callbacks.current.onError?.(message),
+                  onImported: () => callbacks.current.onAttachmentsImported?.(),
+                }),
+              ]
+            : []),
           drawSelection(),
           highlightActiveLine(),
           highlightActiveLineGutter(),
@@ -447,6 +462,7 @@ export function MarkdownEditor({
               disabled: view.state.readOnly,
               run: async () => {
                 ensureCurrent();
+                if (await pasteClipboard(view)) return;
                 const text = await navigator.clipboard.readText();
                 ensureCurrent();
                 view.dispatch({

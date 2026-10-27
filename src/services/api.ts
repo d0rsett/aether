@@ -30,6 +30,7 @@ export interface RenderNode {
   kind: string;
   text: string;
   target: string;
+  hasAlias?: boolean;
   level: number;
   line: number;
   endLine: number;
@@ -115,10 +116,34 @@ export interface Inspection {
     warning: string | null;
     headings: { title: string; level: number; line: number }[];
   };
-  backlinks: { path: string; title: string; line: number }[];
+  backlinks: { path: string; title: string; line: number; mentions?: number }[];
   outgoing: (WikiLink & { resolution: Resolution })[];
 }
 export const api = {
+  importAttachments: (
+    vaultId: string,
+    source: string,
+    uploads: { name: string; data: string }[],
+    rootImages = false,
+  ) =>
+    invoke<{ path: string; link: string }[]>("import_attachments", {
+      vaultId,
+      source,
+      uploads,
+      rootImages,
+    }),
+  attachmentLinks: (vaultId: string, source: string, paths: string[]) =>
+    invoke<{ path: string; link: string }[]>("attachment_links", {
+      vaultId,
+      source,
+      paths,
+    }),
+  resolveAttachment: (
+    vaultId: string,
+    source: string,
+    target: string,
+    wiki: boolean,
+  ) => invoke<string>("resolve_attachment", { vaultId, source, target, wiki }),
   renameDirectory: (vaultId: string, path: string, name: string) =>
     invoke<RenameApplied>("rename_directory", { vaultId, path, name }),
   trashDirectory: (vaultId: string, path: string) =>

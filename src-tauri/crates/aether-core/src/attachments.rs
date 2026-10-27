@@ -2,6 +2,120 @@ use crate::{vault::Vault, Error, Result};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use std::io::Read;
 
+pub fn matches(v: &Vault, target: &str) -> Result<Vec<String>> {
+    v.resolve(target, false)?;
+    let mut found = Vec::new();
+    for entry in walkdir::WalkDir::new(v.root())
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|entry| {
+            entry.depth() == 0
+                || (!entry.file_name().to_string_lossy().starts_with('.')
+                    && !std::fs::symlink_metadata(entry.path())
+                        .is_ok_and(|metadata| crate::vault::is_link(&metadata)))
+        })
+    {
+        let entry = entry.map_err(|error| Error::Io(error.to_string()))?;
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let path = entry
+            .path()
+            .strip_prefix(v.root())
+            .map_err(|error| Error::InvalidPath(error.to_string()))?
+            .to_string_lossy()
+            .replace('\\', "/");
+        if path.eq_ignore_ascii_case(target)
+            || path
+                .to_lowercase()
+                .ends_with(&format!("/{}", target.to_lowercase()))
+        {
+            found.push(path);
+        }
+    }
+    found.sort();
+    Ok(found)
+}
+
+pub fn resolve(v: &Vault, source: &str, target: &str, _wiki: bool) -> Result<String> {
+    v.note_path(source)?;
+    let raw = target.split('#').next().unwrap_or(target);
+    let root = crate::navigation::decode(raw);
+    if let Some(path) = root.strip_prefix('/') {
+        if !path.starts_with('/') && v.resolve(path, false)?.is_file() {
+            return Ok(path.into());
+        }
+        return Err(Error::InvalidPath(
+            "Вложение не найдено внутри хранилища.".into(),
+        ));
+    }
+    let local = relative_target(source, raw)?;
+    if v.resolve(&local, false)?.is_file() {
+        return Ok(local);
+    }
+    if !root.starts_with("../") && !root.starts_with("./") {
+        if v.resolve(&root, false)?.is_file() {
+            return Ok(root);
+        }
+        let found = matches(v, &root)?;
+        if found.len() == 1 {
+            return Ok(found[0].clone());
+        }
+        if found.len() > 1 {
+            return Err(Error::InvalidPath(
+                "Несколько вложений с таким именем. Укажите путь к файлу.".into(),
+            ));
+        }
+    }
+    Err(Error::Io("Вложение не найдено.".into()))
+}
+
+pub fn image_mime(bytes: &[u8]) -> Result<&'static str> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return Ok("image/png");
+    }
+    if bytes.starts_with(b"\xff\xd8\xff") {
+        return Ok("image/jpeg");
+    }
+    if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        return Ok("image/gif");
+    }
+    if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP") {
+        return Ok("image/webp");
+    }
+    if bytes.starts_with(b"BM") {
+        return Ok("image/bmp");
+    }
+    // SVG is loaded only as an image, never as HTML. Restrict it to self-contained,
+    // passive markup; scriptable SVG and references remain unsupported.
+    if let Ok(text) = std::str::from_utf8(bytes) {
+        let lower = text.to_ascii_lowercase();
+        if lower.contains("<svg")
+            && ![
+                "<!doctype",
+                "<!entity",
+                "<script",
+                "<foreignobject",
+                "href",
+                "url(",
+                "@import",
+                "<?xml-stylesheet",
+                " on",
+                "\ton",
+                "\non",
+                "\ron",
+            ]
+            .iter()
+            .any(|pattern| lower.contains(pattern))
+        {
+            return Ok("image/svg+xml");
+        }
+    }
+    Err(Error::Io(
+        "Поддерживаются PNG, JPEG, GIF, WebP, BMP и SVG без активного содержимого.".into(),
+    ))
+}
+
 pub fn relative_target(source: &str, target: &str) -> Result<String> {
     let target = crate::navigation::decode(target);
     if target.contains(['\\', ':']) || target.starts_with('/') {
@@ -29,19 +143,7 @@ pub fn relative_target(source: &str, target: &str) -> Result<String> {
     Ok(parts.join("/"))
 }
 pub fn image(v: &Vault, source: &str, target: &str, wiki: bool) -> Result<String> {
-    v.note_path(source)?;
-    let raw = target.split('#').next().unwrap_or(target);
-    let local = relative_target(source, raw)?;
-    let root = crate::navigation::decode(raw);
-    let path = if wiki
-        && !root.starts_with("../")
-        && !root.starts_with("./")
-        && v.resolve(&root, false)?.is_file()
-    {
-        v.resolve(&root, false)?
-    } else {
-        v.resolve(&local, false)?
-    };
+    let path = v.resolve(&resolve(v, source, target, wiki)?, false)?;
     let file = std::fs::File::open(path)?;
     if file.metadata()?.len() > 8 * 1024 * 1024 {
         return Err(Error::Io("Изображение превышает 8 МБ.".into()));
@@ -51,19 +153,7 @@ pub fn image(v: &Vault, source: &str, target: &str, wiki: bool) -> Result<String
     if bytes.len() > 8 * 1024 * 1024 {
         return Err(Error::Io("Изображение превышает 8 МБ.".into()));
     }
-    let mime = if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
-        "image/png"
-    } else if bytes.starts_with(b"\xff\xd8\xff") {
-        "image/jpeg"
-    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
-        "image/gif"
-    } else if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP") {
-        "image/webp"
-    } else {
-        return Err(Error::Io(
-            "Поддерживаются локальные PNG, JPEG, GIF и WebP.".into(),
-        ));
-    };
+    let mime = image_mime(&bytes)?;
     Ok(format!("data:{mime};base64,{}", STANDARD.encode(bytes)))
 }
 #[cfg(test)]

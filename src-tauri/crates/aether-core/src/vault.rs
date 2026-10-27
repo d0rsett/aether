@@ -134,10 +134,14 @@ impl Vault {
             let entry = entry?;
             let metadata = fs::symlink_metadata(entry.path())?;
             let name = entry.file_name().to_string_lossy().into_owned();
-            if is_link(&metadata) || name.eq_ignore_ascii_case(".aether") {
+            if is_link(&metadata)
+                || [".aether", ".obsidian", ".git"]
+                    .iter()
+                    .any(|internal| name.eq_ignore_ascii_case(internal))
+            {
                 continue;
             }
-            if metadata.is_dir() || is_markdown(&entry.path()) {
+            if metadata.is_dir() || is_markdown(&entry.path()) || is_image(&entry.path()) {
                 entries.push(Entry {
                     path: if relative.is_empty() {
                         name.clone()
@@ -174,6 +178,13 @@ fn is_markdown(path: &Path) -> bool {
         .is_some_and(|s| s.eq_ignore_ascii_case("md") || s.eq_ignore_ascii_case("markdown"))
 }
 
+pub fn is_image(path: &Path) -> bool {
+    path.extension().and_then(|s| s.to_str()).is_some_and(|s| {
+        ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"]
+            .contains(&s.to_ascii_lowercase().as_str())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -205,7 +216,8 @@ mod tests {
         fs::write(dir.path().join("Заметки/Привет.MD"), "Привет")?;
         fs::write(dir.path().join("image.png"), [])?;
         let vault = Vault::open(dir.path())?;
-        assert_eq!(vault.list("")?.len(), 1);
+        assert_eq!(vault.list("")?.len(), 2);
+        assert_eq!(vault.list("")?[1].path, "image.png");
         assert_eq!(vault.list("Заметки")?[0].path, "Заметки/Привет.MD");
         Ok(())
     }

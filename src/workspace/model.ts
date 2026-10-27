@@ -1,6 +1,7 @@
 import type { Note } from "../services/api";
 
 export interface Tab extends Note {
+  kind?: "image";
   savedContent: string;
 }
 export interface Workspace {
@@ -9,6 +10,8 @@ export interface Workspace {
 }
 export type Action =
   | { type: "open"; note: Note }
+  | { type: "openImage"; path: string }
+  | { type: "relocateImage"; path: string; destination: string }
   | { type: "activate"; path: string }
   | { type: "edit"; path: string; content: string }
   | { type: "saved"; path: string; content: string; revision: string }
@@ -17,7 +20,8 @@ export type Action =
   | { type: "reset" };
 
 export const initialWorkspace: Workspace = { tabs: [], active: null };
-export const dirty = (tab: Tab): boolean => tab.content !== tab.savedContent;
+export const dirty = (tab: Tab): boolean =>
+  tab.kind !== "image" && tab.content !== tab.savedContent;
 export const titleOf = (path: string): string =>
   path
     .split("/")
@@ -26,6 +30,32 @@ export const titleOf = (path: string): string =>
 
 export function workspaceReducer(state: Workspace, action: Action): Workspace {
   switch (action.type) {
+    case "openImage":
+      return {
+        tabs: state.tabs.some((tab) => tab.path === action.path)
+          ? state.tabs
+          : [
+              ...state.tabs,
+              {
+                path: action.path,
+                kind: "image",
+                content: "",
+                savedContent: "",
+                revision: "",
+              },
+            ],
+        active: action.path,
+      };
+    case "relocateImage":
+      return {
+        tabs: state.tabs.map((tab) =>
+          tab.kind === "image" && tab.path === action.path
+            ? { ...tab, path: action.destination }
+            : tab,
+        ),
+        active:
+          state.active === action.path ? action.destination : state.active,
+      };
     case "open":
       return {
         tabs: state.tabs.some((t) => t.path === action.note.path)
@@ -42,7 +72,9 @@ export function workspaceReducer(state: Workspace, action: Action): Workspace {
       return {
         ...state,
         tabs: state.tabs.map((t) =>
-          t.path === action.path ? { ...t, content: action.content } : t,
+          t.path === action.path && t.kind !== "image"
+            ? { ...t, content: action.content }
+            : t,
         ),
       };
     case "saved":

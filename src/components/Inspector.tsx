@@ -1,6 +1,7 @@
 import { Link2 } from "lucide-react";
 import type { useWorkspace } from "../app/useWorkspace";
 import { NoteRelations } from "./NoteRelations";
+import { NoteAttachments } from "./NoteAttachments";
 import type { Inspection } from "../services/api";
 import { api } from "../services/api";
 import { useContextMenu } from "./ContextMenu";
@@ -10,7 +11,10 @@ export function Inspector({
   inspection,
   knowledgeError,
 }: {
-  app: Pick<Controller, "active" | "open" | "openWiki" | "vault" | "setError">;
+  app: Pick<
+    Controller,
+    "active" | "open" | "openWiki" | "vault" | "setError" | "refresh"
+  >;
   inspection: Inspection | null;
   knowledgeError: string;
 }) {
@@ -46,6 +50,16 @@ export function Inspector({
                 if (app.active) void app.openWiki(app.active.path, target);
               }}
             />
+            {app.vault && (
+              <NoteAttachments
+                vaultId={app.vault.id}
+                path={app.active.path}
+                content={app.active.content}
+                refresh={app.refresh}
+                onOpen={(path) => void app.open(path)}
+                onError={app.setError}
+              />
+            )}
           </>
         ) : (
           <p className="relations-hint">

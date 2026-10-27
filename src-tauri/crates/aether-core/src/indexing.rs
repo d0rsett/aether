@@ -48,6 +48,7 @@ pub struct Backlink {
     pub path: String,
     pub title: String,
     pub line: i64,
+    pub mentions: i64,
 }
 #[derive(Debug, Serialize)]
 pub struct Outgoing {
@@ -362,7 +363,7 @@ impl Index {
                 resolution: links::resolve(&db, path, &link.target)?,
             });
         }
-        let backlinks = db.prepare("SELECT notes.path,notes.title,min(links.line) FROM links JOIN notes ON notes.path=links.source WHERE links.resolved_path=?1 GROUP BY notes.path ORDER BY notes.path LIMIT 100")?.query_map([path],|row| Ok(Backlink { path: row.get(0)?, title: row.get(1)?, line: row.get(2)? }))?.collect::<std::result::Result<Vec<_>,_>>()?;
+        let backlinks = db.prepare("SELECT notes.path,notes.title,min(links.line),count(*) FROM links JOIN notes ON notes.path=links.source WHERE links.resolved_path=?1 GROUP BY notes.path ORDER BY notes.path LIMIT 100")?.query_map([path],|row| Ok(Backlink { path: row.get(0)?, title: row.get(1)?, line: row.get(2)?, mentions: row.get(3)? }))?.collect::<std::result::Result<Vec<_>,_>>()?;
         Ok(Inspection {
             metadata,
             backlinks,
@@ -476,7 +477,7 @@ mod tests {
         let vault = Vault::open(&root)?;
         vault.create_note(
             "Начало.md",
-            "---\ntags: [работа]\nstatus: draft\n---\n# Начало\nПривет knowledge [[Цель|Другая]]",
+            "---\ntags: [работа]\nstatus: draft\n---\n# Начало\nПривет knowledge [[Цель|Другая]] [[Цель|Ещё имя]]\n[[Цель]]",
         )?;
         let target = vault.create_note("Цель.md", "# Цель\nВторая заметка")?;
         let index = Index::open(&temp.path().join("index.sqlite"))?;
@@ -505,6 +506,7 @@ mod tests {
             "Начало.md"
         );
         assert_eq!(index.inspect("Цель.md")?.backlinks[0].path, "Начало.md");
+        assert_eq!(index.inspect("Цель.md")?.backlinks[0].mentions, 3);
         vault.rename_note("Цель.md", "Новая.md", &target.revision)?;
         index.update(&vault, "Цель.md")?;
         index.update(&vault, "Новая.md")?;

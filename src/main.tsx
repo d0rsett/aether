@@ -4,6 +4,7 @@ import { App } from "./app/App";
 import { TooltipLayer } from "./components/TooltipLayer";
 import "./styles/app.css";
 import "./styles/workspace.css";
+import "./styles/dialogs.css";
 
 // All confirmations and input dialogs belong to the app's Modal components.
 // The dialog plugin also replaces these browser functions with native popups.

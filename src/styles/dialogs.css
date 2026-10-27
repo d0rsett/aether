@@ -1,0 +1,219 @@
+/* Shared dialog design. Image viewing only reuses native dialog behaviour. */
+.modal {
+  width: 520px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 64px);
+  padding: 0;
+  overflow: hidden;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--text) 12%, var(--border));
+  border-radius: 16px;
+  box-shadow: 0 24px 80px #0004;
+}
+.modal[open] {
+  display: flex;
+  flex-direction: column;
+}
+.modal::backdrop {
+  background: #080c0ba6;
+  backdrop-filter: blur(6px);
+}
+.modal-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+}
+.modal-header h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.25px;
+}
+.modal-header .icon-button {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  color: var(--muted);
+}
+.modal-body {
+  min-height: 0;
+  padding: 24px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.modal .modal-description,
+.modal .rename-form p {
+  margin: 0 0 20px;
+  padding: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.75;
+}
+.modal-body > .modal-description:last-child {
+  margin-bottom: 0;
+}
+.modal .input-label,
+.modal .rename-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 0;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+}
+.modal input {
+  min-height: 42px;
+  padding: 11px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 400;
+  transition:
+    border-color 120ms,
+    box-shadow 120ms;
+}
+.modal input:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.modal .modal-actions {
+  position: sticky;
+  bottom: -24px;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 24px -24px -24px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--base) 40%, var(--surface));
+}
+.modal .button {
+  min-height: 36px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.modal .palette-search {
+  margin: 0 0 12px;
+  height: 44px;
+  border-radius: 9px;
+}
+.modal .palette-search input {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+}
+.modal .command-list {
+  padding: 0;
+}
+.modal .command-list button {
+  min-height: 40px;
+  padding: 10px 12px;
+  border-radius: 8px;
+}
+.modal .shortcut-list {
+  margin: 0 0 20px;
+}
+.modal .rename-form {
+  padding: 0;
+}
+.modal .vault-form {
+  padding-top: 0;
+}
+.modal .vault-form > .input-label + .input-label {
+  margin-top: 20px;
+}
+.modal .vault-form .modal-description {
+  margin-top: 14px;
+  margin-bottom: 0;
+}
+.modal .vault-form .tree-error {
+  margin: 14px 0 0;
+}
+.image-lightbox {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 40px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: hidden;
+}
+.image-lightbox[open] {
+  display: grid;
+  place-items: center;
+}
+.image-lightbox::backdrop {
+  background: #070a09e6;
+  backdrop-filter: blur(8px);
+}
+.lightbox-image {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: calc(100dvh - 80px);
+  object-fit: contain;
+  user-select: none;
+}
+.lightbox-close {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid #ffffff24;
+  border-radius: 50%;
+  color: #f1f4f2;
+  background: #202622aa;
+  cursor: pointer;
+}
+.lightbox-close:hover {
+  background: #39443ddd;
+}
+.lightbox-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+@media (max-width: 540px) {
+  .modal {
+    max-height: calc(100dvh - 32px);
+  }
+  .modal-header {
+    padding: 16px 20px;
+  }
+  .modal-body {
+    padding: 20px;
+  }
+  .modal .modal-actions {
+    bottom: -20px;
+    margin: 20px -20px -20px;
+    padding: 14px 20px;
+  }
+  .image-lightbox {
+    padding: 24px;
+  }
+  .lightbox-image {
+    max-height: calc(100dvh - 48px);
+  }
+}

@@ -13,6 +13,7 @@ import type { ReviewRename } from "../components/RenameDialog";
 import type { RequestVault } from "../components/CreateVaultDialog";
 import { dirty, initialWorkspace, workspaceReducer } from "../workspace/model";
 import { readWorkspace, writeWorkspace } from "../workspace/storage";
+import { imageExtension } from "../services/images";
 
 export interface Question {
   title: string;
@@ -50,7 +51,9 @@ export function useWorkspace(
   ref.current = { workspace, vault };
   const running = useRef(false);
   const initialized = useRef(false);
-  const active = workspace.tabs.find((t) => t.path === workspace.active);
+  const selected = workspace.tabs.find((t) => t.path === workspace.active);
+  const active = selected?.kind === "image" ? undefined : selected;
+  const activeImage = selected?.kind === "image" ? selected : undefined;
 
   const task = useCallback(async (action: () => Promise<void>) => {
     if (running.current) return false;
@@ -96,6 +99,10 @@ export function useWorkspace(
     const failed: string[] = [];
     for (const path of stored.paths) {
       try {
+        if (imageExtension(path)) {
+          dispatch({ type: "openImage", path });
+          continue;
+        }
         const note = await api.read(next.id, path);
         const draft = stored.drafts[path];
         dispatch({
@@ -253,6 +260,10 @@ export function useWorkspace(
       if (!current.vault) return;
       if (current.workspace.tabs.some((t) => t.path === path)) {
         dispatch({ type: "activate", path });
+        return;
+      }
+      if (imageExtension(path)) {
+        dispatch({ type: "openImage", path });
         return;
       }
       const note = await api.read(current.vault.id, path);
@@ -499,6 +510,14 @@ export function useWorkspace(
           ? next + tab.path.slice(prefix.length)
           : tab.path;
         if (path === tab.path && !changed.has(tab.path)) continue;
+        if (tab.kind === "image") {
+          dispatch({
+            type: "relocateImage",
+            path: tab.path,
+            destination: path,
+          });
+          continue;
+        }
         try {
           dispatch({
             type: "replace",
@@ -529,7 +548,7 @@ export function useWorkspace(
     for (const path of paths) {
       if (path === result.from || path === result.note.path) continue;
       const tab = ref.current.workspace.tabs.find((t) => t.path === path);
-      if (!tab || dirty(tab)) continue;
+      if (!tab || tab.kind === "image" || dirty(tab)) continue;
       try {
         dispatch({
           type: "replace",
@@ -627,7 +646,7 @@ export function useWorkspace(
       const tab = ref.current.workspace.tabs.find(
         (t) => t.path === ref.current.workspace.active,
       );
-      if (!current || !tab) return;
+      if (!current || !tab || tab.kind === "image") return;
       if (
         dirty(tab) &&
         (await ask({
@@ -698,6 +717,7 @@ export function useWorkspace(
     createVault,
     workspace,
     active,
+    activeImage,
     dispatch,
     busy,
     error,

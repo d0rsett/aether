@@ -11,6 +11,7 @@ pub struct Node {
     pub kind: String,
     pub text: String,
     pub target: String,
+    pub has_alias: bool,
     pub level: u64,
     pub line: usize,
     pub end_line: usize,
@@ -62,6 +63,7 @@ pub fn render(content: &str) -> Result<Document> {
             to: positions[offset + range.end],
             kind: String::new(),
             text: String::new(),
+            has_alias: false,
             target: String::new(),
             level: 0,
             line: line(offset + range.start),
@@ -108,6 +110,8 @@ pub fn render(content: &str) -> Result<Document> {
                         ..
                     } => {
                         node.target = dest_url.into_string();
+                        node.has_alias =
+                            matches!(link_type, LinkType::WikiLink { has_pothole: true });
                         node.text = title.into_string();
                         let image = content[offset + range.start..].starts_with('!');
                         match (image, matches!(link_type, LinkType::WikiLink { .. })) {
@@ -214,6 +218,8 @@ mod tests {
         assert!(all
             .iter()
             .any(|n| n.kind == "wiki" && n.target == "Note#Heading"));
+        assert!(all.iter().any(|n| n.kind == "wiki" && n.has_alias));
+        assert!(all.iter().any(|n| n.kind == "embed" && !n.has_alias));
         Ok(())
     }
     #[test]

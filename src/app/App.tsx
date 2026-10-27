@@ -20,6 +20,8 @@ import {
 } from "lucide-react";
 import { FileTree } from "../explorer/FileTree";
 import { Modal } from "../components/Modal";
+import { ImageDocument } from "../components/ImageDocument";
+import { imageExtension } from "../services/images";
 import { useQuestion } from "../components/useQuestion";
 import { useRenameReview } from "../components/RenameDialog";
 import { useWorkspace } from "./useWorkspace";
@@ -225,9 +227,9 @@ export function App() {
         if (event.shiftKey) void actionRef.current.createVault();
         else void actionRef.current.createQuick();
       }
-      if (key === "w" && actionRef.current.active) {
+      if (key === "w" && actionRef.current.workspace.active) {
         event.preventDefault();
-        void actionRef.current.close(actionRef.current.active.path);
+        void actionRef.current.close(actionRef.current.workspace.active);
       }
       if (key === "p") {
         event.preventDefault();
@@ -373,6 +375,20 @@ export function App() {
     if (app.busy) {
       event.preventDefault();
       event.stopPropagation();
+      return;
+    }
+    if (!entry.isDirectory && imageExtension(entry.path)) {
+      context.show(event, "Действия с изображением", [
+        { label: "Открыть изображение", run: () => app.open(entry.path) },
+        {
+          label: "Копировать путь",
+          run: () => navigator.clipboard.writeText(entry.path),
+        },
+        {
+          label: "Открыть в проводнике",
+          run: () => api.reveal(app.vault!.id, entry.path),
+        },
+      ]);
       return;
     }
     context.show(
@@ -801,7 +817,7 @@ export function App() {
             </div>
           )}
 
-          {app.active ? (
+          {app.active || app.activeImage ? (
             <>
               <NoteHeader
                 app={app}
@@ -814,7 +830,7 @@ export function App() {
                 lineWrapping={lineWrapping}
                 setLineWrapping={setLineWrapping}
               />
-              {formatting && mode !== "reading" && (
+              {app.active && formatting && mode !== "reading" && (
                 <FormattingToolbar
                   active={
                     formatState.path === app.active.path
@@ -842,88 +858,107 @@ export function App() {
                       hidden={tab.path !== app.workspace.active}
                       key={`${app.vault?.id}:${tab.path}`}
                     >
-                      <NoteTitle
-                        focusRequest={
-                          app.titleFocus?.path === tab.path
-                            ? app.titleFocus.id
-                            : undefined
-                        }
-                        path={tab.path}
-                        disabled={app.busy}
-                        rename={app.rename}
-                        onError={app.setError}
-                      />
-                      <div className="editor-host" hidden={mode === "reading"}>
-                        <MarkdownEditor
-                          onFormatsChange={(formats) => {
-                            if (actionRef.current.workspace.active !== tab.path)
-                              return;
-                            setFormatState((previous) =>
-                              previous.path === tab.path &&
-                              previous.formats.join() === formats.join()
-                                ? previous
-                                : { path: tab.path, formats },
-                            );
-                          }}
-                          showLineNumbers={lineNumbers}
-                          lineWrapping={lineWrapping}
-                          visible={
-                            mode !== "reading" &&
-                            tab.path === app.workspace.active
-                          }
-                          theme={theme}
-                          onError={app.setError}
-                          live={mode === "live"}
-                          vaultId={app.vault?.id}
+                      {tab.kind === "image" && app.vault ? (
+                        <ImageDocument
+                          vaultId={app.vault.id}
                           path={tab.path}
-                          command={
-                            formatCommand?.path === tab.path
-                              ? formatCommand
-                              : null
-                          }
-                          ready={
-                            !app.busy &&
-                            mode !== "reading" &&
-                            tab.path === app.workspace.active
-                          }
-                          navigation={
-                            app.navigation?.path === tab.path
-                              ? app.navigation
-                              : null
-                          }
-                          content={tab.content}
-                          onChange={(content) =>
-                            app.dispatch({
-                              type: "edit",
-                              path: tab.path,
-                              content,
-                            })
-                          }
-                          onSave={() => void app.save()}
-                          onWikiLink={(target) =>
-                            void app.openWiki(tab.path, target)
-                          }
+                          onError={app.setError}
                         />
-                      </div>
-                      {mode === "reading" &&
-                        tab.path === app.workspace.active &&
-                        app.vault && (
-                          <ReadingView
-                            theme={theme}
-                            vaultId={app.vault.id}
+                      ) : (
+                        <>
+                          <NoteTitle
+                            focusRequest={
+                              app.titleFocus?.path === tab.path
+                                ? app.titleFocus.id
+                                : undefined
+                            }
                             path={tab.path}
-                            content={tab.content}
-                            navigation={
-                              app.navigation?.path === tab.path
-                                ? app.navigation
-                                : null
-                            }
-                            onWiki={(target) =>
-                              void app.openWiki(tab.path, target)
-                            }
+                            disabled={app.busy}
+                            rename={app.rename}
                             onError={app.setError}
                           />
-                        )}
+                          <div
+                            className="editor-host"
+                            hidden={mode === "reading"}
+                          >
+                            <MarkdownEditor
+                              onAttachmentsImported={() =>
+                                app.setRefresh((value) => value + 1)
+                              }
+                              onFormatsChange={(formats) => {
+                                if (
+                                  actionRef.current.workspace.active !==
+                                  tab.path
+                                )
+                                  return;
+                                setFormatState((previous) =>
+                                  previous.path === tab.path &&
+                                  previous.formats.join() === formats.join()
+                                    ? previous
+                                    : { path: tab.path, formats },
+                                );
+                              }}
+                              showLineNumbers={lineNumbers}
+                              lineWrapping={lineWrapping}
+                              visible={
+                                mode !== "reading" &&
+                                tab.path === app.workspace.active
+                              }
+                              theme={theme}
+                              onError={app.setError}
+                              live={mode === "live"}
+                              vaultId={app.vault?.id}
+                              path={tab.path}
+                              command={
+                                formatCommand?.path === tab.path
+                                  ? formatCommand
+                                  : null
+                              }
+                              ready={
+                                !app.busy &&
+                                mode !== "reading" &&
+                                tab.path === app.workspace.active
+                              }
+                              navigation={
+                                app.navigation?.path === tab.path
+                                  ? app.navigation
+                                  : null
+                              }
+                              content={tab.content}
+                              onChange={(content) =>
+                                app.dispatch({
+                                  type: "edit",
+                                  path: tab.path,
+                                  content,
+                                })
+                              }
+                              onSave={() => void app.save()}
+                              onWikiLink={(target) =>
+                                void app.openWiki(tab.path, target)
+                              }
+                            />
+                          </div>
+                          {mode === "reading" &&
+                            tab.path === app.workspace.active &&
+                            app.vault && (
+                              <ReadingView
+                                theme={theme}
+                                vaultId={app.vault.id}
+                                path={tab.path}
+                                content={tab.content}
+                                navigation={
+                                  app.navigation?.path === tab.path
+                                    ? app.navigation
+                                    : null
+                                }
+                                onWiki={(target) =>
+                                  void app.openWiki(tab.path, target)
+                                }
+                                onError={app.setError}
+                              />
+                            )}
+                        </>
+                      )}
                     </div>
                   ))}
                 </Suspense>

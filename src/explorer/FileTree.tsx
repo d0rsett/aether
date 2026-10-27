@@ -6,8 +6,10 @@ import {
   Folder,
   FolderOpen,
   LoaderCircle,
+  Image as ImageIcon,
 } from "lucide-react";
 import { api, errorMessage, type FileEntry } from "../services/api";
+import { imageDragType, imageExtension } from "../services/images";
 
 interface Props {
   vaultId: string;
@@ -117,6 +119,7 @@ function TreeEntry({
 }: Omit<Props, "path"> & { entry: FileEntry }) {
   const [expanded, setExpanded] = useState(false);
   const [over, setOver] = useState(false);
+  const imageType = !entry.isDirectory ? imageExtension(entry.path) : null;
   const directory = entry.isDirectory
     ? entry.path
     : entry.path.split("/").slice(0, -1).join("/");
@@ -144,9 +147,22 @@ function TreeEntry({
         <button
           className={`tree-item ${props.active === entry.path ? "selected" : ""} ${over && canDrop ? "drop-target" : ""} ${props.dragged === entry.path ? "is-dragging" : ""}`}
           draggable={!entry.isDirectory && !!props.onDrag}
+          aria-label={
+            !entry.isDirectory
+              ? entry.name.replace(/\.(md|markdown)$/i, "")
+              : undefined
+          }
           onDragStart={(event) => {
             if (entry.isDirectory) {
               event.preventDefault();
+              return;
+            }
+            if (imageType) {
+              event.dataTransfer.setData(
+                imageDragType,
+                JSON.stringify({ vaultId: props.vaultId, path: entry.path }),
+              );
+              event.dataTransfer.effectAllowed = "copy";
               return;
             }
             event.dataTransfer.setData("application/x-aether-note", entry.path);
@@ -192,14 +208,19 @@ function TreeEntry({
           ) : (
             <>
               <span className="tree-spacer" />
-              <FileText size={15} />
+              {imageType ? <ImageIcon size={15} /> : <FileText size={15} />}
             </>
           )}
-          <span>
+          <span className="tree-entry-name">
             {entry.isDirectory
               ? entry.name
               : entry.name.replace(/\.(md|markdown)$/i, "")}
           </span>
+          {imageType && (
+            <span className="tree-file-type" aria-hidden="true">
+              {imageType}
+            </span>
+          )}
         </button>
       )}
       {entry.isDirectory && expanded && (

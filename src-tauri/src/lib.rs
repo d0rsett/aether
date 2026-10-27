@@ -1,3 +1,4 @@
+use aether_core::attachment_import::{self, Imported, Upload};
 use aether_core::files::Note;
 use aether_core::indexing::{Index, IndexStatus, Inspection, SearchPage, SearchQuery};
 use aether_core::links::Resolution;
@@ -639,6 +640,44 @@ async fn read_image(
     .await
 }
 #[tauri::command]
+async fn import_attachments(
+    state: State<'_, AppState>,
+    vault_id: String,
+    source: String,
+    uploads: Vec<Upload>,
+    root_images: Option<bool>,
+) -> Result<Vec<Imported>> {
+    with_vault(state.inner().clone(), vault_id, move |v| {
+        attachment_import::import_with_options(v, &source, uploads, root_images.unwrap_or(false))
+    })
+    .await
+}
+#[tauri::command]
+async fn attachment_links(
+    state: State<'_, AppState>,
+    vault_id: String,
+    source: String,
+    paths: Vec<String>,
+) -> Result<Vec<Imported>> {
+    with_vault(state.inner().clone(), vault_id, move |v| {
+        attachment_import::existing(v, &source, paths)
+    })
+    .await
+}
+#[tauri::command]
+async fn resolve_attachment(
+    state: State<'_, AppState>,
+    vault_id: String,
+    source: String,
+    target: String,
+    wiki: bool,
+) -> Result<String> {
+    with_vault(state.inner().clone(), vault_id, move |v| {
+        attachments::resolve(v, &source, &target, wiki)
+    })
+    .await
+}
+#[tauri::command]
 async fn document_link(
     state: State<'_, AppState>,
     vault_id: String,
@@ -892,6 +931,9 @@ pub fn run() {
             render_markdown,
             anchor_options,
             read_image,
+            import_attachments,
+            attachment_links,
+            resolve_attachment,
             document_link,
             open_external,
             reveal_in_explorer,

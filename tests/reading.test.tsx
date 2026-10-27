@@ -55,3 +55,41 @@ it("wiki reading links preserve the target anchor and displayed alias", () => {
   fireEvent.click(screen.getByRole("link", { name: "Readable alias" }));
   expect(context.onWiki).toHaveBeenCalledWith("Folder/Note#^block");
 });
+
+it("uses image descriptions as captions, excludes dimensions and keeps plain embeds uncaptioned", () => {
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+  try {
+    for (const [kind, label, hasAlias, expected] of [
+      ["embed", "Фото озера|300x200", true, "Фото озера"],
+      ["image", "Markdown caption", false, "Markdown caption"],
+      ["embed", "300", true, ""],
+      ["embed", "photo.png", false, ""],
+      ["embed", "photo.png", true, "photo.png"],
+    ] as const) {
+      const { container, unmount } = render(
+        <>
+          {renderNode(
+            {
+              ...node(kind, "", "photo.png"),
+              hasAlias,
+              children: [node("text", label)],
+            },
+            context,
+          )}
+        </>,
+      );
+      expect(container.querySelector(".image-caption")?.textContent || "").toBe(
+        expected,
+      );
+      unmount();
+    }
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

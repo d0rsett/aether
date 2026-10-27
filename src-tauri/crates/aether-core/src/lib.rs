@@ -1,3 +1,4 @@
+pub mod attachment_import;
 pub mod attachments;
 pub mod files;
 pub mod indexing;

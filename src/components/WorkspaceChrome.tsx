@@ -4,6 +4,7 @@ import {
   ChevronDown,
   Code2,
   FileText,
+  Image as ImageIcon,
   MoreHorizontal,
   PencilLine,
   Plus,
@@ -95,13 +96,16 @@ export function WorkspaceTabs({
             onContextMenu={(event) =>
               context.show(event, "Действия вкладки", [
                 {
-                  label: "Перейти к заметке",
+                  label:
+                    tab.kind === "image"
+                      ? "Перейти к изображению"
+                      : "Перейти к заметке",
                   disabled: app.busy,
                   run: () => app.dispatch({ type: "activate", path: tab.path }),
                 },
                 {
                   label: "Переименовать",
-                  disabled: app.busy,
+                  disabled: app.busy || tab.kind === "image",
                   run: () => app.editTitle(tab.path),
                 },
                 {
@@ -130,7 +134,11 @@ export function WorkspaceTabs({
               onClick={() => app.dispatch({ type: "activate", path: tab.path })}
               data-tooltip={tab.path}
             >
-              <FileText size={14} />
+              {tab.kind === "image" ? (
+                <ImageIcon size={14} />
+              ) : (
+                <FileText size={14} />
+              )}
               <span className="tab-name">{titleOf(tab.path)}</span>
               {dirty(tab) && (
                 <span
