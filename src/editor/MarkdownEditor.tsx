@@ -1,4 +1,9 @@
 import { useEffect, useRef } from "react";
+import { toggleTask } from "./tasks";
+import type { PropertyCommand } from "./properties";
+import { applyProperty } from "./propertyInput";
+import type { NotePreviews } from "../services/notePreviews";
+import type { RenderNode } from "../services/api";
 import { Compartment, EditorState, Text, Transaction } from "@codemirror/state";
 import type { AnchorLocation } from "../services/api";
 import {
@@ -25,7 +30,7 @@ import {
 import { useContextMenu } from "../components/ContextMenu";
 import { attachmentInput, pasteClipboard } from "./attachments";
 import { markdown } from "@codemirror/lang-markdown";
-import { Strikethrough } from "@lezer/markdown";
+import { Strikethrough, TaskList } from "@lezer/markdown";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import {
   HighlightStyle,
@@ -64,6 +69,11 @@ const highlight = HighlightStyle.define([
 ]);
 
 interface Props {
+  propertyCommand?: PropertyCommand | null;
+  propertyFocus?: number;
+  previews?: NotePreviews;
+  onNavigate?: (source: string, target: string) => void;
+  taskCommand?: { id: number; node: RenderNode; snapshot: string } | null;
   content: string;
   onChange: (content: string) => void;
   onSave: () => void;
@@ -84,6 +94,11 @@ interface Props {
 }
 
 export function MarkdownEditor({
+  propertyCommand,
+  propertyFocus,
+  previews,
+  onNavigate,
+  taskCommand,
   content,
   onChange,
   onSave,
@@ -108,6 +123,7 @@ export function MarkdownEditor({
     callbacks.current.onError?.(message),
   );
   const callbacks = useRef({
+    onNavigate,
     onAttachmentsImported,
     onChange,
     onSave,
@@ -117,6 +133,7 @@ export function MarkdownEditor({
     visible,
   });
   callbacks.current = {
+    onNavigate,
     onAttachmentsImported,
     onChange,
     onSave,
@@ -158,7 +175,7 @@ export function MarkdownEditor({
           highlightActiveLineGutter(),
           highlightSpecialChars(),
           rectangularSelection(),
-          markdown({ extensions: [Strikethrough] }),
+          markdown({ extensions: [Strikethrough, TaskList] }),
           indentOnInput(),
           bracketMatching(),
           closeBrackets(),
@@ -319,6 +336,9 @@ export function MarkdownEditor({
             effects: presentation.current.reconfigure([
               livePreview,
               richPreview({
+                previews,
+                onNavigate: (source, target) =>
+                  callbacks.current.onNavigate?.(source, target),
                 vaultId,
                 path,
                 theme,
@@ -338,11 +358,47 @@ export function MarkdownEditor({
     return () => {
       disposed = true;
     };
-  }, [live, visible, vaultId, path, theme]);
+  }, [live, visible, vaultId, path, theme, previews]);
   useEffect(() => {
     if (editor.current && command)
       formatSelection(editor.current, command.type);
   }, [command?.id]);
+  useEffect(() => {
+    if (
+      editor.current &&
+      taskCommand &&
+      !toggleTask(editor.current, taskCommand.node, taskCommand.snapshot)
+    )
+      callbacks.current.onError?.(
+        "Текст изменился. Переключите задачу ещё раз после обновления просмотра.",
+      );
+  }, [taskCommand?.id]);
+  useEffect(() => {
+    if (!propertyCommand || !editor.current) return;
+    try {
+      applyProperty(
+        editor.current,
+        propertyCommand.action,
+        propertyCommand.expected,
+      );
+      propertyCommand.done();
+    } catch (error) {
+      propertyCommand.done(
+        error instanceof Error
+          ? error.message
+          : "Не удалось изменить свойство.",
+      );
+    }
+  }, [propertyCommand?.id]);
+  useEffect(() => {
+    const view = editor.current;
+    if (!view || propertyFocus === undefined) return;
+    view.dispatch({
+      selection: { anchor: 0 },
+      effects: EditorView.scrollIntoView(0, { y: "start" }),
+    });
+    view.focus();
+  }, [propertyFocus]);
   useEffect(() => {
     editor.current?.dispatch({
       effects: gutter.current.reconfigure(showLineNumbers ? lineNumbers() : []),

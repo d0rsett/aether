@@ -3,6 +3,40 @@ import { afterEach, expect, it, vi } from "vitest";
 import { renderNode, safeExternal } from "../src/reading/ReadingView";
 import type { RenderNode } from "../src/services/api";
 afterEach(cleanup);
+it("renders highlights and collapsed callouts without exposing comment text", () => {
+  const title = { ...node("calloutTitle", "Предупреждение") };
+  const callout = {
+    ...node("callout", "", "warning"),
+    level: 2,
+    children: [
+      title,
+      { ...node("paragraph"), children: [node("text", "Содержимое")] },
+    ],
+  };
+  const { container } = render(
+    <>
+      {renderNode(callout, context)}
+      {renderNode(
+        { ...node("highlight"), children: [node("text", "Важно")] },
+        context,
+      )}
+      {renderNode(node("comment", "Секрет"), context)}
+    </>,
+  );
+  expect(container.querySelector("details")?.open).toBe(false);
+  expect(container.querySelector("summary")?.textContent).toBe(
+    "Предупреждение",
+  );
+  expect(container.querySelector("mark")?.textContent).toBe("Важно");
+  expect(container.textContent).not.toContain("Секрет");
+});
+it("forwards task clicks with their precise source marker", () => {
+  const task = { ...node("task", "[ ]"), from: 5, to: 8 };
+  const onTask = vi.fn();
+  render(<>{renderNode(task, { ...context, onTask })}</>);
+  fireEvent.click(screen.getByRole("checkbox"));
+  expect(onTask).toHaveBeenCalledWith(task);
+});
 const context = {
   vaultId: "v",
   path: "Note.md",

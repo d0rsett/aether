@@ -26,6 +26,25 @@ function node(
     level: 0,
   };
 }
+it("keeps multiline inline comments collapsible and excludes ranges inside callouts", () => {
+  const source =
+    "before %%hidden\ntext%% after\n\n> [!note]\n> %%one%% %%two%%\n";
+  const doc = Text.of(source.split("\n"));
+  const from = source.indexOf("%%"),
+    to = source.indexOf("%% after") + 2;
+  const callout = node("callout", source.indexOf(">"), source.length);
+  const spans = collectRichSpans(
+    [
+      node("comment", from, to),
+      callout,
+      node("comment", source.indexOf("%%one"), source.indexOf("%%one") + 7),
+      node("comment", source.indexOf("%%two"), source.indexOf("%%two") + 7),
+    ],
+    doc,
+  );
+  expect(spans.map((span) => span.node.kind)).toEqual(["comment", "callout"]);
+  expect(spans[0].block).toBe(false);
+});
 it("collects non-overlapping block and inline ranges without replacing unrelated prose", () => {
   const text = "Intro $x$ text\n\n![img](p.png)\n\n| A |\n|---|\n| 1 |\n";
   const doc = Text.of(text.split("\n"));

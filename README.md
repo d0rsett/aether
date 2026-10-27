@@ -81,11 +81,21 @@ Drafts are best-effort recovery, not backups: crashes may lose recent input, sto
 
 ### Links and rendered content
 
+Obsidian highlights (`==text==`), inline/multiline comments (`%%comment%%`) and callouts (`> [!note]`, including nested callouts and `+`/`-` folding) are supported in Reading and Live Preview. Comments are omitted from indexed prose, tags and links; unfinished comments hide the remaining body. Source mode retains the original syntax. In Live Preview, move into a fragment/block or use its edit button to reveal the source. Highlights currently use the theme accent; callout types share the Aether callout style.
+
+Task checkboxes can be toggled in Reading and Live Preview. Changes go through the existing editor history and remain unsaved until Ctrl+S. A stale preview cannot modify a newer buffer.
+
 Use `[[Note]]`, `[[Note#Heading]]`, `[[Note#^block-id]]` or `[label](../Note.md#Heading)`. Ctrl+Space requests completion. Source/Live links open with Ctrl+click; Reading links use a normal click. Missing wiki targets can be created after confirmation.
 
-The right sidebar describes the saved/indexed version, which may differ from an unsaved buffer. Heading/block navigation can use the current buffer. Relation lists are limited to 100 links.
+YAML aliases such as `aliases: [AI, Artificial Intelligence]` appear in link completion. Selecting one inserts a portable link, `[[Folder/Actual name|AI]]`; duplicate aliases show their destination paths. Existing `[[AI]]` links, heading/block references and embeds also resolve through `aliases`. Actual file paths and names take precedence; multiple matching alias destinations remain ambiguous. YAML lists and a single string are accepted; commas within a string do not split names. Empty/non-string values and names containing control characters or `[]|#` are skipped. Alias changes become available after saving and indexing; note files and Obsidian settings are not rewritten.
 
-PNG/JPEG/GIF/WebP/BMP and passive SVG images up to 8 MiB load from inside the vault via `![](path)` or `![[path]]`. Click an image to enlarge it. Obsidian dimensions such as `![[image.png|300]]` and `![[image.png|300x200]]` are supported. Remote images are not loaded. Note embeds currently show link cards. Raw HTML is text. Mermaid uses a sandboxed iframe; KaTeX applies untrusted-input restrictions. HTTP(S) links open in the system browser only after user action.
+The right sidebar’s Properties section uses the current note buffer. Add, edit or remove text, string lists, numbers, dates and checkboxes; `tags` and `aliases` use one list item per line. Edits enter editor history and reach the file only with Ctrl+S. Types are inferred from values without changing Obsidian settings. Ordinary YAML edits replace the chosen field while preserving other fields, comments and the note body; flow/JSON frontmatter may be reformatted within the header. Nested objects, YAML anchors/aliases, custom tags, complex lists and numbers beyond editor precision remain accessible through Open properties in source. Invalid YAML or a header changed while a form was open blocks the edit with an explanation.
+
+Relations and tags in the sidebar describe the saved/indexed version, which may differ from an unsaved buffer. Heading/block navigation can use the current buffer. Relation lists are limited to 100 links.
+
+PNG/JPEG/GIF/WebP/BMP and passive SVG images up to 8 MiB load from inside the vault via `![](path)` or `![[path]]`. Click an image to enlarge it. Obsidian dimensions such as `![[image.png|300]]` and `![[image.png|300x200]]` are supported. Remote images are not loaded. Raw HTML is text. Mermaid uses a sandboxed iframe; KaTeX applies untrusted-input restrictions. HTTP(S) links open in the system browser only after user action.
+
+Note embeds display actual content in Reading and Live Preview: `![[Note]]`, `![[Note#Heading]]`, `![[Note#Parent#Child]]`, `![[Note#^block]]` and Markdown embeds such as `![label](../Note.md#Heading)`. A heading includes its subsections up to the next heading of the same or a higher level. Embedded content uses current open buffers, or disk for closed notes; links and images resolve relative to the embedded note. Use the header button to open the original. Editing and task toggling happen in the original note; embedded content is read-only. Live Preview keeps the source link visible. Missing/ambiguous links and cycles have explicit fallback messages. Limits are four nested levels, 32 wiki note embeds per rendered document and 48 active embeds across the workspace.
 
 ### Pasting images and Obsidian attachment compatibility
 

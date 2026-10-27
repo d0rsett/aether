@@ -8,9 +8,206 @@ import {
   activeFormats,
   applyWikiCompletion,
 } from "../src/editor/enhancements";
-import { insertBracket, deleteBracketPair } from "@codemirror/autocomplete";
+import {
+  insertBracket,
+  deleteBracketPair,
+  startCompletion,
+  acceptCompletion,
+  currentCompletions,
+} from "@codemirror/autocomplete";
+import { toggleTask } from "../src/editor/tasks";
+import { api } from "../src/services/api";
+import { readProperties } from "../src/editor/properties";
+import { applyProperty } from "../src/editor/propertyInput";
 
 afterEach(cleanup);
+it("inserts new YAML lines using the editor line separator rather than literal LF characters", () => {
+  for (const source of ["Body\r\nNext", "---\r\nold: yes\r\n---\r\nBody"]) {
+    const { unmount } = render(
+      <MarkdownEditor content={source} onChange={vi.fn()} onSave={vi.fn()} />,
+    );
+    const view = EditorView.findFromDOM(
+      screen.getByRole("textbox", { name: "Markdown-редактор" }),
+    )!;
+    applyProperty(
+      view,
+      { key: "new", value: "value", create: true },
+      readProperties(source).expected,
+    );
+    expect(view.state.sliceDoc().replace(/\r\n/g, "")).not.toContain("\n");
+    expect(view.state.doc.lines).toBeGreaterThan(source.split("\r\n").length);
+    expect(
+      readProperties(view.state.sliceDoc()).items.find(
+        (item) => item.key === "new",
+      )?.value,
+    ).toBe("value");
+    undo(view);
+    expect(view.state.sliceDoc()).toBe(source);
+    unmount();
+  }
+});
+it("maps body selections through a property edit, preserves CRLF and isolates undo", () => {
+  const source = "\uFEFF---\r\ntitle: Old\r\n---\r\nBody 😀";
+  render(
+    <MarkdownEditor content={source} onChange={vi.fn()} onSave={vi.fn()} />,
+  );
+  const view = EditorView.findFromDOM(
+    screen.getByRole("textbox", { name: "Markdown-редактор" }),
+  )!;
+  const expected = readProperties(source).expected;
+  view.dispatch({
+    changes: { from: view.state.doc.length, insert: " draft" },
+    userEvent: "input.type",
+  });
+  const draft = view.state.sliceDoc();
+  view.dispatch({
+    selection: {
+      anchor: view.state.doc.length - 5,
+      head: view.state.doc.length,
+    },
+  });
+  applyProperty(
+    view,
+    { key: "title", value: "New title", create: false },
+    expected,
+  );
+  expect(view.state.sliceDoc()).toBe(draft.replace("Old", '"New title"'));
+  expect(
+    view.state.sliceDoc(
+      view.state.selection.main.from,
+      view.state.selection.main.to,
+    ),
+  ).toBe("draft");
+  undo(view);
+  expect(view.state.sliceDoc()).toBe(draft);
+  undo(view);
+  expect(view.state.sliceDoc()).toBe(source);
+});
+it("applies property commands in reading mode and reports stale header conflicts without replacing text", () => {
+  const source = "---\ntitle: Old\n---\nBody";
+  const props = {
+    content: source,
+    onChange: vi.fn(),
+    onSave: vi.fn(),
+    visible: false,
+  };
+  const { rerender } = render(<MarkdownEditor {...props} />);
+  const view = EditorView.findFromDOM(
+    screen.getByRole("textbox", { name: "Markdown-редактор" }),
+  )!;
+  view.dispatch({ changes: { from: 11, to: 14, insert: "New" } });
+  const current = view.state.sliceDoc();
+  const done = vi.fn();
+  rerender(
+    <MarkdownEditor
+      {...props}
+      content={current}
+      propertyCommand={{
+        id: 1,
+        action: { key: "title", value: "Stale", create: false },
+        expected: readProperties(source).expected,
+        done,
+      }}
+    />,
+  );
+  expect(done).toHaveBeenCalledWith(expect.stringContaining("изменились"));
+  expect(view.state.sliceDoc()).toBe(current);
+  expect(props.onSave).not.toHaveBeenCalled();
+});
+it("completes YAML aliases as canonical links and preserves closing brackets and undo", async () => {
+  const suggestions = vi.spyOn(api, "linkSuggestions").mockResolvedValue([
+    { path: "Notes/Topic.md", alias: "ИИ" },
+    { path: "Other.md", alias: "ИИ" },
+  ]);
+  try {
+    render(
+      <MarkdownEditor
+        content="[[ИИ]]"
+        vaultId="v"
+        path="Main.md"
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+      />,
+    );
+    const view = EditorView.findFromDOM(
+      screen.getByRole("textbox", { name: "Markdown-редактор" }),
+    )!;
+    // JSDOM does not measure text ranges; native tests cover popup placement.
+    vi.spyOn(view, "coordsAtPos").mockReturnValue(null);
+    view.dispatch({ selection: { anchor: 4 } });
+    startCompletion(view);
+    await vi.waitFor(() =>
+      expect(currentCompletions(view.state)).toHaveLength(2),
+    );
+    expect(suggestions).toHaveBeenCalledWith("v", "ИИ");
+    expect(
+      currentCompletions(view.state).map((option) => option.detail),
+    ).toEqual(["→ Notes/Topic.md", "→ Other.md"]);
+    await vi.waitFor(() => expect(acceptCompletion(view)).toBe(true));
+    expect(view.state.sliceDoc()).toBe("[[Notes/Topic|ИИ]]");
+    expect(view.state.selection.main.head).toBe(view.state.doc.length);
+    undo(view);
+    expect(view.state.sliceDoc()).toBe("[[ИИ]]");
+  } finally {
+    suggestions.mockRestore();
+  }
+});
+it("keeps checked task markers visible instead of hiding them as link brackets", () => {
+  render(
+    <MarkdownEditor
+      content={"# Title\n\n- [x] Done"}
+      live
+      onChange={vi.fn()}
+      onSave={vi.fn()}
+    />,
+  );
+  expect(
+    screen.getByRole("textbox", { name: "Markdown-редактор" }).textContent,
+  ).toContain("[x]");
+});
+it("toggles a task through history without moving selection and rejects stale previews", () => {
+  const content = "😀\r\n- [ ] Дело\r\n";
+  const { rerender } = render(
+    <MarkdownEditor content={content} onChange={vi.fn()} onSave={vi.fn()} />,
+  );
+  const view = EditorView.findFromDOM(
+    screen.getByRole("textbox", { name: "Markdown-редактор" }),
+  )!;
+  const from = view.state.doc.toString().indexOf("[ ]");
+  const task = {
+    from,
+    to: from + 3,
+    kind: "task",
+    text: "[ ]",
+    target: "",
+    level: 0,
+    line: 2,
+    endLine: 2,
+    children: [],
+  };
+  view.dispatch({ selection: { anchor: view.state.doc.length } });
+  const selection = view.state.selection.main.anchor;
+  view.dispatch({
+    changes: { from: selection, insert: "Новый текст" },
+    userEvent: "input.type",
+  });
+  const snapshot = view.state.sliceDoc();
+  const afterTypingSelection = view.state.selection.main.anchor;
+  expect(toggleTask(view, task, snapshot)).toBe(true);
+  expect(view.state.sliceDoc()).toBe(snapshot.replace("[ ]", "[x]"));
+  expect(view.state.selection.main.anchor).toBe(afterTypingSelection);
+  expect(toggleTask(view, task, content)).toBe(false);
+  rerender(
+    <MarkdownEditor
+      content={view.state.sliceDoc()}
+      onChange={vi.fn()}
+      onSave={vi.fn()}
+      live
+    />,
+  );
+  undo(view);
+  expect(view.state.sliceDoc()).toBe(snapshot);
+});
 it("switches line wrapping without replacing text, selection or undo history", () => {
   const props = {
     content: "длинная строка",

@@ -63,6 +63,7 @@ fn location(content: &str, range: Range<usize>) -> Location {
 pub fn locate(content: &str, anchor: &str) -> Result<Location> {
     let anchor = decode(anchor.trim().trim_start_matches('#'));
     let parsed = markdown::parse(content);
+    let prepared = crate::obsidian::prepare(&content[parsed.body_offset..]);
     if let Some(id) = anchor.strip_prefix('^') {
         if id.is_empty()
             || !id
@@ -74,7 +75,10 @@ pub fn locate(content: &str, anchor: &str) -> Result<Location> {
         let marker = format!("^{id}");
         let mut candidates = Vec::new();
         let mut offset = 0;
-        for line in content.split_inclusive('\n') {
+        for line in content[..parsed.body_offset]
+            .split_inclusive('\n')
+            .chain(prepared.split_inclusive('\n'))
+        {
             let trimmed = line.trim_end();
             if let Some(prefix) = trimmed.strip_suffix(&marker) {
                 if (prefix.is_empty() || prefix.ends_with(char::is_whitespace))
@@ -90,9 +94,7 @@ pub fn locate(content: &str, anchor: &str) -> Result<Location> {
         let mut code = false;
         let mut found = Vec::new();
         let mut seen = HashSet::new();
-        for (event, range) in
-            Parser::new_ext(&content[parsed.body_offset..], markdown::options()).into_offset_iter()
-        {
+        for (event, range) in Parser::new_ext(&prepared, markdown::options()).into_offset_iter() {
             let absolute = range.start + parsed.body_offset..range.end + parsed.body_offset;
             match event {
                 Event::Start(tag) => {
@@ -155,6 +157,30 @@ pub fn locate(content: &str, anchor: &str) -> Result<Location> {
             line: 1,
         });
     }
+    if anchor.contains('#') {
+        let segments: Vec<_> = anchor.split('#').map(name).collect();
+        let mut parents = Vec::<&markdown::Heading>::new();
+        for heading in &parsed.headings {
+            while parents
+                .last()
+                .is_some_and(|parent| parent.level >= heading.level)
+            {
+                parents.pop();
+            }
+            parents.push(heading);
+            if parents.len() >= segments.len()
+                && parents[parents.len() - segments.len()..]
+                    .iter()
+                    .zip(&segments)
+                    .all(|(parent, segment)| name(&parent.title) == *segment)
+            {
+                return Ok(location(content, heading.start..heading.end));
+            }
+        }
+        return Err(Error::Navigation(
+            "Указанный путь заголовков не найден в заметке.".into(),
+        ));
+    }
     if let Some(heading) = parsed
         .headings
         .iter()
@@ -184,6 +210,15 @@ pub fn locate(content: &str, anchor: &str) -> Result<Location> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn comments_do_not_offer_heading_or_block_navigation() -> Result<()> {
+        let content = "%%\n# Hidden\nText ^hidden\n%%\n\n# ==Visible==\n\nText ^visible\n";
+        assert!(locate(content, "Hidden").is_err());
+        assert!(locate(content, "^hidden").is_err());
+        assert_eq!(locate(content, "Visible")?.line, 6);
+        assert_eq!(locate(content, "^visible")?.line, 8);
+        Ok(())
+    }
     #[test]
     fn formatted_headings_utf16_crlf_bom_and_duplicate_slugs() -> Result<()> {
         let text = "\u{feff}😀 вступление\r\n# **Раздел** один\r\nтекст\r\n# Раздел один\r\n";

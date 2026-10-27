@@ -17,8 +17,12 @@ import {
 } from "@codemirror/view";
 import { api, errorMessage, type RenderNode } from "../services/api";
 import { renderNode } from "../reading/ReadingView";
+import { toggleTask } from "./tasks";
+import type { NotePreviews } from "../services/notePreviews";
 
 interface Config {
+  previews?: NotePreviews;
+  onNavigate?: (source: string, target: string) => void;
   vaultId: string;
   path: string;
   theme: string;
@@ -44,7 +48,9 @@ export const parsedPreview = StateEffect.define<{
   spans: RichSpan[];
 }>();
 function attachment(node: RenderNode) {
-  return node.kind === "image" || node.kind === "embed";
+  return (
+    node.kind === "image" || node.kind === "embed" || node.kind === "embedLimit"
+  );
 }
 function fingerprint(node: RenderNode): string {
   return JSON.stringify(node, (key, value: unknown) =>
@@ -66,8 +72,10 @@ export function collectRichSpans(nodes: RenderNode[], doc: Text): RichSpan[] {
       !doc.sliceString(first.from, range.from).trim() &&
       !doc.sliceString(to, last.to).trim();
     if (forceBlock && !wholeLine) return;
-    const block = forceBlock || wholeLine;
-    if (!block && first.number !== last.number) return;
+    const block =
+      !["highlight", "task"].includes(node.kind) && (forceBlock || wholeLine);
+    if (!block && first.number !== last.number && node.kind !== "comment")
+      return;
     spans.push({
       from: block ? first.from : range.from,
       to: block ? last.to : to,
@@ -79,6 +87,7 @@ export function collectRichSpans(nodes: RenderNode[], doc: Text): RichSpan[] {
   const visit = (node: RenderNode) => {
     if (
       node.kind === "table" ||
+      node.kind === "callout" ||
       (node.kind === "codeBlock" && node.target === "mermaid")
     ) {
       add(node, node, true);
@@ -97,7 +106,11 @@ export function collectRichSpans(nodes: RenderNode[], doc: Text): RichSpan[] {
         return;
       }
     }
-    if (node.kind === "math" || attachment(node)) {
+    if (
+      ["highlight", "comment", "task"].includes(node.kind) ||
+      node.kind === "math" ||
+      attachment(node)
+    ) {
       add(node, node, node.kind === "math" && node.level === 1);
       return;
     }
@@ -107,7 +120,11 @@ export function collectRichSpans(nodes: RenderNode[], doc: Text): RichSpan[] {
   nodes.forEach(visit);
   return spans
     .sort((a, b) => a.from - b.from)
-    .filter((span, index, all) => !index || span.from >= all[index - 1].to);
+    .reduce<RichSpan[]>((result, span) => {
+      if (!result.length || span.from >= result[result.length - 1].to)
+        result.push(span);
+      return result;
+    }, []);
 }
 
 function active(state: EditorState, span: RichSpan): boolean {
@@ -173,11 +190,15 @@ class RichWidget extends WidgetType {
     const label =
       this.span.node.kind === "table"
         ? "таблицу"
-        : this.span.node.kind === "codeBlock"
-          ? "диаграмму"
-          : this.span.node.kind === "math"
-            ? "формулу"
-            : "изображение";
+        : this.span.node.kind === "callout"
+          ? "выноску"
+          : this.span.node.kind === "comment"
+            ? "комментарий"
+            : this.span.node.kind === "codeBlock"
+              ? "диаграмму"
+              : this.span.node.kind === "math"
+                ? "формулу"
+                : "изображение";
     const edit = document.createElement("button");
     edit.type = "button";
     edit.className = "live-edit-source";
@@ -210,7 +231,11 @@ class RichWidget extends WidgetType {
       )
         reveal();
     });
-    if (!attachment(this.span.node)) dom.append(edit);
+    if (
+      !attachment(this.span.node) &&
+      !["highlight", "task"].includes(this.span.node.kind)
+    )
+      dom.append(edit);
     const content = document.createElement(this.span.block ? "div" : "span");
     content.className = this.span.block
       ? "live-render-content reading-document"
@@ -222,6 +247,24 @@ class RichWidget extends WidgetType {
         ...this.config,
         onWiki: this.config.onWiki,
         onError: this.config.onError,
+        onTask: (node) => {
+          const pos = view.posAtDOM(dom);
+          const current = view.state
+            .field(richPreviewState)
+            .spans.find(
+              (span) =>
+                span.from <= pos &&
+                span.to >= pos &&
+                span.key === this.span.key,
+            );
+          if (!current) return;
+          const shift = current.from - current.node.from;
+          toggleTask(
+            view,
+            { ...node, from: node.from + shift, to: node.to + shift },
+            view.state.sliceDoc(),
+          );
+        },
       }),
     );
     const observer =
@@ -270,7 +313,7 @@ function decorations(spans: RichSpan[], state: EditorState): DecorationSet {
             ]
           : [preview];
       }
-      if (active(state, span)) return [];
+      if (active(state, span) && span.node.kind !== "task") return [];
       return [
         Decoration.replace({
           widget: new RichWidget(span, config),

@@ -342,6 +342,7 @@ export function applyWikiCompletion(
   completion: Completion,
   from: number,
   to: number,
+  insert = completion.label,
 ) {
   const after = view.state.sliceDoc(to, to + 2);
   const closing = after.startsWith("]]")
@@ -350,8 +351,8 @@ export function applyWikiCompletion(
       ? "]"
       : "]]";
   view.dispatch({
-    changes: { from, to, insert: completion.label + closing },
-    selection: { anchor: from + completion.label.length + 2 },
+    changes: { from, to, insert: insert + closing },
+    selection: { anchor: from + insert.length + 2 },
     annotations: pickedCompletion.of(completion),
     userEvent: "input.complete",
   });
@@ -399,18 +400,13 @@ export function linkCompletion(vaultId: string, path: string) {
               validFor: /^[^\]\n|]*$/,
             };
           }
-          const page = await api.search(vaultId, {
-            text: typed.trim(),
-            path: "",
-            tag: "",
-            property: "",
-            value: "",
-            offset: 0,
-          });
+          const suggestions = await api.linkSuggestions(vaultId, typed);
           return {
             from: match.from + 2,
             getMatch: (completion, matched = []) => {
-              const offset = completion.label.lastIndexOf("/") + 1;
+              const offset = completion.detail?.startsWith("→ ")
+                ? 0
+                : completion.label.lastIndexOf("/") + 1;
               const result: number[] = [];
               for (let index = 0; index < matched.length; index += 2) {
                 const from = Math.max(0, matched[index] - offset);
@@ -419,17 +415,29 @@ export function linkCompletion(vaultId: string, path: string) {
               }
               return result;
             },
-            options: page.hits.map((hit) => ({
-              label: hit.path.replace(/\.(md|markdown)$/i, ""),
-              displayLabel: hit.path
-                .split("/")
-                .pop()!
-                .replace(/\.(md|markdown)$/i, ""),
-              detail: hit.path.includes("/")
-                ? hit.path.slice(0, hit.path.lastIndexOf("/"))
-                : undefined,
+            options: suggestions.map((hit) => ({
+              label: hit.alias ?? hit.path.replace(/\.(md|markdown)$/i, ""),
+              displayLabel:
+                hit.alias ??
+                hit.path
+                  .split("/")
+                  .pop()!
+                  .replace(/\.(md|markdown)$/i, ""),
+              detail: hit.alias
+                ? `→ ${hit.path}`
+                : hit.path.includes("/")
+                  ? hit.path.slice(0, hit.path.lastIndexOf("/"))
+                  : undefined,
               type: "text",
-              apply: applyWikiCompletion,
+              apply: (view, completion, from, to) =>
+                applyWikiCompletion(
+                  view,
+                  completion,
+                  from,
+                  to,
+                  hit.path.replace(/\.(md|markdown)$/i, "") +
+                    (hit.alias ? `|${hit.alias}` : ""),
+                ),
             })),
             validFor: /^[^\]\n|#]*$/,
           };

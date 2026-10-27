@@ -25,7 +25,9 @@ import { imageExtension } from "../services/images";
 import { useQuestion } from "../components/useQuestion";
 import { useRenameReview } from "../components/RenameDialog";
 import { useWorkspace } from "./useWorkspace";
-import { api, desktop, errorMessage } from "../services/api";
+import { api, desktop, errorMessage, type RenderNode } from "../services/api";
+import { NotePreviews } from "../services/notePreviews";
+import type { PropertyCommand } from "../editor/properties";
 import { useKnowledge } from "../hooks/useKnowledge";
 import { SearchPanel } from "../search/SearchPanel";
 import type { FormatCommand } from "../editor/enhancements";
@@ -76,6 +78,7 @@ export function App() {
   const renameReview = useRenameReview();
   const vaultCreation = useVaultCreation();
   const app = useWorkspace(ask, renameReview.review, vaultCreation.request);
+  const [previews] = useState(() => new NotePreviews());
   const context = useContextMenu(app.setError);
   const [dragged, setDragged] = useState<string | null>(null);
   const [rootDrop, setRootDrop] = useState(false);
@@ -135,6 +138,31 @@ export function App() {
   const [help, setHelp] = useState(false);
   const [stats, setStats] = useState({ words: 0, chars: 0, lines: 0 });
   const [mode, setMode] = useState<Mode>("live");
+  const [propertyCommand, setPropertyCommand] = useState<
+    (PropertyCommand & { path: string; vaultId: string }) | null
+  >(null);
+  const propertyId = useRef(0);
+  const [propertyFocus, setPropertyFocus] = useState<{
+    id: number;
+    path: string;
+    vaultId: string;
+  } | null>(null);
+  useEffect(
+    () => setPropertyFocus(null),
+    [app.vault?.id, app.workspace.active],
+  );
+  useEffect(
+    () => setPropertyCommand(null),
+    [app.vault?.id, app.workspace.active],
+  );
+  const [taskCommand, setTaskCommand] = useState<{
+    id: number;
+    vaultId: string;
+    path: string;
+    node: RenderNode;
+    snapshot: string;
+  } | null>(null);
+  useEffect(() => setTaskCommand(null), [app.vault?.id, app.workspace.active]);
   const [formatCommand, setFormatCommand] = useState<{
     id: number;
     type: FormatCommand;
@@ -170,6 +198,13 @@ export function App() {
     app.active?.path,
     app.active?.revision,
   );
+  useEffect(() => {
+    previews.update(
+      app.vault?.id,
+      app.workspace.tabs,
+      knowledge.status?.revision ?? 0,
+    );
+  }, [previews, app.vault?.id, app.workspace.tabs, knowledge.status?.revision]);
   useEffect(() => {
     if (knowledge.status && !knowledge.status.running)
       app.setRefresh((n) => n + 1);
@@ -882,6 +917,28 @@ export function App() {
                             hidden={mode === "reading"}
                           >
                             <MarkdownEditor
+                              propertyFocus={
+                                propertyFocus?.path === tab.path &&
+                                propertyFocus.vaultId === app.vault?.id
+                                  ? propertyFocus.id
+                                  : undefined
+                              }
+                              propertyCommand={
+                                propertyCommand?.path === tab.path &&
+                                propertyCommand.vaultId === app.vault?.id
+                                  ? propertyCommand
+                                  : null
+                              }
+                              previews={previews}
+                              onNavigate={(source, target) =>
+                                void app.openWiki(source, target)
+                              }
+                              taskCommand={
+                                taskCommand?.path === tab.path &&
+                                taskCommand.vaultId === app.vault?.id
+                                  ? taskCommand
+                                  : null
+                              }
                               onAttachmentsImported={() =>
                                 app.setRefresh((value) => value + 1)
                               }
@@ -942,6 +999,19 @@ export function App() {
                             tab.path === app.workspace.active &&
                             app.vault && (
                               <ReadingView
+                                previews={previews}
+                                onNavigate={(source, target) =>
+                                  void app.openWiki(source, target)
+                                }
+                                onTask={(node, snapshot) =>
+                                  setTaskCommand((previous) => ({
+                                    id: (previous?.id ?? 0) + 1,
+                                    vaultId: app.vault!.id,
+                                    path: tab.path,
+                                    node,
+                                    snapshot,
+                                  }))
+                                }
                                 theme={theme}
                                 vaultId={app.vault.id}
                                 path={tab.path}
@@ -1002,6 +1072,29 @@ export function App() {
               onCollapse={() => setRight(false)}
             />
             <Inspector
+              onSource={() => {
+                if (!app.active || !app.vault) return;
+                setMode("source");
+                setPropertyFocus({
+                  id: ++propertyId.current,
+                  path: app.active.path,
+                  vaultId: app.vault.id,
+                });
+              }}
+              onProperty={(action, expected, done) => {
+                if (!app.active || !app.vault) {
+                  done("Откройте заметку заново.");
+                  return;
+                }
+                setPropertyCommand({
+                  id: ++propertyId.current,
+                  path: app.active.path,
+                  vaultId: app.vault.id,
+                  action,
+                  expected,
+                  done,
+                });
+              }}
               app={app}
               inspection={knowledge.inspection}
               knowledgeError={knowledge.error}

@@ -1,0 +1,302 @@
+import {
+  isAlias,
+  isMap,
+  isScalar,
+  isSeq,
+  parseDocument,
+  type Node,
+} from "yaml";
+
+export type PropertyType = "text" | "list" | "number" | "date" | "checkbox";
+export type PropertyValue = string | string[] | number | boolean;
+export interface NoteProperty {
+  key: string;
+  type: PropertyType | "unsupported";
+  value: PropertyValue;
+}
+export type PropertyAction =
+  | { key: string; value: PropertyValue; create: boolean }
+  | { key: string; remove: true };
+export interface PropertyCommand {
+  id: number;
+  action: PropertyAction;
+  expected: string;
+  done: (error?: string) => void;
+}
+const invalid =
+  "Не удалось прочитать свойства. Исправьте их в исходнике заметки.";
+const normalize = (text: string) => text.replace(/\r\n/g, "\n");
+function validateKey(key: string) {
+  if (!key.trim() || key.length > 256 || /[\x00-\x1f\x7f]/.test(key))
+    throw new Error("Введите имя свойства длиной до 256 символов.");
+}
+
+function frontmatter(content: string) {
+  const text = normalize(content);
+  const bom = text.startsWith("\uFEFF") ? 1 : 0;
+  if (!text.slice(bom).startsWith("---\n"))
+    return { text, from: bom, to: bom, source: "", exists: false };
+  const from = bom + 4;
+  const close = /^[ \t]*(?:---|\.\.\.)[ \t]*$/gm;
+  close.lastIndex = from;
+  const match = close.exec(text);
+  if (!match || match.index - from > 65_536) throw new Error(invalid);
+  return {
+    text,
+    from,
+    to: match.index,
+    source: text.slice(from, match.index),
+    exists: true,
+  };
+}
+function parsed(content: string) {
+  const header = frontmatter(content);
+  const document = parseDocument(header.source, {
+    keepSourceTokens: true,
+    intAsBigInt: true,
+  });
+  if (
+    document.errors.length ||
+    (document.contents && !isMap(document.contents))
+  )
+    throw new Error(invalid);
+  if (
+    isMap(document.contents) &&
+    document.contents.items.some(
+      (pair) => !isScalar(pair.key) || typeof pair.key.value !== "string",
+    )
+  )
+    throw new Error(invalid);
+  return { ...header, document };
+}
+function property(key: string, node: Node | null): NoteProperty {
+  if (node && !isAlias(node) && !node.tag && !node.anchor) {
+    if (isScalar(node)) {
+      const value: unknown = node.value;
+      if (typeof value === "boolean") return { key, type: "checkbox", value };
+      if (
+        typeof value === "number" &&
+        Number.isFinite(value) &&
+        (!Number.isInteger(value) || Number.isSafeInteger(value))
+      )
+        return { key, type: "number", value };
+      if (
+        typeof value === "bigint" &&
+        value <= BigInt(Number.MAX_SAFE_INTEGER) &&
+        value >= BigInt(Number.MIN_SAFE_INTEGER)
+      )
+        return { key, type: "number", value: Number(value) };
+      if (typeof value === "string" || value === null)
+        return {
+          key,
+          type:
+            typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
+              ? "date"
+              : "text",
+          value: value ?? "",
+        };
+    }
+    if (
+      isSeq(node) &&
+      node.items.every(
+        (item) =>
+          isScalar(item) &&
+          typeof item.value === "string" &&
+          !/[\r\n]/.test(item.value) &&
+          item.value.trim() === item.value &&
+          item.value.length > 0 &&
+          !item.anchor &&
+          !item.tag,
+      )
+    ) {
+      return {
+        key,
+        type: "list",
+        value: node.items.map((item) =>
+          isScalar(item) ? String(item.value) : "",
+        ),
+      };
+    }
+  }
+  return {
+    key,
+    type: "unsupported",
+    value: "Сложное значение — редактируется в исходнике",
+  };
+}
+export function readProperties(content: string): {
+  items: NoteProperty[];
+  expected: string;
+  error: string;
+} {
+  try {
+    const header = parsed(content);
+    const items = isMap(header.document.contents)
+      ? header.document.contents.items.map((pair) => {
+          const item = property(
+            String(isScalar(pair.key) ? pair.key.value : ""),
+            pair.value,
+          );
+          return isScalar(pair.key) && (pair.key.anchor || pair.key.tag)
+            ? { ...item, type: "unsupported" as const }
+            : item;
+        })
+      : [];
+    return { items, expected: header.source, error: "" };
+  } catch {
+    return { items: [], expected: "", error: invalid };
+  }
+}
+
+export function propertyValue(
+  key: string,
+  type: PropertyType,
+  text: string,
+  checked: boolean,
+): PropertyValue {
+  validateKey(key);
+  if (key === "tags" || key === "aliases") type = "list";
+  if (type === "checkbox") return checked;
+  if (type === "number") {
+    if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(text.trim()))
+      throw new Error("Введите число, например 12 или 3.5.");
+    const value = Number(text);
+    if (
+      !Number.isFinite(value) ||
+      (Number.isInteger(value) && !Number.isSafeInteger(value))
+    )
+      throw new Error("Число слишком велико для точного редактирования.");
+    return value;
+  }
+  if (type === "date") {
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(text) ||
+      !Number.isFinite(Date.parse(text)) ||
+      new Date(text).toISOString().slice(0, 10) !== text
+    )
+      throw new Error("Выберите существующую дату.");
+    return text;
+  }
+  if (type === "list") {
+    const values = text
+      .split(/\r?\n/)
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .map((value) => (key === "tags" ? value.replace(/^#/, "") : value));
+    if (
+      key === "tags" &&
+      values.some((value) => !/^[\p{L}\p{N}_/-]+$/u.test(value))
+    )
+      throw new Error(
+        "Теги не должны содержать пробелы. Укажите каждый тег с новой строки.",
+      );
+    if (
+      key === "aliases" &&
+      values.some((value) => /[\[\]|#\x00-\x1f\x7f]/.test(value))
+    )
+      throw new Error("Псевдонимы не должны содержать символы []|#.");
+    return values;
+  }
+  return text;
+}
+
+export function propertyEdit(
+  content: string,
+  action: PropertyAction,
+  expected: string,
+) {
+  validateKey(action.key);
+  const header = parsed(content);
+  if (header.source !== expected)
+    throw new Error(
+      "Свойства изменились, пока была открыта форма. Откройте её заново.",
+    );
+  const map = isMap(header.document.contents) ? header.document.contents : null;
+  const pair = map?.items.find(
+    (item) => isScalar(item.key) && item.key.value === action.key,
+  );
+  const removing = "remove" in action;
+  if (
+    (!removing && action.create && pair) ||
+    ((removing || !action.create) && !pair)
+  )
+    throw new Error(
+      pair
+        ? "Свойство с таким именем уже существует."
+        : "Свойство больше не существует. Откройте форму заново.",
+    );
+  if (
+    pair &&
+    (property(action.key, pair.value).type === "unsupported" ||
+      !isScalar(pair.key) ||
+      pair.key.anchor ||
+      pair.key.tag)
+  )
+    throw new Error("Это свойство можно изменить в исходнике заметки.");
+  // Values are JSON scalars/arrays, a portable subset of YAML. Never evaluate
+  // aliases or convert unrelated nodes into JavaScript objects.
+  if (
+    !removing &&
+    (JSON.stringify(action.value).length > 65_536 ||
+      (typeof action.value === "number" && !Number.isFinite(action.value)))
+  )
+    throw new Error("Значение свойства слишком велико.");
+  const literal = removing ? "" : JSON.stringify(action.value);
+  let from: number, to: number, insert: string;
+  if (!header.exists) {
+    const entry = `${JSON.stringify(action.key)}: ${literal}\n`;
+    if (entry.length > 65_536)
+      throw new Error("Свойства превышают допустимый размер 64 КБ.");
+    return {
+      from: header.from,
+      to: header.to,
+      insert: `---\n${entry}---\n`,
+    };
+  }
+  if (map?.flow) {
+    if (removing) header.document.delete(action.key);
+    else header.document.set(action.key, action.value);
+    from = header.from;
+    to = header.to;
+    try {
+      insert = header.document.toString({ lineWidth: 0 });
+    } catch {
+      throw new Error(invalid);
+    }
+  } else if (!pair) {
+    from = to = header.to;
+    const first = map?.items[0]?.key;
+    const start = isScalar(first) ? (first.range?.[0] ?? 0) : 0;
+    const indent = header.source.slice(
+      header.source.lastIndexOf("\n", start - 1) + 1,
+      start,
+    );
+    insert = `${header.source && !header.source.endsWith("\n") ? "\n" : ""}${indent}${JSON.stringify(action.key)}: ${literal}\n`;
+  } else {
+    const keyRange = isScalar(pair.key) ? pair.key.range : undefined;
+    const range = pair.value?.range;
+    if (!keyRange || !range) throw new Error(invalid);
+    if (removing) {
+      from = header.source.lastIndexOf("\n", keyRange[0] - 1) + 1;
+      to = range[2];
+      insert = "";
+    } else {
+      from = range[0];
+      to = range[1];
+      insert =
+        literal +
+        (header.source.slice(from, to).endsWith("\n")
+          ? "\n"
+          : header.source[to] === "#"
+            ? " "
+            : "");
+    }
+    from += header.from;
+    to += header.from;
+  }
+  const result = header.text.slice(0, from) + insert + header.text.slice(to);
+  const next = parsed(result);
+  if (next.source.length > 65_536)
+    throw new Error("Свойства превышают допустимый размер 64 КБ.");
+  return { from, to, insert };
+}

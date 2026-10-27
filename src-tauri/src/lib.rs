@@ -1,6 +1,8 @@
 use aether_core::attachment_import::{self, Imported, Upload};
 use aether_core::files::Note;
-use aether_core::indexing::{Index, IndexStatus, Inspection, SearchPage, SearchQuery};
+use aether_core::indexing::{
+    Index, IndexStatus, Inspection, LinkSuggestion, SearchPage, SearchQuery,
+};
 use aether_core::links::Resolution;
 use aether_core::navigation::{self, Location};
 use aether_core::renaming::{self, Applied, Plan, Preview, RenameState};
@@ -208,6 +210,17 @@ async fn search_notes(
 ) -> Result<SearchPage> {
     with_index(state.inner().clone(), vault_id, move |index| {
         index.search(&query)
+    })
+    .await
+}
+#[tauri::command]
+async fn link_suggestions(
+    state: State<'_, AppState>,
+    vault_id: String,
+    text: String,
+) -> Result<Vec<LinkSuggestion>> {
+    with_index(state.inner().clone(), vault_id, move |index| {
+        index.link_suggestions(&text)
     })
     .await
 }
@@ -588,6 +601,20 @@ async fn render_markdown(
     .await
 }
 #[tauri::command]
+async fn render_note_fragment(
+    state: State<'_, AppState>,
+    vault_id: String,
+    path: String,
+    content: String,
+    anchor: String,
+) -> Result<rendering::Document> {
+    with_vault(state.inner().clone(), vault_id, move |v| {
+        v.note_path(&path)?;
+        rendering::fragment(&content, &anchor)
+    })
+    .await
+}
+#[tauri::command]
 async fn anchor_options(
     state: State<'_, AppState>,
     vault_id: String,
@@ -929,6 +956,7 @@ pub fn run() {
             undo_rename,
             locate_anchor,
             render_markdown,
+            render_note_fragment,
             anchor_options,
             read_image,
             import_attachments,
@@ -939,6 +967,7 @@ pub fn run() {
             reveal_in_explorer,
             trash_note,
             search_notes,
+            link_suggestions,
             inspect_note,
             resolve_link,
             index_status

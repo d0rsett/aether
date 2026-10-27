@@ -22,6 +22,411 @@ import { createHash } from "node:crypto";
 const root = resolve(import.meta.dirname, "../..");
 const executable = resolve(root, "src-tauri/target/e2e/release/aether.exe");
 
+test("note properties: typed edits, drafts, undo, preservation and explicit save", async () => {
+  const run = await mkdtemp(join(root, ".build-cache/native-properties-"));
+  const vault = join(run, "Native-MVP"),
+    data = join(run, "data");
+  await mkdir(vault);
+  await mkdir(data);
+  const source =
+    "\uFEFF---\r\n# Keep comment\r\ntitle: 'Old' # title note\r\ncount: 1\r\ndone: false\r\ndue: 2026-10-27\r\ntags: [old]\r\naliases: [Old Alias]\r\nplugin:\r\n  nested: {keep: true}\r\n---\r\n# Body 😀\r\nOriginal text\r\n";
+  await writeFile(join(vault, "Main.md"), source);
+  await writeFile(join(vault, "Other.md"), "Plain body");
+  await writeFile(join(vault, "Broken.md"), "---\nbad: [oops\n---\nBody");
+  await writeFile(
+    join(data, "settings.json"),
+    JSON.stringify({ lastVault: vault }),
+  );
+  let app: RunningApp | undefined;
+  try {
+    app = await launch(data, join(run, "profile"), false);
+    const page = app.page;
+    await page.getByRole("button", { name: "Main", exact: true }).click();
+    await setMode(page, "Исходник");
+    const editor = page.getByRole("textbox", { name: "Markdown-редактор" });
+    await editor.press("Control+End");
+    await editor.pressSequentially("Unsaved body");
+    await page
+      .getByRole("button", { name: "Переключить правую панель", exact: true })
+      .click();
+    const properties = page.getByRole("region", { name: "Свойства заметки" });
+    const row = (key: string) =>
+      properties.getByRole("button", {
+        name: `Изменить свойство ${key}`,
+        exact: true,
+      });
+    const dialog = page.getByRole("dialog");
+    const change = async (key: string, value: string) => {
+      await row(key).click();
+      await dialog.getByLabel("Значение", { exact: true }).fill(value);
+      await dialog
+        .getByRole("button", { name: "Применить", exact: true })
+        .click();
+      await expect(dialog).toBeHidden();
+    };
+    await change("title", "Draft title");
+    await expect(row("title")).toContainText("Draft title");
+    expect(await readFile(join(vault, "Main.md"), "utf8")).toBe(source);
+    await editor.press("Control+z");
+    await expect(row("title")).toContainText("Old");
+    await expect(editor).toContainText("Unsaved body");
+    await editor.press("Control+y");
+    await expect(row("title")).toContainText("Draft title");
+    await setMode(page, "Чтение");
+    await change("count", "2.5");
+    await row("done").click();
+    await dialog.getByRole("checkbox", { name: "Значение включено" }).check();
+    await dialog
+      .getByRole("button", { name: "Применить", exact: true })
+      .click();
+    await expect(row("done")).toContainText("Да");
+    await change("due", "2028-02-29");
+    await row("aliases").click();
+    await expect(dialog.getByLabel("Тип свойства")).toBeDisabled();
+    await dialog
+      .getByLabel("Значение", { exact: true })
+      .fill("ИИ\nFirst, Last");
+    await dialog
+      .getByRole("button", { name: "Применить", exact: true })
+      .click();
+    await change("tags", "#работа\nproject/test");
+    await row("count").click();
+    await dialog.getByLabel("Значение", { exact: true }).fill("1+2");
+    await dialog
+      .getByRole("button", { name: "Применить", exact: true })
+      .click();
+    await expect(dialog.getByRole("alert")).toContainText("Введите число");
+    await dialog.getByRole("button", { name: "Отмена", exact: true }).click();
+    await row("due").click();
+    await dialog
+      .getByRole("button", { name: "Удалить свойство", exact: true })
+      .click();
+    await expect(row("due")).toHaveCount(0);
+    await properties
+      .getByRole("button", { name: "Добавить свойство", exact: true })
+      .click();
+    await dialog.getByLabel("Имя свойства").fill("custom: key");
+    await dialog.getByLabel("Значение", { exact: true }).fill("true");
+    await dialog
+      .getByRole("button", { name: "Применить", exact: true })
+      .click();
+    await expect(row("custom: key")).toContainText("true");
+    await expect(
+      page.getByRole("region", { name: "Просмотр заметки" }),
+    ).toContainText("Unsaved body");
+    await page.mouse.move(10, 10);
+    await page.screenshot({
+      path: test.info().outputPath("properties-dark.png"),
+    });
+    await page
+      .getByRole("button", { name: "Переключить тему", exact: true })
+      .click();
+    await page.setViewportSize({ width: 900, height: 650 });
+    await row("title").click();
+    await page.screenshot({
+      path: test.info().outputPath("properties-form-light-narrow.png"),
+    });
+    await dialog.getByRole("button", { name: "Отмена", exact: true }).click();
+    await row("plugin").click();
+    await expect(editor.locator(".cm-line").first()).toBeVisible();
+    await expect(editor).toContainText("plugin:");
+    await expect(editor).toContainText("nested: {keep: true}");
+    await expect(editor).toContainText("# Keep comment");
+    expect(await readFile(join(vault, "Main.md"), "utf8")).toBe(source);
+    await editor.press("Control+s");
+    await expect
+      .poll(async () => await readFile(join(vault, "Main.md"), "utf8"))
+      .toContain('title: "Draft title" # title note');
+    const saved = await readFile(join(vault, "Main.md"), "utf8");
+    expect(saved.startsWith("\uFEFF---\r\n")).toBe(true);
+    expect(saved.replace(/\r\n/g, "")).not.toContain("\n");
+    expect(saved).toContain("plugin:\r\n  nested: {keep: true}\r\n");
+    expect(saved).toContain("Unsaved body");
+    expect(saved).toContain('aliases: ["ИИ","First, Last"]');
+    expect(saved).toContain("count: 2.5");
+    expect(saved).toContain("done: true");
+    expect(saved).not.toContain("due:");
+    await page.getByRole("button", { name: "Other", exact: true }).click();
+    await properties
+      .getByRole("button", { name: "Добавить свойство", exact: true })
+      .click();
+    await dialog.getByLabel("Имя свойства").fill("due");
+    await dialog.getByLabel("Тип свойства").selectOption("date");
+    await dialog.getByLabel("Значение", { exact: true }).fill("2028-02-29");
+    await dialog
+      .getByRole("button", { name: "Применить", exact: true })
+      .click();
+    await expect(row("due")).toContainText("2028-02-29");
+    expect(await readFile(join(vault, "Other.md"), "utf8")).toBe("Plain body");
+    await page.getByRole("button", { name: "Broken", exact: true }).click();
+    await expect(properties.getByRole("alert")).toContainText("исходнике");
+    await expect(
+      properties.getByRole("button", {
+        name: "Добавить свойство",
+        exact: true,
+      }),
+    ).toHaveCount(0);
+  } finally {
+    await stop(app);
+  }
+});
+
+test("YAML aliases: navigation, embeds, duplicate suggestions and portable insertion", async () => {
+  const run = await mkdtemp(join(root, ".build-cache/native-aliases-"));
+  const vault = join(run, "Native-MVP"),
+    data = join(run, "data");
+  await mkdir(join(vault, "Notes"), { recursive: true });
+  await mkdir(data);
+  const source =
+    "\uFEFF---\r\naliases: [ИИ, Общий]\r\n---\r\n# Topic\r\n\r\n## Раздел\r\nТекст назначения ^block\r\n";
+  const main =
+    "# Main\n\n[[ИИ#Раздел|Открыть раздел]]\n\n![[ИИ#^block|Фрагмент]]\n";
+  await writeFile(join(vault, "Notes", "Topic.md"), source);
+  await writeFile(join(vault, "Other.md"), "---\naliases: [Общий]\n---\nOther");
+  await writeFile(join(vault, "Main.md"), main);
+  await writeFile(
+    join(data, "settings.json"),
+    JSON.stringify({ lastVault: vault }),
+  );
+  let app: RunningApp | undefined;
+  try {
+    app = await launch(data, join(run, "profile"), false);
+    const page = app.page;
+    await page.getByRole("button", { name: "Main", exact: true }).click();
+    await setMode(page, "Чтение");
+    await expect(
+      page.getByRole("region", {
+        name: "Встроенная заметка: Фрагмент",
+        exact: true,
+      }),
+    ).toContainText("Текст назначения");
+    await page
+      .getByRole("link", { name: "Открыть раздел", exact: true })
+      .click();
+    await expect(
+      page.getByRole("tab", { name: "Topic", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await page.getByRole("tab", { name: "Main", exact: true }).click();
+    await setMode(page, "Исходник");
+    const editor = page.getByRole("textbox", { name: "Markdown-редактор" });
+    await editor.press("Control+End");
+    await editor.press("Enter");
+    await editor.pressSequentially("[[Общ");
+    const popup = page.locator(".cm-tooltip-autocomplete");
+    await expect(popup.getByRole("option")).toHaveCount(2);
+    await expect(popup).toContainText("→ Notes/Topic.md");
+    await expect(popup).toContainText("→ Other.md");
+    await page.mouse.move(10, 10);
+    await page.screenshot({ path: test.info().outputPath("aliases-dark.png") });
+    await page
+      .getByRole("button", { name: "Переключить тему", exact: true })
+      .click();
+    await expect(popup).toBeHidden();
+    await editor.press("Control+Space");
+    await expect(popup.getByRole("option")).toHaveCount(2);
+    await page.screenshot({
+      path: test.info().outputPath("aliases-light.png"),
+    });
+    await popup
+      .getByRole("option")
+      .filter({ hasText: "→ Notes/Topic.md" })
+      .click();
+    await expect(editor.locator(".cm-line").last()).toHaveText(
+      "[[Notes/Topic|Общий]]",
+    );
+    await editor.press("Control+z");
+    await expect(editor.locator(".cm-line").last()).toHaveText("[[Общ]]");
+    expect(await readFile(join(vault, "Main.md"), "utf8")).toBe(main);
+    expect(await readFile(join(vault, "Notes", "Topic.md"), "utf8")).toBe(
+      source,
+    );
+    await writeFile(
+      join(vault, "Notes", "Topic.md"),
+      source.replace("ИИ, Общий", "ИИ, Общий, Новый псевдоним"),
+    );
+    await editor.press("Escape");
+    await editor.press("End");
+    await editor.press("Enter");
+    await editor.pressSequentially("[[Новый");
+    await expect(async () => {
+      await editor.press("Control+Space");
+      await expect(popup).toContainText("Новый псевдоним");
+    }).toPass();
+  } finally {
+    await stop(app);
+  }
+});
+
+test("note embeds: fragments, live buffers, source links, relative assets and cycles", async () => {
+  const run = await mkdtemp(join(root, ".build-cache/native-note-embeds-"));
+  const vault = join(run, "Native-MVP"),
+    data = join(run, "data");
+  await mkdir(join(vault, "Notes", "Assets"), { recursive: true });
+  await mkdir(data);
+  const source =
+    "\uFEFF# Источник\r\nПредисловие\r\n\r\n## Раздел\r\nВыбранный текст\r\n\r\n### Дочерний\r\nДетали\r\n\r\n## Следующий\r\nДругой раздел\r\n\r\nАбзац блока ^block\r\n\r\n[К соседней](./Sibling.md)\r\n\r\n![Схема](Assets/Pic.png)\r\n\r\n![[../Main]]\r\n";
+  const main =
+    "# Главное\r\n\r\n![[Notes/Source#Раздел|Выдержка]]\r\n\r\n![[Notes/Source#^block|Блок]]\r\n\r\n![[Notes/Source|Полная заметка]]\r\n\r\n![Markdown](Notes/Source.md#Раздел)\r\n\r\n![[Missing]]\r\n";
+  await writeFile(join(vault, "Notes", "Source.md"), source);
+  await writeFile(
+    join(vault, "Notes", "Sibling.md"),
+    "Правильная соседняя заметка",
+  );
+  await writeFile(join(vault, "Main.md"), main);
+  await writeFile(
+    join(vault, "Notes", "Assets", "Pic.png"),
+    await readFile(join(root, "src-tauri/icons/icon.png")),
+  );
+  await writeFile(
+    join(data, "settings.json"),
+    JSON.stringify({ lastVault: vault }),
+  );
+  let app: RunningApp | undefined;
+  try {
+    app = await launch(data, join(run, "profile"), false);
+    const page = app.page;
+    await page.getByRole("button", { name: "Main", exact: true }).click();
+    await setMode(page, "Чтение");
+    const excerpt = page.getByRole("region", {
+      name: "Встроенная заметка: Выдержка",
+      exact: true,
+    });
+    const block = page.getByRole("region", {
+      name: "Встроенная заметка: Блок",
+      exact: true,
+    });
+    const full = page.getByRole("region", {
+      name: "Встроенная заметка: Полная заметка",
+      exact: true,
+    });
+    await expect(excerpt).toContainText("Выбранный текст");
+    await expect(excerpt).toContainText("Детали");
+    await expect(excerpt).not.toContainText("Другой раздел");
+    await expect(block).toContainText("Абзац блока");
+    await expect(block).not.toContainText("^block");
+    await expect(
+      page.getByRole("region", {
+        name: "Встроенная заметка: Markdown",
+        exact: true,
+      }),
+    ).toContainText("Выбранный текст");
+    await expect(full).toContainText("Предисловие");
+    await expect(full).toContainText("Циклическое встраивание");
+    await full.locator(".reading-image").scrollIntoViewIfNeeded();
+    await expect(full.locator("img")).toBeVisible();
+    await expect(page.getByText(/Заметка не найдена/)).toBeVisible();
+    await full.getByRole("link", { name: "К соседней", exact: true }).click();
+    await expect(
+      page.getByRole("region", { name: "Просмотр заметки" }),
+    ).toContainText("Правильная соседняя заметка");
+    await page.getByRole("tab", { name: "Main", exact: true }).click();
+    await excerpt
+      .getByRole("button", { name: "Открыть оригинал: Выдержка", exact: true })
+      .click();
+    await setMode(page, "Исходник");
+    const editor = page.getByRole("textbox", { name: "Markdown-редактор" });
+    // Append through ordinary editor input, leaving the original file untouched.
+    await editor.press("Control+End");
+    await editor.press("Enter");
+    await editor.pressSequentially("Несохранённый текст");
+    await page.getByRole("tab", { name: "Main", exact: true }).click();
+    await setMode(page, "Чтение");
+    await expect(full).toContainText("Несохранённый текст");
+    expect(await readFile(join(vault, "Notes", "Source.md"), "utf8")).toBe(
+      source,
+    );
+    await setMode(page, "Live Preview");
+    await expect(
+      page
+        .locator(".live-block-preview .note-transclusion")
+        .filter({ hasText: "Несохранённый текст" }),
+    ).toBeVisible();
+    await expect(
+      editor
+        .locator(".cm-line")
+        .filter({ hasText: "![[Notes/Source#Раздел|Выдержка]]" }),
+    ).toBeVisible();
+    await page.mouse.move(10, 10);
+    await page.screenshot({
+      path: test.info().outputPath("note-embeds-live.png"),
+    });
+    await setMode(page, "Исходник");
+    await expect(editor).toContainText("![[Notes/Source#Раздел|Выдержка]]");
+    expect(await readFile(join(vault, "Main.md"), "utf8")).toBe(main);
+  } finally {
+    await stop(app);
+  }
+});
+
+test("Obsidian syntax: comments, highlights, callouts and undoable tasks", async () => {
+  const run = await mkdtemp(join(root, ".build-cache/native-obsidian-syntax-"));
+  const vault = join(run, "Native-MVP"),
+    data = join(run, "data");
+  await mkdir(vault);
+  await mkdir(data);
+  const content =
+    "# Совместимость 😀\r\n\r\n==Важный **текст**==\r\n\r\n%%Секрет [[Скрытая]] #hidden%%\r\n\r\n> [!warning]- **Внимание**\r\n> Содержимое выноски\r\n\r\n- [ ] Проверить\r\n";
+  const note = join(vault, "Заметка.md");
+  await writeFile(note, content);
+  await writeFile(
+    join(data, "settings.json"),
+    JSON.stringify({ lastVault: vault }),
+  );
+  let app: RunningApp | undefined;
+  try {
+    app = await launch(data, join(run, "profile"), false);
+    const page = app.page;
+    await page.getByRole("button", { name: "Заметка", exact: true }).click();
+    await setMode(page, "Чтение");
+    const reading = page.getByRole("region", { name: "Просмотр заметки" });
+    await expect(reading.locator("mark")).toHaveText("Важный текст");
+    await expect(reading.locator("mark strong")).toHaveText("текст");
+    await expect(reading).not.toContainText("Секрет");
+    const callout = reading.locator("details.reading-callout");
+    await expect(callout).not.toHaveAttribute("open");
+    await callout.locator("summary").click();
+    await expect(callout).toContainText("Содержимое выноски");
+    await reading.getByRole("checkbox").check();
+    await expect(reading.getByRole("checkbox")).toBeChecked();
+    expect(await readFile(note, "utf8")).toBe(content);
+    await setMode(page, "Исходник");
+    const editor = page.getByRole("textbox", { name: "Markdown-редактор" });
+    await expect(editor).toContainText("[x]");
+    await editor.press("Control+z");
+    await expect(editor).toContainText("[ ]");
+    await setMode(page, "Live Preview");
+    await expect(
+      page.locator('.live-inline-preview[data-live-kind="highlight"] mark'),
+    ).toHaveText("Важный текст");
+    await expect(
+      page.locator('.live-block-preview[data-live-kind="callout"]'),
+    ).toBeVisible();
+    await page
+      .locator('.live-inline-preview[data-live-kind="task"] input')
+      .click({ noWaitAfter: true });
+    await expect(
+      page.locator('.live-inline-preview[data-live-kind="task"] input'),
+    ).toBeChecked();
+    await setMode(page, "Исходник");
+    await expect(editor).toContainText("[x]");
+    await editor.press("Control+s");
+    await expect
+      .poll(() => readFile(note, "utf8"))
+      .toBe(content.replace("[ ]", "[x]"));
+    await setMode(page, "Чтение");
+    await expect(reading.getByRole("checkbox")).toBeChecked();
+    await page.screenshot({
+      path: test.info().outputPath("obsidian-syntax-dark.png"),
+    });
+    await page.getByRole("button", { name: /тему/i }).click();
+    await page.screenshot({
+      path: test.info().outputPath("obsidian-syntax-light.png"),
+    });
+  } finally {
+    await stop(app);
+  }
+});
+
 test("live attachments: source paths stay above all cards while typing and selecting", async () => {
   const run = await mkdtemp(
     join(root, ".build-cache/native-live-attachments-"),

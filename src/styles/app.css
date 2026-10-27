@@ -1400,6 +1400,49 @@ mark {
   font-size: 10px;
   color: var(--muted);
 }
+.note-properties {
+  margin-bottom: 20px;
+}
+.property-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr) 12px;
+  align-items: start;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border-radius: 5px;
+  padding: 8px 4px;
+  font-size: 11px;
+}
+.property-row:hover {
+  background: var(--hover);
+}
+.property-name,
+.property-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.property-name {
+  color: var(--muted);
+}
+.property-value {
+  color: var(--text);
+}
+.property-row svg {
+  margin-top: 2px;
+  color: var(--muted);
+}
+.property-add,
+.property-source {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 4px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: left;
+}
 .frontmatter-properties > div {
   display: flex;
   justify-content: space-between;
@@ -1823,4 +1866,102 @@ mark {
   max-width: 300px;
   max-height: 220px;
   object-fit: contain;
+}
+
+.note-transclusion {
+  display: block;
+  margin: 10px 0;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  background: var(--surface);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.note-transclusion-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+}
+.note-transclusion-header > span {
+  flex: 1;
+  min-width: 0;
+}
+.note-transclusion-header button {
+  display: inline-flex;
+  padding: 4px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.note-transclusion-header button:hover {
+  color: var(--text);
+  background: var(--hover);
+}
+.note-transclusion-body {
+  padding: 2px 14px;
+}
+.note-transclusion-message {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.note-transclusion-message button {
+  color: var(--accent);
+}
+.note-transclusion .note-transclusion {
+  margin: 8px 0;
+}
+.note-transclusion .reading-image img {
+  max-height: 320px;
+}
+
+.reading-document mark,
+.live-render-content mark {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  color: inherit;
+  border-radius: 2px;
+}
+.reading-callout {
+  border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface));
+  border-radius: 6px;
+  margin: 12px 0;
+  padding: 10px 14px;
+}
+.reading-callout > summary,
+.callout-title {
+  color: var(--accent);
+  font-weight: 600;
+}
+.reading-callout > summary {
+  cursor: pointer;
+}
+.reading-callout > p:last-child {
+  margin-bottom: 0;
+}
+.reading-document input[type="checkbox"]:enabled,
+.live-render-content input[type="checkbox"]:enabled {
+  cursor: pointer;
+  pointer-events: auto;
+}
+.live-render-content input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0 5px 0 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+.live-inline-preview[data-live-kind="highlight"],
+.live-inline-preview[data-live-kind="task"] {
+  display: inline;
+  vertical-align: baseline;
 }

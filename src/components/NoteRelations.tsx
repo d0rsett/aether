@@ -41,19 +41,6 @@ export function NoteRelations({
           ))}
         </div>
       )}
-      {!!Object.keys(data.metadata.properties).length && (
-        <details className="frontmatter-properties">
-          <summary>Свойства</summary>
-          {Object.entries(data.metadata.properties).map(([key, value]) => (
-            <div key={key}>
-              <span>{key}</span>
-              <code>
-                {typeof value === "string" ? value : JSON.stringify(value)}
-              </code>
-            </div>
-          ))}
-        </details>
-      )}
       <details className="relations-section" open>
         <summary className="relations-heading">
           <ChevronRight

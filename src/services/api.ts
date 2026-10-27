@@ -154,6 +154,18 @@ export const api = {
     invoke<string[]>("anchor_options", { vaultId, path, content }),
   renderMarkdown: (vaultId: string, path: string, content: string) =>
     invoke<RenderDocument>("render_markdown", { vaultId, path, content }),
+  renderFragment: (
+    vaultId: string,
+    path: string,
+    content: string,
+    anchor: string,
+  ) =>
+    invoke<RenderDocument>("render_note_fragment", {
+      vaultId,
+      path,
+      content,
+      anchor,
+    }),
   readImage: (vaultId: string, source: string, target: string, wiki: boolean) =>
     invoke<string>("read_image", { vaultId, source, target, wiki }),
   documentLink: (vaultId: string, source: string, target: string) =>
@@ -224,6 +236,11 @@ export const api = {
     invoke<Inspection>("inspect_note", { vaultId, path }),
   search: (vaultId: string, query: SearchQuery) =>
     invoke<SearchPage>("search_notes", { vaultId, query }),
+  linkSuggestions: (vaultId: string, text: string) =>
+    invoke<{ path: string; alias: string | null }[]>("link_suggestions", {
+      vaultId,
+      text,
+    }),
   resolve: (vaultId: string, source: string, target: string) =>
     invoke<Resolution>("resolve_link", { vaultId, source, target }),
 };

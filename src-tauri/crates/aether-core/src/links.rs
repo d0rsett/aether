@@ -2,6 +2,47 @@ use crate::Result;
 use rusqlite::{params, Connection};
 use serde::Serialize;
 
+pub fn create_aliases(db: &Connection) -> Result<()> {
+    db.execute_batch("CREATE TABLE IF NOT EXISTS aliases(path TEXT NOT NULL REFERENCES notes(path) ON DELETE CASCADE,alias TEXT NOT NULL,alias_key TEXT NOT NULL,PRIMARY KEY(path,alias_key)); CREATE INDEX IF NOT EXISTS aliases_key ON aliases(alias_key);")?;
+    Ok(())
+}
+
+pub fn aliases(note: &crate::markdown::ParsedNote) -> Vec<String> {
+    let values: Vec<_> = match note.properties.get("aliases") {
+        Some(serde_json::Value::Array(values)) => {
+            values.iter().filter_map(|value| value.as_str()).collect()
+        }
+        Some(serde_json::Value::String(value)) => vec![value.as_str()],
+        _ => Vec::new(),
+    };
+    let mut seen = std::collections::HashSet::new();
+    values
+        .into_iter()
+        .map(str::trim)
+        .filter(|value| {
+            !value.is_empty()
+                && !value.contains(['[', ']', '|', '#'])
+                && !value.chars().any(char::is_control)
+                && seen.insert(value.to_lowercase())
+        })
+        .map(str::to_owned)
+        .collect()
+}
+
+pub fn insert_aliases(
+    db: &Connection,
+    path: &str,
+    note: &crate::markdown::ParsedNote,
+) -> Result<()> {
+    for alias in aliases(note) {
+        db.execute(
+            "INSERT OR IGNORE INTO aliases(path,alias,alias_key) VALUES(?1,?2,?3)",
+            params![path, alias, alias.to_lowercase()],
+        )?;
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Resolution {
@@ -79,6 +120,15 @@ pub fn resolve(db: &Connection, source: &str, target: &str) -> Result<Resolution
         if !found.is_empty() {
             return Ok(result(found));
         }
+        let found = db
+            .prepare(
+                "SELECT DISTINCT path FROM aliases WHERE alias_key=?1 ORDER BY path LIMIT 101",
+            )?
+            .query_map([target.to_lowercase()], |row| row.get::<_, String>(0))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        if !found.is_empty() {
+            return Ok(result(found));
+        }
     }
     let create_path = local.map(|path| {
         if path.to_lowercase().ends_with(".md") || path.to_lowercase().ends_with(".markdown") {
@@ -119,7 +169,8 @@ mod tests {
     #[test]
     fn resolves_unicode_relative_unique_and_ambiguous_names() -> Result<()> {
         let db = Connection::open_in_memory()?;
-        db.execute_batch("CREATE TABLE notes(path TEXT,path_key TEXT,stem_key TEXT);")?;
+        db.execute_batch("CREATE TABLE notes(path TEXT PRIMARY KEY,path_key TEXT,stem_key TEXT);")?;
+        create_aliases(&db)?;
         for path in ["Мысли.md", "A/Одна.md", "B/Одна.md", "B/Уникальная.md"]
         {
             db.execute(

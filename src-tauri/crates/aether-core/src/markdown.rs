@@ -99,6 +99,7 @@ pub fn parse(content: &str) -> ParsedNote {
     }
     note.body_offset = offset;
     let body = &content[offset..];
+    let prepared = crate::obsidian::prepare(body);
     let mut heading: Option<Heading> = None;
     let mut code_block = false;
     let mut link_label: Option<(usize, String)> = None;
@@ -106,7 +107,7 @@ pub fn parse(content: &str) -> ParsedNote {
         .match_indices('\n')
         .map(|(offset, _)| offset)
         .collect();
-    for (event, range) in Parser::new_ext(body, options()).into_offset_iter() {
+    for (event, range) in Parser::new_ext(&prepared, options()).into_offset_iter() {
         let line = || newlines.partition_point(|at| *at < offset + range.start) + 1;
         let prose = matches!(&event, Event::Text(_));
         match event {

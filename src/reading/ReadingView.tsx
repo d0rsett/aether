@@ -18,6 +18,8 @@ import {
 import { createPortal } from "react-dom";
 import { ImageLightbox } from "../components/ImageLightbox";
 import { FileText } from "lucide-react";
+import { NoteEmbed } from "./NoteEmbed";
+import type { NotePreviews } from "../services/notePreviews";
 const imageTarget = /\.(png|jpe?g|gif|webp|svg|bmp)(?:#|$)/i;
 const attachmentTarget =
   /\.(pdf|mp3|wav|ogg|m4a|flac|3gp|mp4|webm|mov|mkv|ogv|canvas|txt|csv|docx|xlsx|pptx|zip|png|jpe?g|gif|webp|svg|bmp)(?:#|$)/i;
@@ -33,15 +35,33 @@ const MathView = lazy(() =>
 const Diagram = lazy(() =>
   import("./RichBlocks").then((m) => ({ default: m.Diagram })),
 );
-interface Context {
+export interface RenderContext {
   theme?: string;
   vaultId: string;
   path: string;
   onWiki: (target: string) => void;
   onError: (message: string) => void;
+  onTask?: (node: RenderNode) => void;
+  previews?: NotePreviews;
+  embedChain?: readonly string[];
+  onNavigate?: (source: string, target: string) => void;
 }
+type Context = RenderContext;
 function text(node: RenderNode): string {
   return node.text || node.children.map(text).join("");
+}
+function containsNoteEmbed(node: RenderNode): boolean {
+  return isNoteEmbed(node) || node.children.some(containsNoteEmbed);
+}
+function isNoteEmbed(node: RenderNode): boolean {
+  return (
+    (node.kind === "embed" &&
+      !imageTarget.test(node.target) &&
+      !attachmentTarget.test(node.target)) ||
+    (node.kind === "image" &&
+      /\.(md|markdown)(?:#|$)/i.test(node.target) &&
+      !/^[a-z][a-z0-9+.-]*:/i.test(node.target))
+  );
 }
 export function safeExternal(value: string): boolean {
   try {
@@ -206,10 +226,27 @@ export function renderNode(
       .catch((e) => context.onError(errorMessage(e)));
   };
   switch (node.kind) {
+    case "embedLimit":
+      return (
+        <button
+          type="button"
+          className="note-embed"
+          onClick={() => context.onWiki(node.target)}
+        >
+          Показано слишком много встроенных заметок. Открыть:{" "}
+          {text(node) || node.target}
+        </button>
+      );
+    case "comment":
+      return null;
     case "text":
       return node.text;
     case "paragraph":
-      return <p {...source}>{children}</p>;
+      return containsNoteEmbed(node) ? (
+        <div {...source}>{children}</div>
+      ) : (
+        <p {...source}>{children}</p>
+      );
     case "heading": {
       const H = (["h1", "h2", "h3", "h4", "h5", "h6"] as const)[
         Math.max(0, Math.min(5, node.level - 1))
@@ -222,6 +259,40 @@ export function renderNode(
       return <strong>{children}</strong>;
     case "strike":
       return <del>{children}</del>;
+    case "highlight":
+      return <mark>{children}</mark>;
+    case "calloutTitle":
+      return (
+        <>
+          {node.text}
+          {children}
+        </>
+      );
+    case "callout": {
+      const title = node.children[0];
+      const body = <Nodes nodes={node.children.slice(1)} context={context} />;
+      const heading = title ? renderNode(title, context) : node.target;
+      return node.level ? (
+        <details
+          className="reading-callout"
+          data-callout={node.target}
+          open={node.level === 1}
+          {...source}
+        >
+          <summary>{heading}</summary>
+          {body}
+        </details>
+      ) : (
+        <aside
+          className="reading-callout"
+          data-callout={node.target}
+          {...source}
+        >
+          <div className="callout-title">{heading}</div>
+          {body}
+        </aside>
+      );
+    }
     case "quote":
       return <blockquote {...source}>{children}</blockquote>;
     case "list":
@@ -285,6 +356,15 @@ export function renderNode(
     }
     case "image":
     case "embed": {
+      if (isNoteEmbed(node))
+        return (
+          <NoteEmbed
+            target={node.target}
+            label={text(node) || node.target}
+            wiki={node.kind === "embed"}
+            context={context}
+          />
+        );
       if (node.kind === "embed" && !imageTarget.test(node.target))
         return (
           <button
@@ -363,9 +443,8 @@ export function renderNode(
         <input
           type="checkbox"
           checked={!!node.level}
-          readOnly
-          disabled
-          tabIndex={-1}
+          disabled={!context.onTask}
+          onChange={() => context.onTask?.(node)}
           aria-label={node.level ? "Выполнено" : "Не выполнено"}
         />
       );
@@ -397,6 +476,9 @@ export const ReadingView = memo(function ReadingView({
   onWiki,
   onError,
   theme = "dark",
+  previews,
+  onNavigate,
+  onTask,
 }: {
   vaultId: string;
   path: string;
@@ -405,8 +487,13 @@ export const ReadingView = memo(function ReadingView({
   onWiki: (target: string) => void;
   onError: (message: string) => void;
   theme?: string;
+  onTask?: (node: RenderNode, snapshot: string) => void;
+  previews?: NotePreviews;
+  onNavigate?: (source: string, target: string) => void;
 }) {
-  const [document, setDocument] = useState<RenderDocument | null>(null);
+  const [document, setDocument] = useState<
+    (RenderDocument & { snapshot: string }) | null
+  >(null);
   const [error, setError] = useState("");
   const host = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -417,7 +504,7 @@ export const ReadingView = memo(function ReadingView({
       void api
         .renderMarkdown(vaultId, path, content)
         .then((value) => {
-          if (!disposed) setDocument(value);
+          if (!disposed) setDocument({ ...value, snapshot: content });
         })
         .catch((e) => {
           if (!disposed) setError(errorMessage(e));
@@ -432,7 +519,7 @@ export const ReadingView = memo(function ReadingView({
     if (!document || !navigation) return;
     const elements = Array.from(
       host.current?.querySelectorAll<HTMLElement>("[data-source-line]") ?? [],
-    );
+    ).filter((element) => !element.closest(".note-transclusion"));
     const target =
       elements.find(
         (el) => Number(el.dataset.sourceLine) === navigation.line,
@@ -471,7 +558,19 @@ export const ReadingView = memo(function ReadingView({
             {document.nodes.length ? (
               <Nodes
                 nodes={document.nodes}
-                context={{ vaultId, path, onWiki, onError, theme }}
+                context={{
+                  vaultId,
+                  path,
+                  onWiki,
+                  onError,
+                  theme,
+                  previews,
+                  onNavigate,
+                  onTask:
+                    onTask && document.snapshot === content
+                      ? (node) => onTask(node, document.snapshot)
+                      : undefined,
+                }}
               />
             ) : (
               <p className="reading-empty">В этой заметке пока нет текста.</p>

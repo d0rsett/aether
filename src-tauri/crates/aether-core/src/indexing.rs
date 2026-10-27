@@ -38,6 +38,11 @@ pub struct SearchHit {
     pub snippet: String,
 }
 #[derive(Debug, Serialize)]
+pub struct LinkSuggestion {
+    pub path: String,
+    pub alias: Option<String>,
+}
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchPage {
     pub hits: Vec<SearchHit>,
@@ -79,7 +84,7 @@ impl Index {
             version: AtomicU64::new(0),
             status: Mutex::new(IndexStatus::default()),
         };
-        let db = index.connection()?;
+        let mut db = index.connection()?;
         db.execute_batch("PRAGMA journal_mode=WAL;
           CREATE TABLE IF NOT EXISTS notes(id INTEGER PRIMARY KEY,path TEXT NOT NULL UNIQUE,path_key TEXT NOT NULL,stem_key TEXT NOT NULL,title TEXT NOT NULL,body TEXT NOT NULL,revision TEXT NOT NULL,metadata TEXT NOT NULL);
           CREATE INDEX IF NOT EXISTS notes_path_key ON notes(path_key);
@@ -94,6 +99,16 @@ impl Index {
           CREATE TRIGGER IF NOT EXISTS notes_ai AFTER INSERT ON notes BEGIN INSERT INTO notes_fts(rowid,title,body,path) VALUES(new.id,new.title,new.body,new.path); END;
           CREATE TRIGGER IF NOT EXISTS notes_ad AFTER DELETE ON notes BEGIN INSERT INTO notes_fts(notes_fts,rowid,title,body,path) VALUES('delete',old.id,old.title,old.body,old.path); END;
           CREATE TRIGGER IF NOT EXISTS notes_au AFTER UPDATE ON notes BEGIN INSERT INTO notes_fts(notes_fts,rowid,title,body,path) VALUES('delete',old.id,old.title,old.body,old.path); INSERT INTO notes_fts(rowid,title,body,path) VALUES(new.id,new.title,new.body,new.path); END;")?;
+        links::create_aliases(&db)?;
+        // Rebuild older disposable caches for comment parsing and YAML aliases,
+        // even when note file revisions have not changed.
+        let parser_version: u32 = db.pragma_query_value(None, "user_version", |row| row.get(0))?;
+        if parser_version < 2 {
+            let transaction = db.transaction()?;
+            transaction.execute("DELETE FROM notes", [])?;
+            transaction.pragma_update(None, "user_version", 2)?;
+            transaction.commit()?;
+        }
         Ok(index)
     }
 
@@ -154,6 +169,8 @@ impl Index {
         transaction.execute("INSERT INTO notes(path,path_key,stem_key,title,body,revision,metadata) VALUES(?1,?2,?3,?4,?5,?6,?7) ON CONFLICT(path) DO UPDATE SET title=excluded.title,body=excluded.body,revision=excluded.revision,metadata=excluded.metadata", params![path,links::key(path),links::stem(path),title,body,note.revision,json])?;
         transaction.execute("DELETE FROM tags WHERE path=?1", [path])?;
         transaction.execute("DELETE FROM links WHERE source=?1", [path])?;
+        transaction.execute("DELETE FROM aliases WHERE path=?1", [path])?;
+        links::insert_aliases(&transaction, path, &metadata)?;
         for tag in metadata.tags {
             transaction.execute(
                 "INSERT OR IGNORE INTO tags VALUES(?1,?2)",
@@ -281,7 +298,6 @@ impl Index {
                 for note in paths {
                     if note.starts_with(&format!("{path}/")) {
                         db.execute("DELETE FROM notes WHERE path=?1", [&note])?;
-                        Self::refresh_links(&db, Some(&note))?;
                         changed = true;
                     }
                 }
@@ -293,7 +309,9 @@ impl Index {
             return Ok(false);
         };
         if changed {
-            Self::refresh_links(&db, Some(path))?;
+            // Alias changes can affect links whose text differs from the filename,
+            // including aliases removed by an update or a directory deletion.
+            Self::refresh_links(&db, None)?;
             let count =
                 db.query_row("SELECT count(*) FROM notes", [], |row| row.get::<_, i64>(0))?;
             self.changed(Some(count as usize), false);
@@ -338,6 +356,43 @@ impl Index {
 
     pub fn resolve(&self, source: &str, target: &str) -> Result<Resolution> {
         links::resolve(&self.connection()?, source, target)
+    }
+
+    pub fn link_suggestions(&self, text: &str) -> Result<Vec<LinkSuggestion>> {
+        let db = self.connection()?;
+        let query: String = text.trim().to_lowercase().chars().take(256).collect();
+        let mut statement = db.prepare("SELECT path,NULL AS alias,CASE WHEN path_key=?2 OR stem_key=?2 THEN 0 ELSE 2 END AS rank FROM notes WHERE instr(path_key,?2)>0 UNION ALL SELECT path,alias,CASE WHEN alias_key=?1 THEN 1 ELSE 3 END AS rank FROM aliases WHERE ?1<>'' AND instr(alias_key,?1)>0 ORDER BY rank,path,alias LIMIT 100")?;
+        let mut suggestions = statement
+            .query_map(params![query, links::key(&query)], |row| {
+                Ok(LinkSuggestion {
+                    path: row.get(0)?,
+                    alias: row.get(1)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        // Preserve existing title/body search matches alongside filename and
+        // alias matches, including names containing punctuation that FTS splits.
+        for hit in self
+            .search(&SearchQuery {
+                text: query,
+                ..Default::default()
+            })?
+            .hits
+        {
+            if suggestions.len() >= 100 {
+                break;
+            }
+            if !suggestions
+                .iter()
+                .any(|suggestion| suggestion.path == hit.path && suggestion.alias.is_none())
+            {
+                suggestions.push(LinkSuggestion {
+                    path: hit.path,
+                    alias: None,
+                });
+            }
+        }
+        Ok(suggestions)
     }
 
     pub fn inspect(&self, path: &str) -> Result<Inspection> {
@@ -435,6 +490,137 @@ pub fn cache_name(root: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn aliases_resolve_complete_refresh_backlinks_and_migrate_without_writing_notes() -> Result<()>
+    {
+        let temp = tempfile::tempdir()?;
+        let vault = Vault::open(temp.path())?;
+        vault.create_directory("Notes")?;
+        let content =
+            "\u{feff}---\r\naliases: [ИИ, ai, AI, 'C++', '', 42, 'bad|link']\r\n---\r\n# Topic\r\n";
+        vault.create_note("Notes/Topic.md", content)?;
+        vault.create_note("Ref.md", "[[ии#Part]]\n![[AI]]\n")?;
+        let cache = temp.path().join("index.sqlite");
+        let index = Index::open(&cache)?;
+        index.scan(&vault, &AtomicBool::new(false), &|| {})?;
+        assert_eq!(
+            index.resolve("Ref.md", "ИИ")?.path.as_deref(),
+            Some("Notes/Topic.md")
+        );
+        assert_eq!(index.inspect("Notes/Topic.md")?.backlinks[0].mentions, 2);
+        let suggestions = index.link_suggestions("иИ")?;
+        assert_eq!(
+            suggestions
+                .iter()
+                .filter(|item| item.alias.is_some())
+                .count(),
+            1
+        );
+        assert_eq!(suggestions[0].alias.as_deref(), Some("ИИ"));
+        assert_eq!(
+            index.link_suggestions("c+")?[0].alias.as_deref(),
+            Some("C++")
+        );
+        assert_eq!(
+            index
+                .link_suggestions("ai")?
+                .iter()
+                .filter(|item| item.alias.is_some())
+                .count(),
+            1
+        );
+        assert_eq!(
+            index.link_suggestions("Topic.md")?[0].path,
+            "Notes/Topic.md"
+        );
+        assert!(index.link_suggestions("bad")?.is_empty());
+        assert!(index.link_suggestions("' OR 1=1--")?.is_empty());
+        vault.create_note("Notes/Other.md", "---\naliases:\n  - ИИ\n---\nOther")?;
+        index.update(&vault, "Notes/Other.md")?;
+        assert_eq!(index.resolve("Ref.md", "ии")?.status, "ambiguous");
+        assert_eq!(index.resolve("Ref.md", "ии")?.candidates.len(), 2);
+        vault.create_note("ИИ.md", "Real filename")?;
+        index.update(&vault, "ИИ.md")?;
+        assert_eq!(
+            index.resolve("Ref.md", "ии")?.path.as_deref(),
+            Some("ИИ.md")
+        );
+        assert_eq!(index.inspect("ИИ.md")?.backlinks.len(), 1);
+        std::fs::remove_file(vault.note_path("ИИ.md")?)?;
+        index.update(&vault, "ИИ.md")?;
+        std::fs::write(
+            vault.note_path("Notes/Other.md")?,
+            "---\naliases: New name\n---\nOther",
+        )?;
+        index.update(&vault, "Notes/Other.md")?;
+        assert_eq!(
+            index.resolve("Ref.md", "ии")?.path.as_deref(),
+            Some("Notes/Topic.md")
+        );
+        assert_eq!(
+            index.resolve("Ref.md", "New name")?.path.as_deref(),
+            Some("Notes/Other.md")
+        );
+        assert_eq!(index.inspect("Notes/Topic.md")?.backlinks[0].mentions, 2);
+        let db = index.connection()?;
+        db.execute("DELETE FROM aliases", [])?;
+        db.pragma_update(None, "user_version", 1)?;
+        drop(db);
+        drop(index);
+        let index = Index::open(&cache)?;
+        index.scan(&vault, &AtomicBool::new(false), &|| {})?;
+        assert_eq!(
+            index.resolve("Ref.md", "ai")?.path.as_deref(),
+            Some("Notes/Topic.md")
+        );
+        assert_eq!(vault.read_note("Notes/Topic.md")?.content, content);
+        std::fs::remove_dir_all(vault.resolve("Notes", false)?)?;
+        index.update(&vault, "Notes")?;
+        assert_eq!(index.resolve("Ref.md", "ai")?.status, "missing");
+        assert!(index
+            .link_suggestions("ИИ")?
+            .iter()
+            .all(|item| item.alias.is_none()));
+        Ok(())
+    }
+    #[test]
+    fn legacy_cached_comments_are_reparsed_without_changing_notes() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let root = temp.path().join("vault");
+        std::fs::create_dir(&root)?;
+        let vault = Vault::open(&root)?;
+        let source = "Visible\n\n%%Secretword [[Hidden]] #hidden%%\n";
+        vault.create_note("Note.md", source)?;
+        let path = temp.path().join("index.sqlite");
+        let index = Index::open(&path)?;
+        index.scan(&vault, &AtomicBool::new(false), &|| {})?;
+        let db = index.connection()?;
+        db.execute("UPDATE notes SET body='Secretword'", [])?;
+        db.pragma_update(None, "user_version", 0)?;
+        drop(db);
+        drop(index);
+        let index = Index::open(&path)?;
+        index.scan(&vault, &AtomicBool::new(false), &|| {})?;
+        assert!(index
+            .search(&SearchQuery {
+                text: "Secretword".into(),
+                ..Default::default()
+            })?
+            .hits
+            .is_empty());
+        assert_eq!(
+            index
+                .search(&SearchQuery {
+                    text: "Visible".into(),
+                    ..Default::default()
+                })?
+                .hits
+                .len(),
+            1
+        );
+        assert_eq!(vault.read_note("Note.md")?.content, source);
+        Ok(())
+    }
     #[test]
     fn filename_unicode_path_boolean_property_and_quoted_input() -> Result<()> {
         let temp = tempfile::tempdir()?;

@@ -266,14 +266,16 @@ fn catalog(vault: &Vault) -> Result<BTreeMap<String, String>> {
     }
     Ok(result)
 }
-fn database(paths: impl Iterator<Item = String>) -> Result<Connection> {
+fn database<'a>(notes: impl Iterator<Item = (String, &'a str)>) -> Result<Connection> {
     let db = Connection::open_in_memory()?;
-    db.execute_batch("CREATE TABLE notes(path TEXT,path_key TEXT,stem_key TEXT); CREATE INDEX pk ON notes(path_key); CREATE INDEX sk ON notes(stem_key);")?;
-    for path in paths {
+    db.execute_batch("CREATE TABLE notes(path TEXT PRIMARY KEY,path_key TEXT,stem_key TEXT); CREATE INDEX pk ON notes(path_key); CREATE INDEX sk ON notes(stem_key);")?;
+    links::create_aliases(&db)?;
+    for (path, content) in notes {
         db.execute(
             "INSERT INTO notes VALUES(?1,?2,?3)",
             params![path, links::key(&path), links::stem(&path)],
         )?;
+        links::insert_aliases(&db, &path, &markdown::parse(content))?;
     }
     Ok(db)
 }
@@ -389,7 +391,8 @@ fn destination(raw: &str, definition: bool) -> Option<std::ops::Range<usize>> {
 fn markdown_destinations(content: &str, offset: usize) -> Vec<(std::ops::Range<usize>, String)> {
     use pulldown_cmark::{Event, LinkType, Parser, Tag};
     let body = &content[offset..];
-    let parser = Parser::new_ext(body, markdown::options());
+    let prepared = crate::obsidian::prepare(body);
+    let parser = Parser::new_ext(&prepared, markdown::options());
     let mut result = Vec::new();
     for (_, definition) in parser.reference_definitions().iter() {
         if let Some(range) = destination(&body[definition.span.clone()], true) {
@@ -516,8 +519,11 @@ impl Plan {
         if !directory && all.get(&from).map(|s| revision(s.as_bytes())).as_deref() != expected {
             return Err(Error::Conflict);
         }
-        let before = database(all.keys().cloned())?;
-        let after = database(all.keys().map(|p| remap(p, &from, &to, directory)))?;
+        let before = database(all.iter().map(|(p, content)| (p.clone(), content.as_str())))?;
+        let after = database(
+            all.iter()
+                .map(|(p, content)| (remap(p, &from, &to, directory), content.as_str())),
+        )?;
         let mut files = Vec::new();
         let mut contents = Vec::new();
         let mut changes = Vec::new();
@@ -1165,6 +1171,29 @@ pub fn undo(v: &Vault, id: &str, recover: bool) -> Result<Applied> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn renaming_preserves_alias_links_and_repairs_new_filename_shadowing() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let v = Vault::open(dir.path())?;
+        v.create_directory("A")?;
+        let content = "---\naliases: [Nick]\n---\n# Section\n";
+        v.create_note("A/Target.md", content)?;
+        v.create_note("Other.md", "---\naliases: [Shared]\n---\nOther")?;
+        let original = "[[Nick#Section]]\n![[A/Target|Shown]]\n[[Shared|Other]]\n";
+        v.create_note("Ref.md", original)?;
+        let source = v.read_note("A/Target.md")?;
+        Plan::prepare(&v, &source.path, "Shared.md", &source.revision)?.apply(&v)?;
+        let reference = v.read_note("Ref.md")?.content;
+        assert!(reference.contains("[[Nick#Section]]"));
+        assert!(reference.contains("![[Shared|Shown]]"));
+        assert!(reference.contains("[[Other|Other]]"));
+        assert_eq!(v.read_note("Shared.md")?.content, content);
+        let operation = state(&v, &[])?.ok_or(Error::NoVault)?;
+        undo(&v, &operation.id, false)?;
+        assert_eq!(v.read_note("Ref.md")?.content, original);
+        assert_eq!(v.read_note("A/Target.md")?.content, content);
+        Ok(())
+    }
     fn fixture() -> Result<(tempfile::TempDir, Vault)> {
         let dir = tempfile::tempdir()?;
         let v = Vault::open(dir.path())?;
