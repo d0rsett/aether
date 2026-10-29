@@ -120,6 +120,24 @@ export interface Inspection {
   outgoing: (WikiLink & { resolution: Resolution })[];
 }
 export const api = {
+  propertyTypes: (vaultId: string) =>
+    invoke<Record<string, string>>("property_types", { vaultId }),
+  templateFolder: (vaultId: string) =>
+    invoke<string>("template_folder", { vaultId }),
+  propertyCatalog: (vaultId: string) =>
+    invoke<Record<string, string[]>>("property_catalog", { vaultId }),
+  setPropertyType: (
+    vaultId: string,
+    name: string,
+    kind: string,
+    expected: Record<string, string>,
+  ) =>
+    invoke<Record<string, string>>("set_property_type", {
+      vaultId,
+      name,
+      kind,
+      expected,
+    }),
   importAttachments: (
     vaultId: string,
     source: string,
@@ -168,6 +186,23 @@ export const api = {
     }),
   readImage: (vaultId: string, source: string, target: string, wiki: boolean) =>
     invoke<string>("read_image", { vaultId, source, target, wiki }),
+  readMedia: (vaultId: string, source: string, target: string, wiki: boolean) =>
+    invoke<{ mime: string; data: string }>("read_media", {
+      vaultId,
+      source,
+      target,
+      wiki,
+    }),
+  readExternalMedia: (
+    vaultId: string,
+    target: string,
+    kind: "image" | "audio" | "video" | "pdf",
+  ) =>
+    invoke<{ mime: string; data: string }>("read_external_media", {
+      vaultId,
+      target,
+      kind,
+    }),
   documentLink: (vaultId: string, source: string, target: string) =>
     invoke<string>("document_link", { vaultId, source, target }),
   openExternal: (url: string) => invoke<void>("open_external", { url }),

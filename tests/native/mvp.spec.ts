@@ -22,7 +22,826 @@ import { createHash } from "node:crypto";
 const root = resolve(import.meta.dirname, "../..");
 const executable = resolve(root, "src-tauri/target/e2e/release/aether.exe");
 
-test("note properties: typed edits, drafts, undo, preservation and explicit save", async () => {
+test("writing workflows: folding, hover, property chips, callout tables and templates", async () => {
+  test.setTimeout(60000);
+  const run = await mkdtemp(join(root, ".build-cache/native-writing-"));
+  const vault = join(run, "Native-MVP"),
+    data = join(run, "data");
+  await mkdir(vault);
+  await mkdir(data);
+  await mkdir(join(vault, ".obsidian"));
+  await mkdir(join(vault, "MyTemplates"));
+  const source =
+    "\uFEFF---\r\n# Keep\r\nproject: Existing\r\ntags: [one, two]\r\n---\r\n# Section\r\nSection body\r\n## Child\r\nChild text\r\n\r\n- Parent\r\n  - Child item\r\n\r\n[[Other]]\r\n\r\n> [!warning] Check\r\n> [[Other#Details|Ссылка внутри выноски]]\r\n>\r\n> | Name | Value |\r\n> | --- | --- |\r\n> | Alpha | 1 |\r\n>\r\n> > [!tip] Inner\r\n> > | Item | Number |\r\n> > | --- | --- |\r\n> > | Beta | 2 |\r\n\r\n# End\r\nTail\r\n";
+  await writeFile(join(vault, "Main.md"), source);
+  await writeFile(
+    join(vault, "Other.md"),
+    "---\ncategory: Work\n---\n## Details\nOther preview body",
+  );
+  const templateSettings = JSON.stringify({
+    folder: "MyTemplates",
+    other: true,
+  });
+  await writeFile(join(vault, ".obsidian/templates.json"), templateSettings);
+  await writeFile(
+    join(vault, "MyTemplates/Daily.md"),
+    "---\narea: Template\ncreated: '{{date}}'\n---\n\n## {{title}} {{date:DD.MM.YYYY}}\nAt {{time}}\n",
+  );
+  await writeFile(
+    join(data, "settings.json"),
+    JSON.stringify({ lastVault: vault }),
+  );
+  let app: RunningApp | undefined;
+  try {
+    app = await launch(data, join(run, "profile"), false);
+    const page = app.page;
+    await page.getByRole("button", { name: "Other", exact: true }).click();
+    await setMode(page, "Исходник");
+    let editor = page.getByRole("textbox", { name: "Markdown-редактор" });
+    await editor.press("Control+End");
+    await editor.pressSequentially(" UNSAVED PREVIEW");
+    await page.getByRole("button", { name: "Main", exact: true }).click();
+    await setMode(page, "Исходник");
+    editor = page.getByRole("textbox", { name: "Markdown-редактор" });
+    await editor.press("Control+End");
+    await editor.press("Control+p");
+    await page
+      .getByRole("button", { name: "Номера строк", exact: true })
+      .click();
+    await page
+      .locator(".editor-tab-panel:not([hidden]) .cm-lineNumbers")
+      .waitFor();
+    const marker = page
+      .locator(
+        '.editor-tab-panel:not([hidden]) .fold-toggle[data-fold-state="open"]:visible',
+      )
+      .first();
+    const markerBounds = await marker.boundingBox();
+    const numberBounds = await page
+      .locator(".editor-tab-panel:not([hidden]) .cm-lineNumbers")
+      .boundingBox();
+    expect(markerBounds!.x).toBeGreaterThanOrEqual(
+      numberBounds!.x + numberBounds!.width,
+    );
+    await page.screenshot({
+      path: test.info().outputPath("folding-placement.png"),
+    });
+    await page
+      .locator(
+        '.editor-tab-panel:not([hidden]) .cm-foldGutter .fold-toggle[data-fold-state="open"]:visible',
+      )
+
+      .first()
+      .click();
+    await expect(page.locator(".cm-foldPlaceholder")).toHaveCount(1);
+    await expect(page.locator(".cm-foldPlaceholder")).toHaveText("…");
+    await expect(page.locator(".cm-foldPlaceholder")).toHaveCSS(
+      "border-top-width",
+      "0px",
+    );
+    await expect(page.locator(".cm-foldPlaceholder")).toHaveCSS(
+      "background-color",
+      "rgba(0, 0, 0, 0)",
+    );
+    await page
+      .locator(
+        '.editor-tab-panel:not([hidden]) .cm-foldGutter .fold-toggle[data-fold-state="closed"]:visible',
+      )
+
+      .first()
+      .click();
+    await expect(page.locator(".cm-foldPlaceholder")).toHaveCount(0);
+    await setMode(page, "Live Preview");
+    await page
+      .locator(
+        '.editor-tab-panel:not([hidden]) .fold-toggle[data-fold-state="open"]:visible',
+      )
+      .first()
+      .click();
+    await expect(page.locator(".cm-foldPlaceholder")).toHaveText("…");
+    await page.screenshot({
+      path: test.info().outputPath("folding-live-collapsed.png"),
+    });
+    await page
+      .locator(
+        '.editor-tab-panel:not([hidden]) .fold-toggle[data-fold-state="closed"]:visible',
+      )
+      .first()
+      .click();
+    await page
+      .locator(".editor-tab-panel:not([hidden]) .live-wiki-link")
+      .first()
+      .hover();
+    await expect(
+      page.getByRole("region", { name: "Предпросмотр ссылки" }),
+    ).toContainText("UNSAVED PREVIEW");
+    await page
+      .getByRole("region", { name: "Предпросмотр ссылки" })
+      .screenshot({ path: test.info().outputPath("hover-editor.png") });
+    const previewContainer = page.locator(
+      ".cm-tooltip-hover:has(> .note-hover)",
+    );
+    await expect(previewContainer).toHaveCSS(
+      "background-color",
+      "rgba(0, 0, 0, 0)",
+    );
+    await expect(previewContainer).toHaveCSS("border-top-width", "0px");
+    await previewContainer.screenshot({
+      path: test.info().outputPath("hover-container.png"),
+    });
+    await editor.press("Escape");
+    await expect(
+      page.getByRole("region", { name: "Предпросмотр ссылки" }),
+    ).toHaveCount(0);
+    const tables = page.getByRole("group", { name: "Редактор таблицы" });
+    await expect(tables).toHaveCount(2);
+    await page
+      .locator(".editor-tab-panel:not([hidden]) .cm-line")
+      .filter({ hasText: "Section" })
+      .first()
+      .scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: test.info().outputPath("folding-live-placement.png"),
+    });
+    const alignment = await page
+      .locator(".editor-tab-panel:not([hidden]) .cm-editor")
+      .evaluate((editor) => {
+        const line = [...editor.querySelectorAll(".cm-line.live-heading")].find(
+          (element) => element.textContent?.includes("Section"),
+        );
+        if (!line) throw new Error("Missing live heading");
+        const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+        let node = walker.nextNode();
+        while (node && !node.textContent?.includes("Section"))
+          node = walker.nextNode();
+        if (!node) throw new Error("Missing heading text");
+        const range = document.createRange();
+        const start = node.textContent!.indexOf("Section");
+        range.setStart(node, start);
+        range.setEnd(node, start + 1);
+        const text = range.getBoundingClientRect();
+        const middle = text.top + text.height / 2;
+        const icons = [...editor.querySelectorAll(".fold-toggle")]
+          .map((element) => element.getBoundingClientRect())
+          .filter((rect) => rect.height > 0);
+        return Math.min(
+          ...icons.map((rect) => Math.abs(rect.top + rect.height / 2 - middle)),
+        );
+      });
+    expect(alignment).toBeLessThan(2);
+    await page.mouse.move(0, 0);
+    await page
+      .getByRole("link", { name: "Ссылка внутри выноски", exact: true })
+      .hover();
+    await expect(
+      page.getByRole("region", { name: "Предпросмотр ссылки" }),
+    ).toHaveCount(1);
+    await expect(
+      page.getByRole("region", { name: "Предпросмотр ссылки" }),
+    ).toContainText("UNSAVED PREVIEW");
+    await expect(page.locator(".note-hover-title small")).toHaveText(
+      "Раздел: Details",
+    );
+    await page
+      .getByRole("region", { name: "Предпросмотр ссылки" })
+      .screenshot({ path: test.info().outputPath("hover-section.png") });
+    await expect(page.locator(".note-hover-content")).toHaveCSS(
+      "border-left-width",
+      "0px",
+    );
+    await page.keyboard.press("Escape");
+    await expect(
+      page.getByRole("region", { name: "Предпросмотр ссылки" }),
+    ).toHaveCount(0);
+    const alpha = tables
+      .nth(0)
+      .getByLabel("Строка 2, столбец 1", { exact: true });
+    await alpha.fill("Alpha edited");
+    await alpha.pressSequentially(" slowly", { delay: 40 });
+    await expect(alpha).toBeFocused();
+    await expect(alpha).toHaveValue("Alpha edited slowly");
+    await tables
+      .nth(1)
+      .getByLabel("Строка 2, столбец 1", { exact: true })
+      .fill("Beta edited");
+    await tables
+      .nth(0)
+      .getByRole("button", { name: "Добавить строку", exact: true })
+      .click();
+    const newCell = tables
+      .nth(0)
+      .getByLabel("Строка 3, столбец 1", { exact: true });
+    await expect(newCell).toBeFocused();
+    await newCell.press("Control+z");
+    await expect(
+      tables.nth(0).getByLabel("Строка 3, столбец 1", { exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      tables.nth(0).getByLabel("Строка 2, столбец 1", { exact: true }),
+    ).toBeFocused();
+    await expect(
+      tables.nth(1).getByLabel("Строка 2, столбец 1", { exact: true }),
+    ).toHaveValue("Beta edited");
+    await page.getByLabel("Имя свойства project", { exact: true }).focus();
+    await expect(
+      page
+        .locator(".reading-callout")
+        .first()
+        .locator(".table-cell-preview")
+        .filter({ hasText: "Alpha edited slowly" }),
+    ).toBeVisible();
+    await page
+      .locator(".reading-callout")
+      .first()
+      .screenshot({ path: test.info().outputPath("callout-tables-dark.png") });
+    const properties = page.getByRole("region", { name: "Свойства заметки" });
+    await properties
+      .getByLabel("Имя свойства project", { exact: true })
+      .fill("area");
+    await properties
+      .getByLabel("Имя свойства project", { exact: true })
+      .press("Enter");
+    await expect(
+      properties.getByLabel("Имя свойства area", { exact: true }),
+    ).toHaveValue("area");
+    await properties
+      .getByRole("button", {
+        name: "Удалить элемент 1 свойства tags",
+        exact: true,
+      })
+      .click();
+    await properties.getByLabel("Значение tags", { exact: true }).fill("three");
+    await properties
+      .getByLabel("Значение tags", { exact: true })
+      .press("Enter");
+    await expect(
+      properties.getByLabel("Элемент 2 свойства tags", { exact: true }),
+    ).toHaveValue("three");
+    await properties
+      .getByRole("button", { name: "Добавить свойство", exact: true })
+      .click();
+    await expect(page.locator('datalist option[value="category"]')).toHaveCount(
+      1,
+    );
+    await properties.getByLabel("Имя нового свойства").fill("category");
+    await expect(page.locator('datalist option[value="Work"]')).toHaveCount(1);
+    await properties
+      .getByRole("button", { name: "Отмена", exact: true })
+      .click();
+    await setMode(page, "Чтение");
+    await page.getByRole("link", { name: "Other", exact: true }).hover();
+    await expect(
+      page.getByRole("region", { name: "Предпросмотр ссылки" }),
+    ).toContainText("UNSAVED PREVIEW");
+    await page.keyboard.press("Escape");
+    await expect(
+      page.getByRole("region", { name: "Предпросмотр ссылки" }),
+    ).toHaveCount(0);
+    await page.screenshot({
+      path: test.info().outputPath("callouts-dark.png"),
+    });
+    await setMode(page, "Исходник");
+    await editor.press("Control+End");
+    await editor.press("Control+p");
+    await page
+      .getByRole("button", { name: "Вставить шаблон", exact: true })
+      .click();
+    const modal = page.getByRole("dialog", { name: "Шаблоны заметок" });
+    await expect(modal.getByLabel("Папка шаблонов")).toHaveValue("MyTemplates");
+    await modal.screenshot({
+      path: test.info().outputPath("templates-dark.png"),
+    });
+    await modal.getByRole("button", { name: "Daily.md", exact: true }).click();
+    await expect(modal).toHaveCount(0);
+    await setMode(page, "Исходник");
+    await expect(editor).toContainText("## Main");
+    await expect(editor).not.toContainText("{{date");
+    await expect(editor).toContainText("Existing");
+    await expect(editor).toContainText("> | Alpha edited slowly | 1 |");
+    await expect(editor).toContainText("> > | Beta edited | 2 |");
+    expect(await readFile(join(vault, "Main.md"), "utf8")).toBe(source);
+    await editor.press("Control+z");
+    await expect(editor).not.toContainText("## Main");
+    await editor.press("Control+y");
+    await editor.press("Control+s");
+    await expect
+      .poll(() => readFile(join(vault, "Main.md"), "utf8"))
+      .toContain("## Main");
+    const saved = await readFile(join(vault, "Main.md"), "utf8");
+    expect(saved.startsWith("\uFEFF---\r\n")).toBe(true);
+    expect(saved.replace(/\r\n/g, "")).not.toContain("\n");
+    expect(
+      await readFile(join(vault, ".obsidian/templates.json"), "utf8"),
+    ).toBe(templateSettings);
+    await editor.press("Control+p");
+    await page
+      .getByRole("button", { name: "Вставить шаблон", exact: true })
+      .click();
+    await modal.getByLabel("Имя шаблона").fill("Saved");
+    await modal
+      .getByRole("button", { name: "Сохранить шаблон", exact: true })
+      .click();
+    await expect(
+      modal.getByRole("button", { name: "Saved.md", exact: true }),
+    ).toBeVisible();
+    expect(await readFile(join(vault, "MyTemplates/Saved.md"), "utf8")).toBe(
+      saved,
+    );
+    await modal
+      .getByRole("button", { name: "Закрыть диалог", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Переключить тему", exact: true })
+      .click();
+    await setMode(page, "Live Preview");
+    await page
+      .locator(".reading-callout")
+      .first()
+      .screenshot({ path: test.info().outputPath("callout-tables-light.png") });
+  } finally {
+    await stop(app);
+  }
+});
+
+test("editor compatibility: tables, footnotes, media and passive HTML", async () => {
+  const run = await mkdtemp(join(root, ".build-cache/native-editor-rich-"));
+  const vault = join(run, "Native-MVP"),
+    data = join(run, "data");
+  await mkdir(vault);
+  await mkdir(data);
+  const source =
+    '\uFEFF# Main 😀\r\n\r\n| Name | Count |\r\n| --- | ---: |\r\n| **Zed** | 2 |\r\n| Alpha | 1 |\r\n\r\nReference[^one] and again[^one].\r\n\r\n[^one]: Footnote content.\r\n\r\n<details open>\r\n<summary>HTML details</summary>\r\n<b onclick="window.htmlExecuted=true">Safe HTML</b>\r\n<script>window.htmlExecuted=true</script>\r\n<iframe src="https://example.com/blocked"></iframe>\r\n</details>\r\n\r\nInline <u>underlined</u> text.\r\n\r\n![[sample.pdf#page=2&height=320]]\r\n\r\n![[sound.wav]]\r\n\r\n![[clip.webm]]\r\n';
+  const note = join(vault, "Main.md");
+  await writeFile(note, source);
+  await writeFile(
+    join(data, "settings.json"),
+    JSON.stringify({ lastVault: vault }),
+  );
+  // Two-page synthetic PDF with a complete cross-reference table.
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 5 0 R /Resources << /Font << /F1 7 0 R >> >> >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 6 0 R /Resources << /Font << /F1 7 0 R >> >> >>",
+    ...["FIRST PAGE", "SECOND PAGE"].map((label) => {
+      const stream = `BT /F1 20 Tf 30 100 Td (${label}) Tj ET`;
+      return `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
+    }),
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = objects.map((object, index) => {
+    const offset = pdf.length;
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+    return offset;
+  });
+  const xref = pdf.length;
+  pdf += `xref\n0 8\n0000000000 65535 f \n${offsets.map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`).join("")}trailer\n<< /Size 8 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  await writeFile(join(vault, "sample.pdf"), pdf);
+  await writeFile(
+    join(vault, "protected.pdf"),
+    Buffer.from(
+      await readFile(join(root, "tests/fixtures/protected-pdf.base64"), "utf8"),
+      "base64",
+    ),
+  );
+  const wav = Buffer.alloc(44 + 1600);
+  wav.write("RIFF", 0);
+  wav.writeUInt32LE(wav.length - 8, 4);
+  wav.write("WAVEfmt ", 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(8000, 24);
+  wav.writeUInt32LE(16000, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write("data", 36);
+  wav.writeUInt32LE(1600, 40);
+  await writeFile(join(vault, "sound.wav"), wav);
+  let app: RunningApp | undefined;
+  try {
+    app = await launch(data, join(run, "profile"), false);
+    const page = app.page;
+    const errors: string[] = [];
+    const externalRequests: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("request", (request) => {
+      if (request.url().includes("example.com"))
+        externalRequests.push(request.url());
+    });
+    const clip = await page.evaluate(async () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 64;
+      canvas.height = 64;
+      const stream = canvas.captureStream(10),
+        recorder = new MediaRecorder(stream, {
+          mimeType: "video/webm;codecs=vp8",
+        });
+      const chunks: Blob[] = [];
+      const stopped = new Promise<Blob>((done) => {
+        recorder.ondataavailable = (event) => chunks.push(event.data);
+        recorder.onstop = () => done(new Blob(chunks, { type: "video/webm" }));
+      });
+      recorder.start();
+      for (let frame = 0; frame < 8; frame++) {
+        const brush = canvas.getContext("2d")!;
+        brush.fillStyle = frame % 2 ? "#4e7256" : "#a4bea2";
+        brush.fillRect(0, 0, 64, 64);
+        await new Promise((done) => setTimeout(done, 80));
+      }
+      recorder.stop();
+      const bytes = [...new Uint8Array(await (await stopped).arrayBuffer())];
+      stream.getTracks().forEach((track) => track.stop());
+      return bytes;
+    });
+    await writeFile(join(vault, "clip.webm"), Buffer.from(clip));
+    await page.getByRole("button", { name: "Main", exact: true }).click();
+    await setMode(page, "Live Preview");
+    const tableEditor = page.getByRole("group", { name: "Редактор таблицы" });
+    await expect(
+      tableEditor.locator(".table-cell-preview strong").first(),
+    ).toHaveText("Zed");
+    await tableEditor.getByLabel("Строка 2, столбец 1").fill("Changed");
+    const editedCell = tableEditor.getByLabel("Строка 2, столбец 1");
+    await expect(editedCell).toBeFocused();
+    await page.waitForTimeout(400);
+    await expect(editedCell).toBeFocused();
+    await editedCell.press("End");
+    await editedCell.pressSequentially("!");
+    await expect(editedCell).toHaveValue("Changed!");
+    await editedCell.press("Control+z");
+    await expect(editedCell).toHaveValue("Changed");
+    await expect(editedCell).toBeFocused();
+    await editedCell.press("Control+y");
+    await expect(editedCell).toHaveValue("Changed!");
+    const longCell = tableEditor.getByLabel("Строка 3, столбец 1");
+    const longValue = "**Длинный текст** ".repeat(9) + "`код`";
+    await longCell.fill(longValue);
+    await expect
+      .poll(() =>
+        longCell.evaluate((element) => element.getBoundingClientRect().height),
+      )
+      .toBeGreaterThan(45);
+    await editedCell.focus();
+    await expect(
+      longCell.locator("..").locator(".table-cell-preview strong").first(),
+    ).toHaveText("Длинный текст");
+    await expect(
+      longCell.locator("..").locator(".table-cell-preview code"),
+    ).toHaveText("код");
+    await tableEditor
+      .getByRole("button", { name: "Добавить столбец", exact: true })
+      .click();
+    const appendedColumn = tableEditor.getByLabel("Строка 2, столбец 3");
+    await expect(appendedColumn).toBeFocused();
+    await appendedColumn.press("Shift+F10");
+    await expect(
+      page.getByRole("menu", { name: "Действия с ячейкой" }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(appendedColumn).toBeFocused();
+    await appendedColumn.click({ button: "right" });
+    await page
+      .getByRole("menuitem", { name: "Удалить столбец", exact: true })
+      .click();
+    await expect(tableEditor.getByLabel("Строка 2, столбец 3")).toHaveCount(0);
+    await editedCell.focus();
+    await tableEditor
+      .getByRole("button", { name: "Добавить строку", exact: true })
+      .click();
+    const appendedRow = tableEditor.getByLabel("Строка 4, столбец 1");
+    await expect(appendedRow).toBeFocused();
+    await appendedRow.fill("Inserted");
+    await page.screenshot({ path: test.info().outputPath("table-dark.png") });
+    expect(await readFile(note, "utf8")).toBe(source);
+    await setMode(page, "Исходник");
+    const editor = page.getByRole("textbox", { name: "Markdown-редактор" });
+    await expect(editor).toContainText("Changed");
+    await expect(editor).toContainText("Inserted");
+    await editor.press("Control+z");
+    await expect(editor).not.toContainText("Inserted");
+    await editor.press("Control+y");
+    await editor.press("Control+s");
+    await expect.poll(() => readFile(note, "utf8")).toContain("Changed");
+    const saved = await readFile(note, "utf8");
+    expect(saved.startsWith("\uFEFF")).toBe(true);
+    expect(saved.replace(/\r\n/g, "")).not.toContain("\n");
+    await setMode(page, "Чтение");
+    const reading = page.getByRole("region", { name: "Просмотр заметки" });
+    const refs = reading.getByRole("button", {
+      name: "Перейти к сноске one",
+      exact: true,
+    });
+    await refs.nth(1).click();
+    await expect(reading.locator(".reading-footnote")).toBeFocused();
+    await reading
+      .getByRole("button", { name: "Вернуться из сноски one", exact: true })
+      .click();
+    await expect(refs.nth(1)).toBeFocused();
+    await expect(
+      reading.locator(".reading-document > details summary"),
+    ).toHaveText("HTML details");
+    await expect(reading.locator(".reading-document > details b")).toHaveText(
+      "Safe HTML",
+    );
+    await expect(reading.locator("u")).toHaveText("underlined");
+    await expect(
+      reading.getByRole("cell", { name: "2", exact: true }),
+    ).toHaveCSS("text-align", "right");
+    await expect(reading.locator("script,iframe,[onclick]")).toHaveCount(0);
+    expect(
+      await page.evaluate(() => Object.hasOwn(window, "htmlExecuted")),
+    ).toBe(false);
+    await reading
+      .locator(".reading-document > details")
+      .scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: test.info().outputPath("html-footnotes-dark.png"),
+    });
+    await reading
+      .getByRole("button", { name: "Показать PDF", exact: true })
+      .click();
+    await expect(reading.locator(".pdf-view")).toContainText("2 / 2");
+    await expect(reading.locator(".pdf-view [role=status]")).toHaveCount(0);
+    await expect(reading.locator(".textLayer")).toContainText("SECOND PAGE");
+    await reading.getByRole("textbox", { name: "Поиск в PDF" }).fill("FIRST");
+    await expect(reading.locator(".pdf-view")).toContainText("1 / 2");
+    await expect(reading.locator(".textLayer mark")).toHaveText("FIRST");
+    await reading.getByRole("textbox", { name: "Поиск в PDF" }).fill("");
+    await reading
+      .getByRole("button", { name: "Следующая страница", exact: true })
+      .click();
+    await expect(reading.locator(".pdf-view [role=status]")).toHaveCount(0);
+    await reading
+      .locator(".pdf-pages")
+      .screenshot({ path: test.info().outputPath("pdf-text-layer.png") });
+    expect(
+      await reading.locator("canvas").evaluate((canvas) => {
+        const image = (canvas as HTMLCanvasElement)
+          .getContext("2d")!
+          .getImageData(0, 0, 300, 200).data;
+        return image.some((value, index) => index % 4 !== 3 && value < 100);
+      }),
+    ).toBe(true);
+    await reading
+      .getByRole("button", { name: "Предыдущая страница", exact: true })
+      .click();
+    await expect(reading.locator(".pdf-view")).toContainText("1 / 2");
+    await setMode(page, "Исходник");
+    const pdfEditor = page.getByRole("textbox", { name: "Markdown-редактор" });
+    await pdfEditor.press("Control+End");
+    await pdfEditor.pressSequentially("\n\n![[protected.pdf]]\n");
+    await setMode(page, "Чтение");
+    await reading
+      .getByRole("button", { name: "Показать PDF", exact: true })
+      .last()
+      .click();
+    await reading.getByLabel("Пароль PDF").fill("wrong");
+    await reading
+      .getByRole("button", { name: "Открыть PDF", exact: true })
+      .click();
+    await expect(reading.getByRole("alert")).toContainText("Неверный пароль");
+    await reading.getByLabel("Пароль PDF").fill("test-password");
+    await reading
+      .getByRole("button", { name: "Открыть PDF", exact: true })
+      .click();
+    await expect(reading.getByLabel("Пароль PDF")).toHaveCount(0);
+    await reading.getByText("Аннотации страницы (1)", { exact: true }).click();
+    await expect(reading.locator(".pdf-note")).toContainText(
+      "Synthetic PDF annotation",
+    );
+    await expect
+      .poll(() =>
+        reading
+          .locator("audio")
+          .evaluate((element) => (element as HTMLAudioElement).readyState),
+      )
+      .toBeGreaterThan(0);
+    await reading.locator("audio").evaluate((element) => {
+      const audio = element as HTMLAudioElement;
+      audio.muted = true;
+    });
+    await reading
+      .getByRole("button", { name: "Воспроизвести", exact: true })
+      .click();
+    await expect
+      .poll(() =>
+        reading
+          .locator("audio")
+          .evaluate((element) => (element as HTMLAudioElement).currentTime),
+      )
+      .toBeGreaterThan(0);
+    await reading.locator(".media-video").scrollIntoViewIfNeeded();
+    await expect
+      .poll(() =>
+        reading
+          .locator("video")
+          .evaluate((element) => (element as HTMLVideoElement).readyState),
+      )
+      .toBeGreaterThan(0);
+    await reading.locator("video").evaluate(async (element) => {
+      const video = element as HTMLVideoElement;
+      video.muted = true;
+      await video.play();
+      video.pause();
+    });
+    await page.screenshot({
+      path: test.info().outputPath("media-html-dark.png"),
+    });
+    await page.getByRole("button", { name: /тему/i }).click();
+    await page.setViewportSize({ width: 900, height: 650 });
+    await page.evaluate(
+      () =>
+        new Promise((done) =>
+          requestAnimationFrame(() => requestAnimationFrame(done)),
+        ),
+    );
+    await page.screenshot({
+      path: test.info().outputPath("media-html-light-narrow.png"),
+    });
+    await setMode(page, "Live Preview");
+    await expect(tableEditor).toBeVisible();
+    const headingCell = tableEditor.getByLabel("Строка 1, столбец 2");
+    await headingCell.fill(
+      "Очень длинный заголовок, который занимает несколько строк в таблице",
+    );
+    await tableEditor.getByLabel("Строка 2, столбец 1").focus();
+    await expect(
+      headingCell.locator("..").locator(".table-cell-preview"),
+    ).toContainText("Очень длинный заголовок");
+    const headerBackgrounds = await tableEditor
+      .locator("tr:first-child td")
+      .evaluateAll((cells) =>
+        cells.map((cell) => getComputedStyle(cell).backgroundColor),
+      );
+    expect(headerBackgrounds[0]).toBe(headerBackgrounds[1]);
+    expect(headerBackgrounds[0]).not.toBe("rgba(0, 0, 0, 0)");
+    await expect(
+      page.getByRole("button", { name: "Изменить таблицу", exact: true }),
+    ).toHaveCount(0);
+    await page.screenshot({
+      path: test.info().outputPath("table-light-narrow.png"),
+    });
+    await page.setViewportSize({ width: 700, height: 650 });
+    const tableGrid = tableEditor.locator(".table-editor-grid");
+    await tableEditor.getByLabel("Строка 1, столбец 1").focus();
+    for (let i = 0; i < 5; i++) {
+      await tableEditor
+        .getByRole("button", { name: "Добавить столбец", exact: true })
+        .click();
+    }
+    const wideCell = tableEditor.getByLabel("Строка 1, столбец 7");
+    await expect(wideCell).toBeFocused();
+    await wideCell.fill("Новый столбец");
+    const widths = await tableGrid.evaluate((grid) => {
+      const content = grid.closest(".cm-content")!.getBoundingClientRect();
+      const bounds = grid.getBoundingClientRect();
+      const cell = grid
+        .querySelector<HTMLTextAreaElement>(
+          'textarea[data-row="0"][data-column="6"]',
+        )!
+        .getBoundingClientRect();
+      return {
+        left: bounds.left,
+        right: bounds.right,
+        contentLeft: content.left,
+        contentRight: content.right,
+        client: grid.clientWidth,
+        scroll: grid.scrollWidth,
+        cellLeft: cell.left,
+        cellRight: cell.right,
+      };
+    });
+    expect(widths.left).toBeGreaterThanOrEqual(widths.contentLeft - 1);
+    expect(widths.right).toBeLessThanOrEqual(widths.contentRight + 1);
+    expect(widths.scroll).toBeGreaterThan(widths.client);
+    expect(widths.cellLeft).toBeGreaterThanOrEqual(widths.left - 1);
+    expect(widths.cellRight).toBeLessThanOrEqual(widths.right + 1);
+    await page.screenshot({
+      path: test.info().outputPath("table-wide-narrow.png"),
+    });
+    await expect(
+      page.locator('.live-block-preview[data-live-kind="literalHtml"] details'),
+    ).toBeVisible();
+    const liveRefs = page.getByRole("button", {
+      name: "Перейти к сноске one",
+      exact: true,
+    });
+    await liveRefs.nth(1).click();
+    await expect(editor.locator(".cm-activeLine")).toContainText("[^one]:");
+    expect(externalRequests).toEqual([]);
+    expect(errors).toEqual([]);
+  } finally {
+    await stop(app);
+  }
+});
+
+test("Obsidian inline footnotes, property types and explicit external media", async () => {
+  const run = await mkdtemp(join(root, ".build-cache/native-compat-details-"));
+  const vault = join(run, "Native-MVP"),
+    data = join(run, "data");
+  await mkdir(join(vault, ".obsidian"), { recursive: true });
+  await mkdir(data);
+  const settings = '{"types":{"created":"datetime","project":"text"}}';
+  await writeFile(join(vault, ".obsidian", "types.json"), settings);
+  const source =
+    "\uFEFF---\r\ncreated: 2026-10-28T14:30:12.123+03:00\r\nproject: Example\r\n---\r\n# Main\r\n\r\nТекст ^[Встроенная **сноска**] и ещё ^[Вторая].\r\n\r\n![Локальный адрес](http://127.0.0.1:12345/image.png)\r\n";
+  const note = join(vault, "Main.md");
+  await writeFile(note, source);
+  await writeFile(
+    join(data, "settings.json"),
+    JSON.stringify({ lastVault: vault }),
+  );
+  let app: RunningApp | undefined;
+  try {
+    app = await launch(data, join(run, "profile"), false);
+    const page = app.page;
+    await page.getByRole("button", { name: "Main", exact: true }).click();
+    await setMode(page, "Чтение");
+    const reading = page.getByRole("region", { name: "Просмотр заметки" });
+    const footnote = reading.getByRole("button", {
+      name: "Показать встроенную сноску 1",
+      exact: true,
+    });
+    await footnote.click();
+    await expect(reading.getByRole("note")).toContainText("Встроенная сноска");
+    await expect(reading.getByRole("note").locator("strong")).toHaveText(
+      "сноска",
+    );
+    await expect(reading.locator("img")).toHaveCount(0);
+    await reading
+      .getByRole("button", { name: "Загрузить изображение", exact: true })
+      .click();
+    await expect(reading.getByRole("alert")).toBeVisible();
+    const properties = page.getByRole("region", { name: "Свойства заметки" });
+    const created = properties.getByLabel("Значение created");
+    await expect(created).toHaveValue("2026-10-28T14:30:12.123+03:00");
+    await created.fill("2026-10-28T15:40:12.456+03:00");
+    expect(await readFile(note, "utf8")).toBe(source);
+    await page.keyboard.press("Control+s");
+    await expect
+      .poll(() => readFile(note, "utf8"))
+      .toContain("2026-10-28T15:40:12.456+03:00");
+    expect(await readFile(join(vault, ".obsidian", "types.json"), "utf8")).toBe(
+      settings,
+    );
+  } finally {
+    await stop(app);
+  }
+});
+
+test("nested tables: quote prefixes and list indentation survive editing and undo", async () => {
+  const run = await mkdtemp(join(root, ".build-cache/native-nested-tables-"));
+  const vault = join(run, "Native-MVP"),
+    data = join(run, "data");
+  await mkdir(vault);
+  await mkdir(data);
+  const source =
+    "\uFEFF# Nested\r\n\r\n> | A | B |\r\n>  | --- | --- |\r\n> | Old | 2 |\r\n\r\n- Item\r\n\r\n  | X | Y |\r\n  | --- | --- |\r\n  | Before | 9 |\r\n\r\nTail remains unchanged.\r\n";
+  const note = join(vault, "Nested.md");
+  await writeFile(note, source);
+  await writeFile(
+    join(data, "settings.json"),
+    JSON.stringify({ lastVault: vault }),
+  );
+  let app: RunningApp | undefined;
+  try {
+    app = await launch(data, join(run, "profile"), false);
+    const page = app.page;
+    await page.getByRole("button", { name: "Nested", exact: true }).click();
+    await setMode(page, "Live Preview");
+    const tables = page.getByRole("group", {
+      name: "Редактор таблицы",
+      exact: true,
+    });
+    await expect(tables).toHaveCount(2);
+    const quote = tables.nth(0),
+      list = tables.nth(1);
+    const value = quote.getByLabel("Строка 2, столбец 1");
+    await value.fill("New");
+    await value.press("Control+z");
+    await expect(value).toHaveValue("Old");
+    await value.press("Control+y");
+    await expect(value).toHaveValue("New");
+    await quote
+      .getByRole("button", { name: "Добавить строку", exact: true })
+      .click();
+    await quote.getByLabel("Строка 3, столбец 1").fill("Extra");
+    const listValue = list.getByLabel("Строка 2, столбец 1");
+    await listValue.fill("Done");
+    expect(await readFile(note, "utf8")).toBe(source);
+    await listValue.press("Control+s");
+    const expected = source
+      .replace("> | Old | 2 |", "> | New | 2 |\r\n> | Extra |  |")
+      .replace("  | Before | 9 |", "  | Done | 9 |");
+    await expect.poll(() => readFile(note, "utf8")).toBe(expected);
+  } finally {
+    await stop(app);
+  }
+});
+
+test("note properties: inline edits, drafts, undo, preservation and explicit save", async () => {
   const run = await mkdtemp(join(root, ".build-cache/native-properties-"));
   const vault = join(run, "Native-MVP"),
     data = join(run, "data");
@@ -42,101 +861,139 @@ test("note properties: typed edits, drafts, undo, preservation and explicit save
     app = await launch(data, join(run, "profile"), false);
     const page = app.page;
     await page.getByRole("button", { name: "Main", exact: true }).click();
+    await setMode(page, "Live Preview");
+    const visualProperties = page.getByRole("region", {
+      name: "Свойства заметки",
+    });
+    const firstEditor = page.getByRole("textbox", {
+      name: "Markdown-редактор",
+    });
+    await expect(visualProperties).toBeVisible();
+    await firstEditor.press("Control+Home");
+    await expect(firstEditor).toContainText("Keep comment");
+    await expect(visualProperties).toHaveCount(0);
+    await firstEditor.press("Control+End");
+    await expect(visualProperties).toBeVisible();
     await setMode(page, "Исходник");
     const editor = page.getByRole("textbox", { name: "Markdown-редактор" });
     await editor.press("Control+End");
     await editor.pressSequentially("Unsaved body");
-    await page
-      .getByRole("button", { name: "Переключить правую панель", exact: true })
-      .click();
+    await setMode(page, "Live Preview");
     const properties = page.getByRole("region", { name: "Свойства заметки" });
-    const row = (key: string) =>
-      properties.getByRole("button", {
-        name: `Изменить свойство ${key}`,
-        exact: true,
-      });
-    const dialog = page.getByRole("dialog");
-    const change = async (key: string, value: string) => {
-      await row(key).click();
-      await dialog.getByLabel("Значение", { exact: true }).fill(value);
-      await dialog
-        .getByRole("button", { name: "Применить", exact: true })
-        .click();
-      await expect(dialog).toBeHidden();
-    };
-    await change("title", "Draft title");
-    await expect(row("title")).toContainText("Draft title");
+    await expect(properties).toBeVisible();
+    await expect(page.locator(".inspector .inline-properties")).toHaveCount(0);
+    const title = properties.getByLabel("Значение title");
+    await title.fill("Draft title");
+    await expect(title).toHaveValue("Draft title");
     expect(await readFile(join(vault, "Main.md"), "utf8")).toBe(source);
-    await editor.press("Control+z");
-    await expect(row("title")).toContainText("Old");
-    await expect(editor).toContainText("Unsaved body");
-    await editor.press("Control+y");
-    await expect(row("title")).toContainText("Draft title");
-    await setMode(page, "Чтение");
-    await change("count", "2.5");
-    await row("done").click();
-    await dialog.getByRole("checkbox", { name: "Значение включено" }).check();
-    await dialog
-      .getByRole("button", { name: "Применить", exact: true })
+    await title.press("Control+z");
+    await expect(title).toHaveValue("Old");
+    await title.press("Control+y");
+    await expect(title).toHaveValue("Draft title");
+    await properties.getByLabel("Значение count").fill("не число");
+    await expect(properties.getByRole("alert")).toContainText("Введите число");
+    await setMode(page, "Исходник");
+    await setMode(page, "Live Preview");
+    await expect(properties.getByLabel("Значение count")).toHaveValue(
+      "не число",
+    );
+    await properties.getByLabel("Значение count").fill("2.5");
+    await properties.getByLabel("Значение done").check();
+    await properties
+      .getByRole("button", {
+        name: "Удалить элемент 1 свойства aliases",
+        exact: true,
+      })
       .click();
-    await expect(row("done")).toContainText("Да");
-    await change("due", "2028-02-29");
-    await row("aliases").click();
-    await expect(dialog.getByLabel("Тип свойства")).toBeDisabled();
-    await dialog
-      .getByLabel("Значение", { exact: true })
-      .fill("ИИ\nFirst, Last");
-    await dialog
-      .getByRole("button", { name: "Применить", exact: true })
+    await properties.getByLabel("Значение aliases", { exact: true }).fill("ИИ");
+    await properties
+      .getByLabel("Значение aliases", { exact: true })
+      .press("Enter");
+    await properties
+      .getByLabel("Значение aliases", { exact: true })
+      .fill("First, Last");
+    await properties
+      .getByLabel("Значение aliases", { exact: true })
+      .press("Enter");
+    await properties
+      .getByRole("button", {
+        name: "Удалить элемент 1 свойства tags",
+        exact: true,
+      })
       .click();
-    await change("tags", "#работа\nproject/test");
-    await row("count").click();
-    await dialog.getByLabel("Значение", { exact: true }).fill("1+2");
-    await dialog
-      .getByRole("button", { name: "Применить", exact: true })
+    await properties
+      .getByLabel("Значение tags", { exact: true })
+      .fill("#работа");
+    await properties
+      .getByLabel("Значение tags", { exact: true })
+      .press("Enter");
+    await properties
+      .getByLabel("Значение tags", { exact: true })
+      .fill("project/test");
+    await properties
+      .getByLabel("Значение tags", { exact: true })
+      .press("Enter");
+    await properties
+      .getByRole("button", { name: "Удалить свойство due" })
       .click();
-    await expect(dialog.getByRole("alert")).toContainText("Введите число");
-    await dialog.getByRole("button", { name: "Отмена", exact: true }).click();
-    await row("due").click();
-    await dialog
-      .getByRole("button", { name: "Удалить свойство", exact: true })
-      .click();
-    await expect(row("due")).toHaveCount(0);
+    await expect(properties.getByLabel("Значение due")).toHaveCount(0);
     await properties
       .getByRole("button", { name: "Добавить свойство", exact: true })
       .click();
-    await dialog.getByLabel("Имя свойства").fill("custom: key");
-    await dialog.getByLabel("Значение", { exact: true }).fill("true");
-    await dialog
-      .getByRole("button", { name: "Применить", exact: true })
-      .click();
-    await expect(row("custom: key")).toContainText("true");
-    await expect(
-      page.getByRole("region", { name: "Просмотр заметки" }),
-    ).toContainText("Unsaved body");
-    await page.mouse.move(10, 10);
+    await properties.getByLabel("Имя нового свойства").fill("custom: key");
+    await properties.getByLabel("Значение нового свойства").fill("true");
     await page.screenshot({
-      path: test.info().outputPath("properties-dark.png"),
+      path: test.info().outputPath("properties-add-dark.png"),
+    });
+    await properties
+      .getByRole("button", { name: "Тип нового свойства" })
+      .click();
+    await expect(
+      page.getByRole("menu", { name: "Тип нового свойства" }),
+    ).toBeVisible();
+    await page.screenshot({
+      path: test.info().outputPath("properties-type-menu-dark.png"),
+    });
+    await page.keyboard.press("Escape");
+    await properties
+      .getByRole("button", { name: "Добавить", exact: true })
+      .click();
+    await expect(properties.getByLabel("Значение custom: key")).toHaveValue(
+      "true",
+    );
+    await setMode(page, "Чтение");
+    const readingTitle = properties.getByLabel("Значение title");
+    await readingTitle.focus();
+    await readingTitle.press("End");
+    await readingTitle.pressSequentially(" XYZ", { delay: 30 });
+    await expect(readingTitle).toHaveValue("Draft title XYZ");
+    await readingTitle.press("Control+z");
+    await expect(readingTitle).toHaveValue("Draft title XY");
+    await readingTitle.press("Control+y");
+    await expect(readingTitle).toHaveValue("Draft title XYZ");
+    await setMode(page, "Live Preview");
+    await expect(properties.getByLabel("Значение title")).toHaveValue(
+      "Draft title XYZ",
+    );
+    await page.screenshot({
+      path: test.info().outputPath("properties-inline-dark.png"),
     });
     await page
       .getByRole("button", { name: "Переключить тему", exact: true })
       .click();
     await page.setViewportSize({ width: 900, height: 650 });
-    await row("title").click();
     await page.screenshot({
-      path: test.info().outputPath("properties-form-light-narrow.png"),
+      path: test.info().outputPath("properties-inline-light.png"),
     });
-    await dialog.getByRole("button", { name: "Отмена", exact: true }).click();
-    await row("plugin").click();
-    await expect(editor.locator(".cm-line").first()).toBeVisible();
+    await properties.getByRole("button", { name: /Сложное значение/ }).click();
     await expect(editor).toContainText("plugin:");
     await expect(editor).toContainText("nested: {keep: true}");
     await expect(editor).toContainText("# Keep comment");
     expect(await readFile(join(vault, "Main.md"), "utf8")).toBe(source);
     await editor.press("Control+s");
     await expect
-      .poll(async () => await readFile(join(vault, "Main.md"), "utf8"))
-      .toContain('title: "Draft title" # title note');
+      .poll(() => readFile(join(vault, "Main.md"), "utf8"))
+      .toContain('title: "Draft title XYZ" # title note');
     const saved = await readFile(join(vault, "Main.md"), "utf8");
     expect(saved.startsWith("\uFEFF---\r\n")).toBe(true);
     expect(saved.replace(/\r\n/g, "")).not.toContain("\n");
@@ -147,25 +1004,58 @@ test("note properties: typed edits, drafts, undo, preservation and explicit save
     expect(saved).toContain("done: true");
     expect(saved).not.toContain("due:");
     await page.getByRole("button", { name: "Other", exact: true }).click();
+    await setMode(page, "Live Preview");
     await properties
       .getByRole("button", { name: "Добавить свойство", exact: true })
       .click();
-    await dialog.getByLabel("Имя свойства").fill("due");
-    await dialog.getByLabel("Тип свойства").selectOption("date");
-    await dialog.getByLabel("Значение", { exact: true }).fill("2028-02-29");
-    await dialog
-      .getByRole("button", { name: "Применить", exact: true })
+    await properties.getByLabel("Имя нового свойства").fill("due");
+    await properties
+      .getByRole("button", { name: "Тип нового свойства" })
       .click();
-    await expect(row("due")).toContainText("2028-02-29");
+    await page
+      .getByRole("menuitemcheckbox", { name: "Дата", exact: true })
+      .click();
+    await properties.getByLabel("Значение нового свойства").fill("2028-02-29");
+    await page.screenshot({
+      path: test.info().outputPath("properties-add-light-narrow.png"),
+    });
+    await setMode(page, "Исходник");
+    await setMode(page, "Live Preview");
+    await expect(properties.getByLabel("Имя нового свойства")).toHaveValue(
+      "due",
+    );
+    await expect(properties.getByLabel("Значение нового свойства")).toHaveValue(
+      "2028-02-29",
+    );
+    await properties
+      .getByRole("button", { name: "Добавить", exact: true })
+      .click();
+    await expect(properties.getByLabel("Значение due")).toHaveValue(
+      "2028-02-29",
+    );
+    await properties.getByRole("button", { name: "Тип свойства due" }).click();
+    await page
+      .getByRole("menuitemcheckbox", { name: "Текст", exact: true })
+      .click();
+    await expect(properties.getByLabel("Значение due")).toHaveAttribute(
+      "type",
+      "text",
+    );
+    await expect
+      .poll(
+        async () =>
+          JSON.parse(
+            await readFile(join(vault, ".obsidian/types.json"), "utf8"),
+          ).types.due,
+      )
+      .toBe("text");
     expect(await readFile(join(vault, "Other.md"), "utf8")).toBe("Plain body");
+    await properties.getByLabel("Значение due").press("Control+s");
+    await expect
+      .poll(() => readFile(join(vault, "Other.md"), "utf8"))
+      .toContain("2028-02-29");
     await page.getByRole("button", { name: "Broken", exact: true }).click();
     await expect(properties.getByRole("alert")).toContainText("исходнике");
-    await expect(
-      properties.getByRole("button", {
-        name: "Добавить свойство",
-        exact: true,
-      }),
-    ).toHaveCount(0);
   } finally {
     await stop(app);
   }
@@ -2222,8 +3112,10 @@ test("live rich blocks: inline/display math, table, image, Mermaid, source editi
     const editor = page.getByRole("textbox", { name: "Markdown-редактор" });
     await setMode(page, "Live Preview");
     await expect(
-      page.locator('.live-block-preview[data-live-kind="table"] table'),
-    ).toContainText("42");
+      page
+        .locator('.live-block-preview[data-live-kind="table"]')
+        .getByLabel("Строка 2, столбец 2"),
+    ).toHaveValue("42");
     await expect(page.locator(".live-inline-preview .katex")).toHaveCount(1);
     const display = () =>
       page.locator('.live-block-preview[data-live-kind="math"]');
@@ -2266,16 +3158,18 @@ test("live rich blocks: inline/display math, table, image, Mermaid, source editi
     await expect
       .poll(() => readFile(join(vault, "Live.md"), "utf8"))
       .toBe(content.replace("$$a^2$$", () => "$$a^2+1$$"));
-    await page
-      .locator('.live-block-preview[data-live-kind="table"]')
-      .getByRole("button", { name: "Изменить таблицу", exact: true })
-      .click();
+    await expect(
+      page.getByRole("button", { name: "Изменить таблицу", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page
+        .locator('.live-block-preview[data-live-kind="table"]')
+        .getByLabel("Строка 2, столбец 2"),
+    ).toHaveValue("42");
+    await setMode(page, "Исходник");
     await expect(
       editor.locator(".cm-line").filter({ hasText: "| Колонка | Значение |" }),
     ).toBeVisible();
-    await editor.press("Control+End");
-    await expect(page.locator(".live-block-preview table")).toContainText("42");
-    await setMode(page, "Исходник");
     await expect(page.locator(".live-block-preview")).toHaveCount(0);
     await editor.press("Control+z");
     await editor.press("Control+s");

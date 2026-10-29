@@ -5,7 +5,7 @@ pub mod indexing;
 pub mod links;
 pub mod markdown;
 pub mod navigation;
-mod obsidian;
+pub mod obsidian;
 pub mod renaming;
 pub mod rendering;
 pub mod settings;

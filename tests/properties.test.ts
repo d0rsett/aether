@@ -2,9 +2,18 @@ import { expect, it } from "vitest";
 import {
   propertyEdit,
   propertyValue,
+  propertyBodyStart,
   readProperties,
   type PropertyAction,
 } from "../src/editor/properties";
+
+it("places the initial live caret after a complete YAML header using editor offsets", () => {
+  const source = "\uFEFF---\r\ntitle: test\r\n---\r\nBody";
+  const normalized = source.replace(/\r\n/g, "\n");
+  expect(propertyBodyStart(source)).toBe(normalized.indexOf("Body"));
+  expect(propertyBodyStart("---\ntitle: test\n---")).toBeNull();
+  expect(propertyBodyStart("---\ntitle: [broken")).toBeNull();
+});
 
 function edit(
   source: string,
@@ -141,4 +150,40 @@ it("validates typed numbers, dates, tags and alias lists while preserving commas
   ]);
   expect(() => propertyValue("aliases", "list", "bad|link", false)).toThrow();
   expect(propertyValue("flag", "checkbox", "", false)).toBe(false);
+});
+
+it("reads Obsidian property types and preserves exact date-time values", () => {
+  const source =
+    '---\ncreated: "2026-10-28T14:30:45.123456+03:00"\ntitle: Keep\nserial: "2024-02-29"\nweird: hello\ncount: "wrong"\n---\nBody';
+  const config = {
+    created: "datetime",
+    serial: "text",
+    weird: "plugin-custom",
+    count: "number",
+  };
+  const items = readProperties(source, config).items;
+  expect(items.find((item) => item.key === "created")?.type).toBe("datetime");
+  expect(items.find((item) => item.key === "serial")?.type).toBe("text");
+  expect(items.find((item) => item.key === "weird")?.type).toBe("unsupported");
+  expect(items.find((item) => item.key === "count")?.type).toBe("unsupported");
+  for (const value of [
+    "2026-10-28T14:30",
+    "2026-10-28T14:30:45",
+    "2026-10-28T14:30:45.123456+03:00",
+    "2026-10-28T14:30:45Z",
+  ]) {
+    expect(propertyValue("created", "datetime", value, false)).toBe(value);
+  }
+  expect(() =>
+    propertyValue("created", "datetime", "2026-02-29T14:30:00", false),
+  ).toThrow();
+  expect(() =>
+    propertyValue("created", "datetime", "2026-10-28T25:30:00", false),
+  ).toThrow();
+  const changed = edit(source, {
+    key: "title",
+    value: "Changed",
+    create: false,
+  });
+  expect(changed).toContain('created: "2026-10-28T14:30:45.123456+03:00"');
 });

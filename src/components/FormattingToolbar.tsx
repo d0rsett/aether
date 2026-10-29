@@ -7,6 +7,8 @@ import {
   List,
   Link2,
   X,
+  Table2,
+  Files,
 } from "lucide-react";
 import type { FormatCommand } from "../editor/enhancements";
 
@@ -25,6 +27,7 @@ const groups = [
       { type: "heading", label: "Заголовок", icon: Heading2 },
       { type: "quote", label: "Цитата", icon: Quote },
       { type: "list", label: "Список", icon: List },
+      { type: "table", label: "Вставить таблицу", icon: Table2 },
     ],
   },
   {
@@ -37,11 +40,13 @@ export function FormattingToolbar({
   disabled,
   onFormat,
   onClose,
+  onTemplates,
   active = [],
 }: {
   disabled: boolean;
   onFormat: (command: FormatCommand) => void;
   onClose: () => void;
+  onTemplates?: () => void;
   active?: FormatCommand[];
 }) {
   return (
@@ -69,6 +74,17 @@ export function FormattingToolbar({
               {item.type === "link" && <span>Ссылка</span>}
             </button>
           ))}
+          {index === groups.length - 1 && (
+            <button
+              aria-label="Вставить шаблон"
+              data-tooltip="Вставить шаблон"
+              disabled={disabled}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={onTemplates}
+            >
+              <Files size={17} />
+            </button>
+          )}
           {index === groups.length - 1 && (
             <button
               className="format-close"

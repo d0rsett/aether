@@ -3,7 +3,7 @@ use crate::{markdown, Error, Result};
 use pulldown_cmark::{CodeBlockKind, Event, LinkType, Parser, Tag};
 use serde::Serialize;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Node {
     pub from: usize,
@@ -211,14 +211,35 @@ fn render_tree(content: &str) -> Result<Document> {
                             _ => "link",
                         }
                     }
-                    Tag::Table(_) => "table",
+                    Tag::Table(alignments) => {
+                        node.target = alignments
+                            .iter()
+                            .map(|alignment| match alignment {
+                                pulldown_cmark::Alignment::Left => "left",
+                                pulldown_cmark::Alignment::Center => "center",
+                                pulldown_cmark::Alignment::Right => "right",
+                                pulldown_cmark::Alignment::None => "",
+                            })
+                            .collect::<Vec<_>>()
+                            .join("|");
+                        "table"
+                    }
                     Tag::TableHead => "tableHead",
                     Tag::TableRow => "tableRow",
-                    Tag::TableCell => "tableCell",
+                    Tag::TableCell => {
+                        let column = stack.last().map_or(0, |row| row.children.len());
+                        if let Some(table) =
+                            stack.iter().rev().find(|parent| parent.kind == "table")
+                        {
+                            node.target = table.target.split('|').nth(column).unwrap_or("").into();
+                        }
+                        "tableCell"
+                    }
                     Tag::FootnoteDefinition(id) => {
                         node.target = id.into_string();
                         "footnote"
                     }
+                    Tag::HtmlBlock => "literalHtml",
                     _ => "group",
                 }
                 .into();
@@ -230,6 +251,14 @@ fn render_tree(content: &str) -> Result<Document> {
                     continue;
                 };
                 node = completed;
+                if node.kind == "literalHtml" {
+                    node.text = node
+                        .children
+                        .iter()
+                        .map(|child| child.text.as_str())
+                        .collect();
+                    node.children.clear();
+                }
                 if node.kind == "quote" {
                     callout(&mut node);
                 }
@@ -292,10 +321,153 @@ fn render_tree(content: &str) -> Result<Document> {
         });
     }
 
+    // HTML blocks arrive as adjacent raw events, often one per line. Keep the
+    // complete fragment together for inert reconstruction and Live Preview.
+    let mut grouped: Vec<Node> = Vec::new();
+    for node in root {
+        if let Some(previous) = grouped.last_mut() {
+            if previous.kind == "literalHtml"
+                && node.kind == "literalHtml"
+                && previous.to == node.from
+            {
+                previous.text.push_str(&node.text);
+                previous.to = node.to;
+                previous.end_line = node.end_line;
+                continue;
+            }
+        }
+        grouped.push(node);
+    }
+    let ranges = crate::obsidian::inline_footnotes(&content[offset..]);
+    for (index, range) in ranges.into_iter().enumerate().rev() {
+        let from = positions[offset + range.start];
+        let to = positions[offset + range.end];
+        convert_inline_footnote(&mut grouped, from, to, index as u64 + 1);
+    }
     Ok(Document {
-        nodes: root,
+        nodes: grouped,
         warning: metadata.warning,
     })
+}
+
+fn convert_inline_footnote(nodes: &mut Vec<Node>, from: usize, to: usize, number: u64) -> bool {
+    for node in nodes.iter_mut() {
+        if node.from <= from
+            && node.to >= to
+            && convert_inline_footnote(&mut node.children, from, to, number)
+        {
+            return true;
+        }
+    }
+    let Some(first) = nodes.iter().position(|n| n.from <= from && n.to > from) else {
+        return false;
+    };
+    let Some(last) = nodes.iter().position(|n| n.from < to && n.to >= to) else {
+        return false;
+    };
+    if first > last || nodes[first].kind != "text" {
+        return false;
+    }
+    let Some(caret) = nodes[first].text.rfind('^') else {
+        return false;
+    };
+    // A Markdown shortcut reference may claim the bracketed text. Within an
+    // Obsidian inline footnote it is still footnote content, not that link.
+    if last == first + 1
+        && nodes[last].kind == "link"
+        && nodes[last].from == from + 1
+        && nodes[last].to == to
+    {
+        let mut selected: Vec<_> = nodes.drain(first..=last).collect();
+        let mut prefix = selected.remove(0);
+        prefix.text.truncate(caret);
+        prefix.to = from;
+        let linked = selected.remove(0);
+        let footnote = Node {
+            from,
+            to,
+            kind: "inlineFootnote".into(),
+            text: String::new(),
+            target: String::new(),
+            has_alias: false,
+            level: number,
+            line: prefix.line,
+            end_line: linked.end_line,
+            children: linked.children,
+        };
+        let mut replacement = Vec::new();
+        if !prefix.text.is_empty() {
+            replacement.push(prefix);
+        }
+        replacement.push(footnote);
+        nodes.splice(first..first, replacement);
+        return true;
+    }
+    if nodes[last].kind != "text" {
+        return false;
+    }
+    let Some(close) = nodes[last].text.find(']') else {
+        return false;
+    };
+    if first == last && close <= caret {
+        return false;
+    }
+    let mut selected: Vec<Node> = nodes.drain(first..=last).collect();
+    let original = selected.clone();
+    let mut prefix = selected[0].clone();
+    prefix.text.truncate(caret);
+    prefix.to = from;
+    let end_index = selected.len() - 1;
+    let mut suffix = selected[end_index].clone();
+    suffix.text = suffix.text[close + 1..].to_owned();
+    suffix.from = to;
+    if end_index == 0 {
+        selected[0].text = selected[0].text[caret + 1..close].to_owned();
+    } else {
+        selected[0].text = selected[0].text[caret + 1..].to_owned();
+        selected[end_index].text.truncate(close);
+    }
+    // The parser emits the opening bracket in a text event, even if it splits
+    // surrounding text into several events.
+    let opening = selected
+        .iter()
+        .position(|n| !n.text.is_empty() || !n.children.is_empty());
+    let Some(opening) = opening else {
+        nodes.splice(first..first, original);
+        return false;
+    };
+    if selected[opening].kind != "text" || !selected[opening].text.starts_with('[') {
+        // Preserve the original node sequence when another Markdown construct
+        // consumed the bracket (e.g. a shortcut-reference link).
+        nodes.splice(first..first, original);
+        return false;
+    }
+    selected[opening].text.remove(0);
+    selected.retain(|n| n.kind != "text" || !n.text.is_empty());
+    let line = prefix.line;
+    let end_line = suffix.end_line;
+    let footnote = Node {
+        from,
+        to,
+        kind: "inlineFootnote".into(),
+        text: String::new(),
+        target: String::new(),
+        has_alias: false,
+        level: number,
+        line,
+        end_line,
+        children: selected,
+    };
+    let mut replacement = Vec::new();
+    if !prefix.text.is_empty() {
+        replacement.push(prefix);
+    }
+    replacement.push(footnote);
+    if !suffix.text.is_empty() {
+        replacement.push(suffix);
+    }
+    nodes.splice(first..first, replacement);
+    true
 }
 
 fn limit_embeds(nodes: &mut [Node], count: &mut usize) {
@@ -418,7 +590,110 @@ fn callout(node: &mut Node) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn inline_footnotes_preserve_formatting_and_ignore_literals() -> Result<()> {
+        let source = "До 😀 ^[hello **bold** and [link](x)] after ^[second]. `^[code]` \\^[literal]\n\n%% ^[hidden] %%";
+        let doc = render(source)?;
+        let notes: Vec<_> = flatten(&doc.nodes)
+            .into_iter()
+            .filter(|n| n.kind == "inlineFootnote")
+            .collect();
+        assert_eq!(notes.len(), 2);
+        assert!(plain(&notes[0].children).contains("hello bold and link"));
+        assert!(flatten(&notes[0].children)
+            .iter()
+            .any(|n| n.kind == "strong"));
+        assert_eq!(plain(&notes[1].children), "second");
+        let marker = source
+            .encode_utf16()
+            .skip(notes[0].from)
+            .take(notes[0].to - notes[0].from)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            String::from_utf16_lossy(&marker),
+            "^[hello **bold** and [link](x)]"
+        );
+        assert_eq!(notes[0].level, 1);
+        assert_eq!(notes[1].level, 2);
+        let shortcut = render("Text ^[source].\n\n[source]: https://example.com\n")?;
+        let inline: Vec<_> = flatten(&shortcut.nodes)
+            .into_iter()
+            .filter(|n| n.kind == "inlineFootnote")
+            .collect();
+        assert_eq!(inline.len(), 1);
+        assert_eq!(plain(&inline[0].children), "source");
+        let tricky = "😀 ^[текст со \\] скобкой и [ссылкой](https://example.com/a_(b))] затем ^[вторая] и [существующая](https://example.com) [^x].\n\n[^x]: обычная сноска\n";
+        let document = render(tricky)?;
+        let all = flatten(&document.nodes);
+        let inline: Vec<_> = all.iter().filter(|n| n.kind == "inlineFootnote").collect();
+        assert_eq!(inline.len(), 2);
+        assert_eq!(plain(&inline[0].children), "текст со ] скобкой и ссылкой");
+        assert_eq!(plain(&inline[1].children), "вторая");
+        assert!(flatten(&inline[0].children)
+            .iter()
+            .any(|n| n.kind == "link" && n.target == "https://example.com/a_(b)"));
+        assert!(all
+            .iter()
+            .any(|n| n.kind == "footnoteRef" && n.target == "x"));
+        assert!(all
+            .iter()
+            .any(|n| n.kind == "link" && n.target == "https://example.com"));
+        for (note, expected) in inline.iter().zip([
+            "^[текст со \\] скобкой и [ссылкой](https://example.com/a_(b))]",
+            "^[вторая]",
+        ]) {
+            let marker: Vec<_> = tricky
+                .encode_utf16()
+                .skip(note.from)
+                .take(note.to - note.from)
+                .collect();
+            assert_eq!(String::from_utf16_lossy(&marker), expected);
+        }
+        Ok(())
+    }
     use super::*;
+    #[test]
+    fn footnote_reference_ranges_preserve_each_source_marker() -> Result<()> {
+        let source = "Reference[^one] and again[^one].\n\n[^one]: Footnote content.\n";
+        let document = render(source)?;
+        let references: Vec<_> = flatten(&document.nodes)
+            .into_iter()
+            .filter(|node| node.kind == "footnoteRef")
+            .collect();
+        assert_eq!(references.len(), 2);
+        for node in references {
+            assert_eq!(&source[node.from..node.to], "[^one]");
+        }
+        Ok(())
+    }
+    #[test]
+    fn preserves_table_alignment_and_groups_html_without_executing_or_rewriting_it() -> Result<()> {
+        let source = "| A | B |\n| :---: | ---: |\n| One | Two |\n\n<details open>\n<summary>Title</summary>\n<script>evil()</script>\n</details>\n";
+        let document = render(source)?;
+        let cells: Vec<_> = flatten(&document.nodes)
+            .into_iter()
+            .filter(|node| node.kind == "tableCell")
+            .map(|node| node.target.as_str())
+            .collect();
+        assert_eq!(cells, ["center", "right", "center", "right"]);
+        let html = document
+            .nodes
+            .iter()
+            .find(|node| node.kind == "literalHtml")
+            .expect("raw HTML fragment");
+        assert!(html.text.starts_with("<details open>"));
+        assert!(html.text.contains("<script>evil()</script>"));
+        assert!(html.text.contains("</details>"));
+        assert_eq!(
+            source
+                .encode_utf16()
+                .skip(html.from)
+                .take(html.to - html.from)
+                .collect::<Vec<_>>(),
+            html.text.encode_utf16().collect::<Vec<_>>()
+        );
+        Ok(())
+    }
     fn plain(nodes: &[Node]) -> String {
         nodes
             .iter()

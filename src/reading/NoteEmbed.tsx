@@ -9,11 +9,13 @@ export function NoteEmbed({
   label,
   context,
   wiki = true,
+  preview = false,
 }: {
   target: string;
   label: string;
   context: RenderContext;
   wiki?: boolean;
+  preview?: boolean;
 }) {
   const [fallback] = useState(() => new NotePreviews());
   const store = context.previews ?? fallback;
@@ -148,12 +150,28 @@ export function NoteEmbed({
   };
   return (
     <section
-      className="note-transclusion"
+      className={`note-transclusion${preview ? " note-hover-content" : ""}`}
       aria-label={`Встроенная заметка: ${label}`}
     >
       <div className="note-transclusion-header">
         <FileText size={14} />
-        <span>{label}</span>
+        <span
+          className={preview ? "note-hover-title" : undefined}
+          title={preview ? label : undefined}
+        >
+          {preview
+            ? (path ?? target.split("#")[0])
+                .split("/")
+                .at(-1)
+                ?.replace(/\.md$/i, "") || "Текущая заметка"
+            : label}
+          {preview && anchor && (
+            <small>
+              {anchor.startsWith("^") ? "Блок" : "Раздел"}:{" "}
+              {anchor.replace(/^\^/, "")}
+            </small>
+          )}
+        </span>
         <button
           type="button"
           onClick={open}
@@ -187,6 +205,9 @@ export function NoteEmbed({
                   previews: store,
                   path,
                   onTask: undefined,
+                  onFootnote: undefined,
+                  table: undefined,
+                  tableFor: undefined,
                   embedChain: [...chain, identity],
                   onWiki: (destination) => {
                     if (context.onNavigate)

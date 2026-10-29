@@ -5,14 +5,11 @@ import { NoteAttachments } from "./NoteAttachments";
 import type { Inspection } from "../services/api";
 import { api } from "../services/api";
 import { useContextMenu } from "./ContextMenu";
-import { NoteProperties, type ApplyProperty } from "./NoteProperties";
 type Controller = ReturnType<typeof useWorkspace>;
 export function Inspector({
   app,
   inspection,
   knowledgeError,
-  onProperty,
-  onSource,
 }: {
   app: Pick<
     Controller,
@@ -20,25 +17,17 @@ export function Inspector({
   >;
   inspection: Inspection | null;
   knowledgeError: string;
-  onProperty: ApplyProperty;
-  onSource: () => void;
 }) {
   const context = useContextMenu(app.setError);
   return (
     <aside className="inspector">
       <div className="inspector-header">
         <Link2 size={15} />
-        <span>Связи и свойства</span>
+        <span>Связи</span>
       </div>
       <div className="inspector-content">
         {app.active ? (
           <>
-            <NoteProperties
-              key={`${app.vault?.id}:${app.active.path}`}
-              content={app.active.content}
-              onApply={onProperty}
-              onSource={onSource}
-            />
             {knowledgeError && (
               <p className="tree-error">
                 Сведения индекса недоступны: {knowledgeError}

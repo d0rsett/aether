@@ -17,6 +17,8 @@ use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
+mod external_media;
+
 #[derive(Clone)]
 struct AppState {
     vault: Arc<Mutex<Option<Session>>>,
@@ -654,6 +656,77 @@ async fn anchor_options(
     .await
 }
 #[tauri::command]
+async fn property_types(
+    state: State<'_, AppState>,
+    vault_id: String,
+) -> Result<std::collections::BTreeMap<String, String>> {
+    with_vault(
+        state.inner().clone(),
+        vault_id,
+        aether_core::obsidian::property_types,
+    )
+    .await
+}
+#[tauri::command]
+async fn template_folder(state: State<'_, AppState>, vault_id: String) -> Result<String> {
+    with_vault(
+        state.inner().clone(),
+        vault_id,
+        aether_core::obsidian::template_folder,
+    )
+    .await
+}
+#[tauri::command]
+async fn property_catalog(
+    state: State<'_, AppState>,
+    vault_id: String,
+) -> Result<std::collections::BTreeMap<String, Vec<String>>> {
+    with_vault(
+        state.inner().clone(),
+        vault_id,
+        aether_core::obsidian::property_catalog,
+    )
+    .await
+}
+#[tauri::command]
+async fn set_property_type(
+    state: State<'_, AppState>,
+    vault_id: String,
+    name: String,
+    kind: String,
+    expected: std::collections::BTreeMap<String, String>,
+) -> Result<std::collections::BTreeMap<String, String>> {
+    with_vault(state.inner().clone(), vault_id, move |v| {
+        aether_core::obsidian::set_property_type(v, &name, &kind, &expected)
+    })
+    .await
+}
+#[tauri::command]
+async fn read_media(
+    state: State<'_, AppState>,
+    vault_id: String,
+    source: String,
+    target: String,
+    wiki: bool,
+) -> Result<attachments::Media> {
+    with_vault(state.inner().clone(), vault_id, move |v| {
+        attachments::media(v, &source, &target, wiki)
+    })
+    .await
+}
+#[tauri::command]
+async fn read_external_media(
+    state: State<'_, AppState>,
+    vault_id: String,
+    target: String,
+    kind: String,
+) -> Result<attachments::Media> {
+    let state = state.inner().clone();
+    with_vault(state.clone(), vault_id.clone(), |_| Ok(())).await?;
+    let result = blocking(move || external_media::fetch(&target, &kind)).await?;
+    with_vault(state, vault_id, move |_| Ok(result)).await
+}
+#[tauri::command]
 async fn read_image(
     state: State<'_, AppState>,
     vault_id: String,
@@ -959,6 +1032,12 @@ pub fn run() {
             render_note_fragment,
             anchor_options,
             read_image,
+            read_media,
+            read_external_media,
+            property_types,
+            template_folder,
+            property_catalog,
+            set_property_type,
             import_attachments,
             attachment_links,
             resolve_attachment,

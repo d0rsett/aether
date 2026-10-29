@@ -849,7 +849,7 @@
   padding: 18px 36px 0;
   padding-left: calc(36px + var(--editor-gutter-width, 0px));
 }
-.editor-tab-panel:has(> .editor-host:not([hidden]) .cm-lineNumbers) {
+.editor-tab-panel:has(> .editor-host:not([hidden]) .cm-gutters) {
   --editor-gutter-width: 36px;
 }
 .note-title input {

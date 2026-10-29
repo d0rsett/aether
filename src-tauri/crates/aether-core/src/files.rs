@@ -23,7 +23,7 @@ pub fn atomic_write(path: &Path, bytes: &[u8], replace: bool) -> Result<()> {
     atomic_write_checked(path, bytes, replace, None)
 }
 
-fn atomic_write_checked(
+pub(crate) fn atomic_write_checked(
     path: &Path,
     bytes: &[u8],
     replace: bool,

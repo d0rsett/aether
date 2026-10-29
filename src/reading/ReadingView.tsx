@@ -17,9 +17,32 @@ import {
 } from "../services/api";
 import { createPortal } from "react-dom";
 import { ImageLightbox } from "../components/ImageLightbox";
-import { FileText } from "lucide-react";
+import {
+  FileText,
+  Info,
+  Lightbulb,
+  AlertTriangle,
+  CircleAlert,
+  CheckCircle2,
+  HelpCircle,
+  List,
+  Quote,
+  Bug,
+  Flame,
+} from "lucide-react";
+import { NoteHover } from "./NoteHover";
 import { NoteEmbed } from "./NoteEmbed";
 import type { NotePreviews } from "../services/notePreviews";
+import { EditableTable } from "../components/TableEditor";
+import {
+  InlineProperties,
+  type PropertyApply,
+} from "../components/InlineProperties";
+import { followFootnote } from "./footnotes";
+import { InlineFootnote } from "./InlineFootnote";
+import { LocalMedia, mediaTarget } from "./LocalMedia";
+import { ExternalMedia, externalKind } from "./ExternalMedia";
+import { renderHtmlNodes } from "./html";
 const imageTarget = /\.(png|jpe?g|gif|webp|svg|bmp)(?:#|$)/i;
 const attachmentTarget =
   /\.(pdf|mp3|wav|ogg|m4a|flac|3gp|mp4|webm|mov|mkv|ogv|canvas|txt|csv|docx|xlsx|pptx|zip|png|jpe?g|gif|webp|svg|bmp)(?:#|$)/i;
@@ -36,6 +59,14 @@ const Diagram = lazy(() =>
   import("./RichBlocks").then((m) => ({ default: m.Diagram })),
 );
 export interface RenderContext {
+  tableFor?: (node: RenderNode) => RenderContext["table"];
+  onFootnote?: (target: string, back: boolean, from: number) => void;
+  table?: {
+    source: string;
+    version?: number;
+    apply: (value: string) => void;
+    onHistory?: (redo: boolean) => void;
+  };
   theme?: string;
   vaultId: string;
   path: string;
@@ -50,12 +81,45 @@ type Context = RenderContext;
 function text(node: RenderNode): string {
   return node.text || node.children.map(text).join("");
 }
+function tableCellPreview(node: RenderNode): ReactNode {
+  const children = node.children.map((child, index) => (
+    <Fragment key={index}>{tableCellPreview(child)}</Fragment>
+  ));
+  switch (node.kind) {
+    case "text":
+      return node.text;
+    case "code":
+      return <code>{node.text}</code>;
+    case "strong":
+      return <strong>{children}</strong>;
+    case "emphasis":
+      return <em>{children}</em>;
+    case "strike":
+      return <del>{children}</del>;
+    case "highlight":
+      return <mark>{children}</mark>;
+    case "link":
+    case "wiki":
+      return (
+        <span className="table-preview-link">
+          {children.length ? children : node.target}
+        </span>
+      );
+    case "break":
+      return <br />;
+    case "literalHtml":
+      return /^<br\s*\/?>$/i.test(node.text.trim()) ? <br /> : node.text;
+    default:
+      return children.length ? children : node.text;
+  }
+}
 function containsNoteEmbed(node: RenderNode): boolean {
   return isNoteEmbed(node) || node.children.some(containsNoteEmbed);
 }
 function isNoteEmbed(node: RenderNode): boolean {
   return (
     (node.kind === "embed" &&
+      !safeExternal(node.target) &&
       !imageTarget.test(node.target) &&
       !attachmentTarget.test(node.target)) ||
     (node.kind === "image" &&
@@ -189,6 +253,8 @@ function Nodes({
   context: Context;
   head?: boolean;
 }) {
+  if (nodes.some((node) => node.kind === "literalHtml"))
+    return renderHtmlNodes(nodes, context, head);
   return nodes.map((node, index) => (
     <Fragment key={index}>{renderNode(node, context, head)}</Fragment>
   ));
@@ -269,9 +335,34 @@ export function renderNode(
         </>
       );
     case "callout": {
+      const kind = node.target.toLowerCase();
+      const Icon = /^(tip|hint|important)$/.test(kind)
+        ? Lightbulb
+        : /^(warning|caution|attention)$/.test(kind)
+          ? AlertTriangle
+          : /^(danger|error|failure|fail|missing)$/.test(kind)
+            ? CircleAlert
+            : /^(success|check|done)$/.test(kind)
+              ? CheckCircle2
+              : /^(question|help|faq)$/.test(kind)
+                ? HelpCircle
+                : /^(abstract|summary|tldr)$/.test(kind)
+                  ? List
+                  : /^(quote|cite)$/.test(kind)
+                    ? Quote
+                    : kind === "bug"
+                      ? Bug
+                      : kind === "example"
+                        ? Flame
+                        : Info;
       const title = node.children[0];
       const body = <Nodes nodes={node.children.slice(1)} context={context} />;
-      const heading = title ? renderNode(title, context) : node.target;
+      const heading = (
+        <>
+          <Icon className="callout-icon" size={17} aria-hidden="true" />
+          <span>{title ? renderNode(title, context) : node.target}</span>
+        </>
+      );
       return node.level ? (
         <details
           className="reading-callout"
@@ -334,7 +425,7 @@ export function renderNode(
         node.kind === "link" &&
         /^[a-z][a-z0-9+.-]*:/i.test(node.target) &&
         !safeExternal(node.target);
-      return blocked ? (
+      const link = blocked ? (
         <span
           className="blocked-link"
           data-tooltip="Недопустимый протокол ссылки"
@@ -344,7 +435,11 @@ export function renderNode(
       ) : (
         <a
           href="#"
-          data-tooltip={node.target}
+          data-tooltip={
+            safeExternal(node.target) || attachmentTarget.test(node.target)
+              ? node.target
+              : undefined
+          }
           onClick={(e) => {
             e.preventDefault();
             open(node.target, node.kind === "wiki");
@@ -353,9 +448,51 @@ export function renderNode(
           {children}
         </a>
       );
+      return !blocked &&
+        !safeExternal(node.target) &&
+        !attachmentTarget.test(node.target) ? (
+        <NoteHover
+          target={node.target}
+          wiki={node.kind === "wiki"}
+          context={context}
+        >
+          {link}
+        </NoteHover>
+      ) : (
+        link
+      );
     }
     case "image":
     case "embed": {
+      if (safeExternal(node.target))
+        return (
+          <ExternalMedia
+            key={JSON.stringify([
+              context.vaultId,
+              context.path,
+              node.target,
+              node.kind,
+            ])}
+            target={node.target}
+            alt={node.children.map(text).join("")}
+            kind={externalKind(node.target)}
+            context={context}
+          />
+        );
+      if (mediaTarget.test(node.target))
+        return (
+          <LocalMedia
+            key={JSON.stringify([
+              context.vaultId,
+              context.path,
+              node.target,
+              node.kind,
+            ])}
+            target={node.target}
+            wiki={node.kind === "embed"}
+            context={context}
+          />
+        );
       if (isNoteEmbed(node))
         return (
           <NoteEmbed
@@ -416,28 +553,53 @@ export function renderNode(
         />
       );
     }
-    case "table":
+    case "table": {
+      const table = context.tableFor?.(node) ?? context.table;
       return (
         <div className="reading-table" {...source}>
-          <table>
-            {node.children.map((row, i) =>
-              row.kind === "tableHead" ? (
-                <thead key={i}>
-                  <tr>
-                    <Nodes nodes={row.children} context={context} head />
-                  </tr>
-                </thead>
-              ) : (
-                <tbody key={i}>{renderNode(row, context)}</tbody>
-              ),
-            )}
-          </table>
+          {table ? (
+            <EditableTable
+              key={table.version}
+              {...table}
+              previews={node.children.map((row) =>
+                row.children.map(tableCellPreview),
+              )}
+            />
+          ) : (
+            <>
+              <table>
+                {node.children.map((row, i) =>
+                  row.kind === "tableHead" ? (
+                    <thead key={i}>
+                      <tr>
+                        <Nodes nodes={row.children} context={context} head />
+                      </tr>
+                    </thead>
+                  ) : (
+                    <tbody key={i}>{renderNode(row, context)}</tbody>
+                  ),
+                )}
+              </table>
+            </>
+          )}
         </div>
       );
+    }
     case "tableRow":
       return <tr>{children}</tr>;
-    case "tableCell":
-      return head ? <th>{children}</th> : <td>{children}</td>;
+    case "tableCell": {
+      const align =
+        node.target === "left" ||
+        node.target === "center" ||
+        node.target === "right"
+          ? node.target
+          : undefined;
+      return head ? (
+        <th style={{ textAlign: align }}>{children}</th>
+      ) : (
+        <td style={{ textAlign: align }}>{children}</td>
+      );
+    }
     case "task":
       return (
         <input
@@ -453,16 +615,49 @@ export function renderNode(
     case "break":
       return <br />;
     case "literalHtml":
-      return <code className="literal-html">{node.text}</code>;
+      return renderHtmlNodes([node], context);
+    case "inlineFootnote":
+      return <InlineFootnote number={node.level}>{children}</InlineFootnote>;
     case "footnote":
       return (
-        <aside className="reading-footnote" {...source}>
+        <aside
+          className="reading-footnote"
+          data-footnote={node.target}
+          tabIndex={-1}
+          {...source}
+        >
           <sup>{node.target}</sup>
           {children}
+          <button
+            type="button"
+            aria-label={`Вернуться из сноски ${node.target}`}
+            onClick={(event) =>
+              context.onFootnote
+                ? context.onFootnote(node.target, true, node.from)
+                : followFootnote(event.currentTarget, node.target, true)
+            }
+          >
+            ↩
+          </button>
         </aside>
       );
     case "footnoteRef":
-      return <sup>{node.target}</sup>;
+      return (
+        <sup>
+          <button
+            type="button"
+            data-footnote-ref={node.target}
+            aria-label={`Перейти к сноске ${node.target}`}
+            onClick={(event) =>
+              context.onFootnote
+                ? context.onFootnote(node.target, false, node.from)
+                : followFootnote(event.currentTarget, node.target)
+            }
+          >
+            {node.target}
+          </button>
+        </sup>
+      );
     default:
       return children;
   }
@@ -479,6 +674,9 @@ export const ReadingView = memo(function ReadingView({
   previews,
   onNavigate,
   onTask,
+  onProperty,
+  onPropertyHistory,
+  onPropertiesSource,
 }: {
   vaultId: string;
   path: string;
@@ -488,6 +686,9 @@ export const ReadingView = memo(function ReadingView({
   onError: (message: string) => void;
   theme?: string;
   onTask?: (node: RenderNode, snapshot: string) => void;
+  onProperty?: PropertyApply;
+  onPropertyHistory?: (redo: boolean) => void;
+  onPropertiesSource?: () => void;
   previews?: NotePreviews;
   onNavigate?: (source: string, target: string) => void;
 }) {
@@ -546,6 +747,17 @@ export const ReadingView = memo(function ReadingView({
       tabIndex={0}
     >
       <article className="reading-document">
+        {onProperty && onPropertiesSource && (
+          <InlineProperties
+            key={`${vaultId}:${path}`}
+            content={content}
+            vaultId={vaultId}
+            path={path}
+            onApply={onProperty}
+            onHistory={onPropertyHistory}
+            onSource={onPropertiesSource}
+          />
+        )}
         {error ? (
           <p role="alert" className="tree-error">
             {error}

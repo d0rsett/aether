@@ -1,0 +1,74 @@
+.external-embed {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 9px;
+  max-width: 100%;
+  margin: 10px 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font:
+    13px "Segoe UI",
+    sans-serif;
+}
+.external-embed-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--muted);
+}
+.external-origin {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.external-action-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 5px;
+}
+.external-action-icon:hover {
+  background: var(--hover);
+}
+.external-load {
+  align-self: start;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--selected);
+  padding: 7px 10px;
+}
+.external-load:hover {
+  background: var(--hover);
+}
+.external-embed .image-open {
+  display: block;
+  max-width: 100%;
+}
+.external-embed img,
+.external-embed video {
+  display: block;
+  max-width: 100%;
+  max-height: 520px;
+}
+.external-embed video {
+  width: 100%;
+}
+.external-error {
+  color: var(--danger);
+}
+.external-error button {
+  text-decoration: underline;
+}
+.external-status {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--muted);
+}

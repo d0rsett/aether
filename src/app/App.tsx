@@ -1,5 +1,6 @@
 import { Welcome } from "../components/Welcome";
 import { FormattingToolbar } from "../components/FormattingToolbar";
+import { Templates } from "../components/Templates";
 import { Inspector } from "../components/Inspector";
 import { Titlebar } from "../components/Titlebar";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
@@ -28,6 +29,7 @@ import { useWorkspace } from "./useWorkspace";
 import { api, desktop, errorMessage, type RenderNode } from "../services/api";
 import { NotePreviews } from "../services/notePreviews";
 import type { PropertyCommand } from "../editor/properties";
+import type { PropertyApply } from "../components/InlineProperties";
 import { useKnowledge } from "../hooks/useKnowledge";
 import { SearchPanel } from "../search/SearchPanel";
 import type { FormatCommand } from "../editor/enhancements";
@@ -134,6 +136,13 @@ export function App() {
     return () => observer.disconnect();
   }, [left]);
   const [palette, setPalette] = useState(false);
+  const [templates, setTemplates] = useState(false);
+  const [templateCommand, setTemplateCommand] = useState<{
+    id: number;
+    text: string;
+    path: string;
+    vaultId: string;
+  } | null>(null);
   const [query, setQuery] = useState("");
   const [help, setHelp] = useState(false);
   const [stats, setStats] = useState({ words: 0, chars: 0, lines: 0 });
@@ -142,6 +151,12 @@ export function App() {
     (PropertyCommand & { path: string; vaultId: string }) | null
   >(null);
   const propertyId = useRef(0);
+  const [propertyHistory, setPropertyHistory] = useState<{
+    id: number;
+    path: string;
+    vaultId: string;
+    redo: boolean;
+  } | null>(null);
   const [propertyFocus, setPropertyFocus] = useState<{
     id: number;
     path: string;
@@ -153,6 +168,10 @@ export function App() {
   );
   useEffect(
     () => setPropertyCommand(null),
+    [app.vault?.id, app.workspace.active],
+  );
+  useEffect(
+    () => setPropertyHistory(null),
     [app.vault?.id, app.workspace.active],
   );
   const [taskCommand, setTaskCommand] = useState<{
@@ -281,6 +300,12 @@ export function App() {
   }, []);
 
   const commands = [
+    {
+      title: "Вставить шаблон",
+      shortcut: "",
+      enabled: !!app.active,
+      action: () => setTemplates(true),
+    },
     {
       title: "Создать хранилище",
       shortcut: "Ctrl Shift N",
@@ -483,6 +508,38 @@ export function App() {
             ]),
       ],
     );
+  };
+  const openPropertiesSource = () => {
+    if (!app.active || !app.vault) return;
+    setMode("source");
+    setPropertyFocus({
+      id: ++propertyId.current,
+      path: app.active.path,
+      vaultId: app.vault.id,
+    });
+  };
+  const changeProperty: PropertyApply = (action, expected, done) => {
+    if (!app.active || !app.vault) {
+      done("Откройте заметку заново.");
+      return;
+    }
+    setPropertyCommand({
+      id: ++propertyId.current,
+      path: app.active.path,
+      vaultId: app.vault.id,
+      action,
+      expected,
+      done,
+    });
+  };
+  const changePropertyHistory = (redo: boolean) => {
+    if (!app.active || !app.vault) return;
+    setPropertyHistory({
+      id: ++propertyId.current,
+      path: app.active.path,
+      vaultId: app.vault.id,
+      redo,
+    });
   };
   return (
     <div
@@ -867,6 +924,7 @@ export function App() {
               />
               {app.active && formatting && mode !== "reading" && (
                 <FormattingToolbar
+                  onTemplates={() => setTemplates(true)}
                   active={
                     formatState.path === app.active.path
                       ? formatState.formats
@@ -917,6 +975,19 @@ export function App() {
                             hidden={mode === "reading"}
                           >
                             <MarkdownEditor
+                              templateCommand={
+                                templateCommand?.path === tab.path &&
+                                templateCommand.vaultId === app.vault?.id
+                                  ? templateCommand
+                                  : null
+                              }
+                              propertyHistory={
+                                propertyHistory?.path === tab.path &&
+                                propertyHistory.vaultId === app.vault?.id
+                                  ? propertyHistory
+                                  : null
+                              }
+                              onPropertiesSource={openPropertiesSource}
                               propertyFocus={
                                 propertyFocus?.path === tab.path &&
                                 propertyFocus.vaultId === app.vault?.id
@@ -999,6 +1070,9 @@ export function App() {
                             tab.path === app.workspace.active &&
                             app.vault && (
                               <ReadingView
+                                onProperty={changeProperty}
+                                onPropertyHistory={changePropertyHistory}
+                                onPropertiesSource={openPropertiesSource}
                                 previews={previews}
                                 onNavigate={(source, target) =>
                                   void app.openWiki(source, target)
@@ -1072,29 +1146,6 @@ export function App() {
               onCollapse={() => setRight(false)}
             />
             <Inspector
-              onSource={() => {
-                if (!app.active || !app.vault) return;
-                setMode("source");
-                setPropertyFocus({
-                  id: ++propertyId.current,
-                  path: app.active.path,
-                  vaultId: app.vault.id,
-                });
-              }}
-              onProperty={(action, expected, done) => {
-                if (!app.active || !app.vault) {
-                  done("Откройте заметку заново.");
-                  return;
-                }
-                setPropertyCommand({
-                  id: ++propertyId.current,
-                  path: app.active.path,
-                  vaultId: app.vault.id,
-                  action,
-                  expected,
-                  done,
-                });
-              }}
               app={app}
               inspection={knowledge.inspection}
               knowledgeError={knowledge.error}
@@ -1104,6 +1155,25 @@ export function App() {
       </div>
 
       {dialog}
+      {templates && app.active && app.vault && (
+        <Templates
+          key={`${app.vault.id}:${app.active.path}`}
+          vaultId={app.vault.id}
+          path={app.active.path}
+          content={app.active.content}
+          onClose={() => setTemplates(false)}
+          onInsert={(text) => {
+            if (!app.active || !app.vault) return;
+            setMode("live");
+            setTemplateCommand({
+              id: Date.now(),
+              text,
+              path: app.active.path,
+              vaultId: app.vault.id,
+            });
+          }}
+        />
+      )}
       {vaultCreation.dialog}
       {context.menu}
       {renameReview.dialog}

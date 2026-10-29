@@ -1,7 +1,11 @@
 import { useEffect, useRef } from "react";
 import { toggleTask } from "./tasks";
+import { noteFolding } from "./folding";
+import { noteLinkHover } from "./linkHover";
+import { insertTemplate } from "./templates";
 import type { PropertyCommand } from "./properties";
 import { applyProperty } from "./propertyInput";
+import { propertyBodyStart } from "./properties";
 import type { NotePreviews } from "../services/notePreviews";
 import type { RenderNode } from "../services/api";
 import { Compartment, EditorState, Text, Transaction } from "@codemirror/state";
@@ -69,7 +73,9 @@ const highlight = HighlightStyle.define([
 ]);
 
 interface Props {
+  templateCommand?: { id: number; text: string } | null;
   propertyCommand?: PropertyCommand | null;
+  propertyHistory?: { id: number; redo: boolean } | null;
   propertyFocus?: number;
   previews?: NotePreviews;
   onNavigate?: (source: string, target: string) => void;
@@ -89,12 +95,15 @@ interface Props {
   onError?: (message: string) => void;
   onFormatsChange?: (formats: FormatCommand[]) => void;
   onAttachmentsImported?: () => void;
+  onPropertiesSource?: () => void;
   showLineNumbers?: boolean;
   lineWrapping?: boolean;
 }
 
 export function MarkdownEditor({
+  templateCommand,
   propertyCommand,
+  propertyHistory,
   propertyFocus,
   previews,
   onNavigate,
@@ -116,8 +125,10 @@ export function MarkdownEditor({
   lineWrapping = true,
   onFormatsChange,
   onAttachmentsImported,
+  onPropertiesSource,
 }: Props) {
   const host = useRef<HTMLDivElement>(null);
+  const lastTemplate = useRef<number | undefined>(undefined);
   const editor = useRef<EditorView | null>(null);
   const context = useContextMenu((message) =>
     callbacks.current.onError?.(message),
@@ -125,6 +136,7 @@ export function MarkdownEditor({
   const callbacks = useRef({
     onNavigate,
     onAttachmentsImported,
+    onPropertiesSource,
     onChange,
     onSave,
     onWikiLink,
@@ -135,6 +147,7 @@ export function MarkdownEditor({
   callbacks.current = {
     onNavigate,
     onAttachmentsImported,
+    onPropertiesSource,
     onChange,
     onSave,
     onWikiLink,
@@ -157,6 +170,10 @@ export function MarkdownEditor({
       parent: host.current,
       state: EditorState.create({
         doc: initial.current,
+        selection: {
+          anchor:
+            live && !navigation ? (propertyBodyStart(initial.current) ?? 0) : 0,
+        },
         extensions: [
           gutter.current.of(showLineNumbers ? lineNumbers() : []),
           history(),
@@ -176,6 +193,7 @@ export function MarkdownEditor({
           highlightSpecialChars(),
           rectangularSelection(),
           markdown({ extensions: [Strikethrough, TaskList] }),
+          noteFolding,
           indentOnInput(),
           bracketMatching(),
           closeBrackets(),
@@ -189,6 +207,19 @@ export function MarkdownEditor({
           wrapping.current.of(lineWrapping ? EditorView.lineWrapping : []),
           presentation.current.of(live ? livePreview : []),
           ...(vaultId && path ? [linkCompletion(vaultId, path)] : []),
+          ...(vaultId && path
+            ? [
+                noteLinkHover({
+                  vaultId,
+                  path,
+                  previews,
+                  onWiki: (target) => callbacks.current.onWikiLink?.(target),
+                  onNavigate: (source, target) =>
+                    callbacks.current.onNavigate?.(source, target),
+                  onError: (message) => callbacks.current.onError?.(message),
+                }),
+              ]
+            : []),
           EditorView.domEventHandlers({
             click(event, view) {
               if (
@@ -329,12 +360,17 @@ export function MarkdownEditor({
       effects: presentation.current.reconfigure(live ? livePreview : []),
     });
     if (live && visible && vaultId && path) {
-      void import("./liveBlocks")
-        .then(({ richPreview }) => {
+      void Promise.all([import("./liveBlocks"), import("./propertyBlock")])
+        .then(([{ richPreview }, { propertyBlock }]) => {
           if (disposed || !editor.current) return;
           editor.current.dispatch({
             effects: presentation.current.reconfigure([
               livePreview,
+              propertyBlock({
+                vaultId,
+                path,
+                onSource: () => callbacks.current.onPropertiesSource?.(),
+              }),
               richPreview({
                 previews,
                 onNavigate: (source, target) =>
@@ -365,6 +401,22 @@ export function MarkdownEditor({
   }, [command?.id]);
   useEffect(() => {
     if (
+      !templateCommand ||
+      !editor.current ||
+      lastTemplate.current === templateCommand.id
+    )
+      return;
+    lastTemplate.current = templateCommand.id;
+    try {
+      insertTemplate(editor.current, templateCommand.text);
+    } catch (error) {
+      callbacks.current.onError?.(
+        error instanceof Error ? error.message : "Не удалось вставить шаблон.",
+      );
+    }
+  }, [templateCommand?.id]);
+  useEffect(() => {
+    if (
       editor.current &&
       taskCommand &&
       !toggleTask(editor.current, taskCommand.node, taskCommand.snapshot)
@@ -390,6 +442,10 @@ export function MarkdownEditor({
       );
     }
   }, [propertyCommand?.id]);
+  useEffect(() => {
+    if (editor.current && propertyHistory)
+      (propertyHistory.redo ? redo : undo)(editor.current);
+  }, [propertyHistory?.id]);
   useEffect(() => {
     const view = editor.current;
     if (!view || propertyFocus === undefined) return;
@@ -472,6 +528,14 @@ export function MarkdownEditor({
                 },
               }));
           context.show(event, "Действия редактора", [
+            {
+              label: "Вставить таблицу",
+              disabled: view.state.readOnly,
+              run: () => {
+                ensureCurrent();
+                formatSelection(view, "table");
+              },
+            },
             {
               label: "Отменить",
               shortcut: "Ctrl Z",

@@ -7,7 +7,11 @@ import {
   type Node,
 } from "yaml";
 
-export type PropertyType = "text" | "list" | "number" | "date" | "checkbox";
+export type PropertyType =
+  "text" | "list" | "number" | "date" | "datetime" | "checkbox";
+export type PropertyTypes = Record<string, string>;
+export const configuredTypeName = (types: PropertyTypes, key: string) =>
+  Object.hasOwn(types, key) ? types[key] : undefined;
 export type PropertyValue = string | string[] | number | boolean;
 export interface NoteProperty {
   key: string;
@@ -15,6 +19,7 @@ export interface NoteProperty {
   value: PropertyValue;
 }
 export type PropertyAction =
+  | { key: string; rename: string }
   | { key: string; value: PropertyValue; create: boolean }
   | { key: string; remove: true };
 export interface PropertyCommand {
@@ -49,6 +54,17 @@ function frontmatter(content: string) {
     exists: true,
   };
 }
+// CodeMirror uses LF-based offsets even when the file is saved with CRLF.
+export function propertyBodyStart(content: string): number | null {
+  try {
+    const header = frontmatter(content);
+    if (!header.exists) return null;
+    const newline = header.text.indexOf("\n", header.to);
+    return newline < 0 ? null : newline + 1;
+  } catch {
+    return null;
+  }
+}
 function parsed(content: string) {
   const header = frontmatter(content);
   const document = parseDocument(header.source, {
@@ -69,7 +85,11 @@ function parsed(content: string) {
     throw new Error(invalid);
   return { ...header, document };
 }
-function property(key: string, node: Node | null): NoteProperty {
+function property(
+  key: string,
+  node: Node | null,
+  configured?: string,
+): NoteProperty {
   if (node && !isAlias(node) && !node.tag && !node.anchor) {
     if (isScalar(node)) {
       const value: unknown = node.value;
@@ -90,9 +110,14 @@ function property(key: string, node: Node | null): NoteProperty {
         return {
           key,
           type:
-            typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
-              ? "date"
-              : "text",
+            configured === "text"
+              ? "text"
+              : typeof value === "string" &&
+                  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value)
+                ? "datetime"
+                : typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
+                  ? "date"
+                  : "text",
           value: value ?? "",
         };
     }
@@ -124,7 +149,10 @@ function property(key: string, node: Node | null): NoteProperty {
     value: "Сложное значение — редактируется в исходнике",
   };
 }
-export function readProperties(content: string): {
+export function readProperties(
+  content: string,
+  types: PropertyTypes = {},
+): {
   items: NoteProperty[];
   expected: string;
   error: string;
@@ -133,10 +161,28 @@ export function readProperties(content: string): {
     const header = parsed(content);
     const items = isMap(header.document.contents)
       ? header.document.contents.items.map((pair) => {
-          const item = property(
-            String(isScalar(pair.key) ? pair.key.value : ""),
-            pair.value,
-          );
+          const key = String(isScalar(pair.key) ? pair.key.value : "");
+          const configuredName = configuredTypeName(types, key);
+          const configured = configuredPropertyType(configuredName);
+          const item = property(key, pair.value, configured);
+          if (configuredName && !configured)
+            return {
+              ...item,
+              type: "unsupported" as const,
+              value: "Неизвестный тип Obsidian — откройте исходник",
+            };
+          if (
+            configured &&
+            item.type !== "unsupported" &&
+            item.type !== configured
+          ) {
+            return {
+              ...item,
+              type: "unsupported" as const,
+              value:
+                "Тип в настройках Obsidian не совпадает со значением — откройте исходник",
+            };
+          }
           return isScalar(pair.key) && (pair.key.anchor || pair.key.tag)
             ? { ...item, type: "unsupported" as const }
             : item;
@@ -146,6 +192,27 @@ export function readProperties(content: string): {
   } catch {
     return { items: [], expected: "", error: invalid };
   }
+}
+
+export function configuredPropertyType(
+  value: string | undefined,
+): PropertyType | undefined {
+  if (
+    value === "multitext" ||
+    value === "list" ||
+    value === "tags" ||
+    value === "aliases"
+  )
+    return "list";
+  if (
+    value === "text" ||
+    value === "number" ||
+    value === "checkbox" ||
+    value === "date" ||
+    value === "datetime"
+  )
+    return value;
+  return undefined;
 }
 
 export function propertyValue(
@@ -175,6 +242,25 @@ export function propertyValue(
       new Date(text).toISOString().slice(0, 10) !== text
     )
       throw new Error("Выберите существующую дату.");
+    return text;
+  }
+  if (type === "datetime") {
+    const match =
+      /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})?$/.exec(
+        text,
+      );
+    if (
+      !match ||
+      !Number.isFinite(Date.parse(text)) ||
+      new Date(`${match[1]}T00:00:00Z`).toISOString().slice(0, 10) !==
+        match[1] ||
+      Number(match[2]) > 23 ||
+      Number(match[3]) > 59 ||
+      Number(match[4] || 0) > 59
+    )
+      throw new Error(
+        "Введите существующую дату и время, например 2026-10-28T14:30:00.",
+      );
     return text;
   }
   if (type === "list") {
@@ -215,6 +301,18 @@ export function propertyEdit(
   const pair = map?.items.find(
     (item) => isScalar(item.key) && item.key.value === action.key,
   );
+  if ("rename" in action) {
+    validateKey(action.rename);
+    if (!pair || !isScalar(pair.key) || !pair.key.range)
+      throw new Error("Свойство больше не существует.");
+    if (action.rename !== action.key && map?.has(action.rename))
+      throw new Error("Свойство с таким именем уже существует.");
+    return {
+      from: header.from + pair.key.range[0],
+      to: header.from + pair.key.range[1],
+      insert: JSON.stringify(action.rename),
+    };
+  }
   const removing = "remove" in action;
   if (
     (!removing && action.create && pair) ||

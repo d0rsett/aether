@@ -54,10 +54,10 @@ const node = (kind: string, text = "", target = ""): RenderNode => ({
   endLine: 1,
   children: [],
 });
-it("renders raw note HTML as inert text and blocks active URL schemes", () => {
+it("discards active HTML and blocks active URL schemes", () => {
   const raw = node(
     "literalHtml",
-    "<img src=x onerror=alert(1)><script>evil()</script>",
+    "<img src=javascript:evil() onerror=alert(1)><script>evil()</script>",
   );
   const link = {
     ...node("link", "", "javascript:alert(1)"),
@@ -70,7 +70,7 @@ it("renders raw note HTML as inert text and blocks active URL schemes", () => {
     </>,
   );
   expect(container.querySelector("script,img,a,iframe")).toBeNull();
-  expect(container.textContent).toContain("onerror=alert(1)");
+  expect(container.textContent).not.toContain("alert(1)");
   for (const url of [
     "javascript:x",
     "file:///C:/x",

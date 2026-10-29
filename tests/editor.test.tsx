@@ -1,4 +1,4 @@
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { EditorView } from "@codemirror/view";
 import { undo } from "@codemirror/commands";
@@ -21,6 +21,63 @@ import { readProperties } from "../src/editor/properties";
 import { applyProperty } from "../src/editor/propertyInput";
 
 afterEach(cleanup);
+it("keeps repeated footnote widgets visible alongside Markdown link decorations", async () => {
+  Object.defineProperty(Range.prototype, "getClientRects", {
+    configurable: true,
+    value: () => [],
+  });
+  Object.defineProperty(Range.prototype, "getBoundingClientRect", {
+    configurable: true,
+    value: () => new DOMRect(),
+  });
+  const content =
+    "# Title\n\nRef[^one] and again[^one].\n\n[^one]: Definition\n";
+  const first = content.indexOf("[^one]"),
+    second = content.indexOf("[^one]", first + 1),
+    definition = content.indexOf("[^one]:");
+  const base = {
+    text: "",
+    target: "one",
+    level: 0,
+    line: 3,
+    endLine: 3,
+    children: [],
+  };
+  const renderMarkdown = vi.spyOn(api, "renderMarkdown").mockResolvedValue({
+    warning: null,
+    nodes: [
+      { ...base, kind: "footnoteRef", from: first, to: first + 6 },
+      { ...base, kind: "footnoteRef", from: second, to: second + 6 },
+      {
+        ...base,
+        kind: "footnote",
+        from: definition,
+        to: content.length,
+        line: 5,
+        endLine: 5,
+      },
+    ],
+  });
+  try {
+    render(
+      <MarkdownEditor
+        content={content}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        live
+        vaultId="v"
+        path="Note.md"
+      />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("button", { name: "Перейти к сноске one" }),
+      ).toHaveLength(2),
+    );
+  } finally {
+    renderMarkdown.mockRestore();
+  }
+});
 it("inserts new YAML lines using the editor line separator rather than literal LF characters", () => {
   for (const source of ["Body\r\nNext", "---\r\nold: yes\r\n---\r\nBody"]) {
     const { unmount } = render(

@@ -156,9 +156,97 @@ pub fn image(v: &Vault, source: &str, target: &str, wiki: bool) -> Result<String
     let mime = image_mime(&bytes)?;
     Ok(format!("data:{mime};base64,{}", STANDARD.encode(bytes)))
 }
+
+#[derive(serde::Serialize)]
+pub struct Media {
+    pub mime: String,
+    pub data: String,
+}
+
+/// Local passive media only. Extension and signature must agree; bounded reads
+/// keep IPC payloads finite even when a file grows after metadata inspection.
+pub fn media(v: &Vault, source: &str, target: &str, wiki: bool) -> Result<Media> {
+    const LIMIT: u64 = 64 * 1024 * 1024;
+    let name = resolve(v, source, target, wiki)?;
+    let path = v.resolve(&name, false)?;
+    let file = std::fs::File::open(path)?;
+    if file.metadata()?.len() > LIMIT {
+        return Err(Error::Io(
+            "Для встроенного просмотра доступны файлы до 64 МБ.".into(),
+        ));
+    }
+    let mut bytes = Vec::new();
+    file.take(LIMIT + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > LIMIT {
+        return Err(Error::Io(
+            "Для встроенного просмотра доступны файлы до 64 МБ.".into(),
+        ));
+    }
+    let extension = name.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+    let iso = bytes.get(4..8) == Some(b"ftyp");
+    let ogg = bytes.starts_with(b"OggS");
+    let ebml = bytes.starts_with(b"\x1a\x45\xdf\xa3");
+    let mime = match extension.as_str() {
+        "pdf" if bytes.starts_with(b"%PDF-") => "application/pdf",
+        "mp3"
+            if bytes.starts_with(b"ID3")
+                || (bytes.len() > 1 && bytes[0] == 0xff && bytes[1] & 0xe0 == 0xe0) =>
+        {
+            "audio/mpeg"
+        }
+        "wav" if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WAVE") => "audio/wav",
+        "ogg" if ogg => "audio/ogg",
+        "flac" if bytes.starts_with(b"fLaC") => "audio/flac",
+        "m4a" if iso => "audio/mp4",
+        "mp4" | "3gp" if iso => "video/mp4",
+        "mov" if iso => "video/quicktime",
+        "webm" if ebml => "video/webm",
+        "mkv" if ebml => "video/x-matroska",
+        "ogv" if ogg => "video/ogg",
+        _ => {
+            return Err(Error::Io(
+                "Формат файла не подходит для встроенного просмотра.".into(),
+            ))
+        }
+    };
+    Ok(Media {
+        mime: mime.into(),
+        data: STANDARD.encode(bytes),
+    })
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn media_checks_signatures_scope_and_size_without_writing_sources() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let v = Vault::open(temp.path())?;
+        v.create_directory("Notes")?;
+        for (name, bytes, mime) in [
+            ("sample.pdf", b"%PDF-1.4\n".as_slice(), "application/pdf"),
+            ("sample.wav", b"RIFF0000WAVEdata".as_slice(), "audio/wav"),
+            ("sample.mp4", b"0000ftypisom".as_slice(), "video/mp4"),
+        ] {
+            std::fs::write(temp.path().join(name), bytes)?;
+            let result = media(&v, "Notes/Main.md", &format!("../{name}#page=2"), false)?;
+            assert_eq!(result.mime, mime);
+            assert_eq!(
+                STANDARD
+                    .decode(result.data)
+                    .map_err(|e| Error::Io(e.to_string()))?,
+                bytes
+            );
+            assert_eq!(std::fs::read(temp.path().join(name))?, bytes);
+        }
+        std::fs::write(temp.path().join("fake.pdf"), b"<script>evil()</script>")?;
+        assert!(media(&v, "Notes/Main.md", "../fake.pdf", false).is_err());
+        assert!(media(&v, "Notes/Main.md", "../../outside.pdf", false).is_err());
+        assert!(media(&v, "Notes/Main.md", "https://example.com/sample.pdf", false).is_err());
+        let large = std::fs::File::create(temp.path().join("large.pdf"))?;
+        large.set_len(64 * 1024 * 1024 + 1)?;
+        assert!(media(&v, "Notes/Main.md", "../large.pdf", false).is_err());
+        Ok(())
+    }
     #[test]
     fn scoped_attachments_reject_escapes_active_formats_and_urls() -> Result<()> {
         let temp = tempfile::tempdir()?;

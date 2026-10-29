@@ -1,5 +1,5 @@
 import { syntaxTree } from "@codemirror/language";
-import type { EditorState, Range } from "@codemirror/state";
+import { Text, type EditorState, type Range } from "@codemirror/state";
 import {
   Decoration,
   EditorView,
@@ -16,7 +16,7 @@ import {
 } from "@codemirror/autocomplete";
 import { api } from "../services/api";
 export type FormatCommand =
-  "bold" | "italic" | "code" | "heading" | "quote" | "list" | "link";
+  "bold" | "italic" | "code" | "heading" | "quote" | "list" | "link" | "table";
 export function activeFormats(state: EditorState): FormatCommand[] {
   const tree = syntaxTree(state);
   const { from, to } = state.selection.main;
@@ -67,6 +67,26 @@ export function formatSelection(
 ): void {
   const { from, to } = view.state.selection.main;
   const selected = view.state.sliceDoc(from, to);
+  if (command === "table") {
+    view.dispatch({
+      changes: {
+        from,
+        to,
+        insert: Text.of([
+          "",
+          "",
+          "| Заголовок | Заголовок |",
+          "| --- | --- |",
+          "|  |  |",
+          "",
+          "",
+        ]),
+      },
+      userEvent: "input.table",
+    });
+    view.focus();
+    return;
+  }
   if (["heading", "quote", "list"].includes(command)) {
     const first = view.state.doc.lineAt(from),
       last = view.state.doc.lineAt(to);
@@ -263,6 +283,13 @@ export const livePreview = ViewPlugin.fromClass(
           to: range.to,
           enter(node) {
             if (["FencedCode", "CodeBlock"].includes(node.name)) return false;
+            // Lezer treats a named footnote as a reference link. Its replacement
+            // marks would obscure the richer footnote widget over this range.
+            if (
+              node.name === "Link" &&
+              view.state.doc.sliceString(node.from, node.from + 2) === "[^"
+            )
+              return false;
             if (
               wiki.some((link) => node.from >= link.from && node.to <= link.to)
             )
