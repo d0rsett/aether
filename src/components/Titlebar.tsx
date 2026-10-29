@@ -1,20 +1,19 @@
+import { t, useLocale } from "../i18n";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Copy, Minus, Square, X } from "lucide-react";
 import { desktop, errorMessage } from "../services/api";
-
 interface Props {
   leading?: ReactNode;
   children?: ReactNode;
   onError: (message: string) => void;
 }
-
 /** Window chrome uses the normal close request so workspace draft protection runs. */
 export function Titlebar({ leading, children, onError }: Props) {
+  useLocale();
   const [appWindow] = useState(() => (desktop ? getCurrentWindow() : null));
   const [maximized, setMaximized] = useState(false);
   const pending = useRef(false);
-
   useEffect(() => {
     if (!appWindow) return;
     let disposed = false;
@@ -44,7 +43,6 @@ export function Titlebar({ leading, children, onError }: Props) {
       unlisten?.();
     };
   }, [appWindow, onError]);
-
   const run = async (action: "minimize" | "maximize" | "close") => {
     if (!appWindow || pending.current) return;
     pending.current = true;
@@ -61,7 +59,6 @@ export function Titlebar({ leading, children, onError }: Props) {
       pending.current = false;
     }
   };
-
   return (
     <header className="app-header titlebar" data-tauri-drag-region>
       <div className="titlebar-leading" data-tauri-drag-region>
@@ -73,13 +70,13 @@ export function Titlebar({ leading, children, onError }: Props) {
       <div
         className="window-controls"
         role="group"
-        aria-label="Управление окном"
+        aria-label={t("Управление окном")}
       >
         <button
           className="window-control"
           disabled={!desktop}
-          aria-label="Свернуть окно"
-          data-tooltip="Свернуть"
+          aria-label={t("Свернуть окно")}
+          data-tooltip={t("Свернуть")}
           onClick={() => void run("minimize")}
         >
           <Minus size={15} strokeWidth={1.5} />
@@ -88,9 +85,9 @@ export function Titlebar({ leading, children, onError }: Props) {
           className="window-control"
           disabled={!desktop}
           aria-label={
-            maximized ? "Восстановить размер окна" : "Развернуть окно"
+            maximized ? t("Восстановить размер окна") : t("Развернуть окно")
           }
-          data-tooltip={maximized ? "Восстановить размер" : "Развернуть"}
+          data-tooltip={maximized ? t("Восстановить размер") : t("Развернуть")}
           onClick={() => void run("maximize")}
         >
           {maximized ? (
@@ -102,8 +99,8 @@ export function Titlebar({ leading, children, onError }: Props) {
         <button
           className="window-control window-close"
           disabled={!desktop}
-          aria-label="Закрыть окно"
-          data-tooltip="Закрыть"
+          aria-label={t("Закрыть окно")}
+          data-tooltip={t("Закрыть")}
           onClick={() => void run("close")}
         >
           <X size={17} strokeWidth={1.5} />

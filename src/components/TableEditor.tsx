@@ -1,3 +1,4 @@
+import { t, useLocale } from "../i18n";
 import {
   useLayoutEffect,
   useRef,
@@ -12,7 +13,6 @@ import {
   serializeTable,
   type MarkdownTable,
 } from "../editor/tables";
-
 export function EditableTable({
   source,
   apply,
@@ -24,6 +24,7 @@ export function EditableTable({
   onHistory?: (redo: boolean) => void;
   previews?: ReactNode[][];
 }) {
+  useLocale();
   const [table, setTable] = useState(() => parseTable(source));
   const [selected, select] = useState([0, 0]);
   const [error, setError] = useState("");
@@ -68,7 +69,7 @@ export function EditableTable({
     } catch {
       nextFocus.current = null;
       setError(
-        "Таблица изменилась. Перейдите в исходник и повторите изменение.",
+        t("Таблица изменилась. Перейдите в исходник и повторите изменение."),
       );
     }
   };
@@ -95,7 +96,7 @@ export function EditableTable({
       ref={root}
       className="inline-table-editor"
       role="group"
-      aria-label="Редактор таблицы"
+      aria-label={t("Редактор таблицы")}
     >
       {table ? (
         <>
@@ -115,7 +116,7 @@ export function EditableTable({
                               <CellInput
                                 data-row={ri}
                                 data-column={ci}
-                                aria-label={`Строка ${ri + 1}, столбец ${ci + 1}`}
+                                aria-label={t`Строка ${ri + 1}, столбец ${ci + 1}`}
                                 value={value}
                                 align={table.align[ci]}
                                 preview={previews?.[ri]?.[ci]}
@@ -134,9 +135,9 @@ export function EditableTable({
                                     : currentAlign.endsWith(":")
                                       ? "---:"
                                       : "---";
-                                  context.show(event, "Действия с ячейкой", [
+                                  context.show(event, t("Действия с ячейкой"), [
                                     {
-                                      label: "Удалить строку",
+                                      label: t("Удалить строку"),
                                       disabled: ri === 0,
                                       run: () =>
                                         change((copy) => {
@@ -146,19 +147,19 @@ export function EditableTable({
                                         }),
                                     },
                                     {
-                                      label: "Строку выше",
+                                      label: t("Строку выше"),
                                       disabled: ri < 2,
                                       run: () => moveRow(ri, ci, -1),
                                     },
                                     {
-                                      label: "Строку ниже",
+                                      label: t("Строку ниже"),
                                       disabled:
                                         ri === 0 ||
                                         ri === table.rows.length - 1,
                                       run: () => moveRow(ri, ci, 1),
                                     },
                                     {
-                                      label: "Удалить столбец",
+                                      label: t("Удалить столбец"),
                                       divider: true,
                                       disabled: table.align.length === 1,
                                       run: () =>
@@ -171,20 +172,20 @@ export function EditableTable({
                                         }),
                                     },
                                     {
-                                      label: "Столбец левее",
+                                      label: t("Столбец левее"),
                                       disabled: ci === 0,
                                       run: () => moveColumn(ri, ci, -1),
                                     },
                                     {
-                                      label: "Столбец правее",
+                                      label: t("Столбец правее"),
                                       disabled: ci === table.align.length - 1,
                                       run: () => moveColumn(ri, ci, 1),
                                     },
                                     ...[
-                                      ["Обычное выравнивание", "---"],
-                                      ["По левому краю", ":---"],
-                                      ["По центру", ":---:"],
-                                      ["По правому краю", "---:"],
+                                      [t("Обычное выравнивание"), "---"],
+                                      [t("По левому краю"), ":---"],
+                                      [t("По центру"), ":---:"],
+                                      [t("По правому краю"), "---:"],
                                     ].map(([label, value], index) => ({
                                       label,
                                       divider: index === 0,
@@ -195,7 +196,7 @@ export function EditableTable({
                                         }),
                                     })),
                                     ...[1, -1].map((direction) => ({
-                                      label: `Сортировать ${direction === 1 ? "↑" : "↓"}`,
+                                      label: t`Сортировать ${direction === 1 ? "↑" : "↓"}`,
                                       divider: direction === 1,
                                       run: () =>
                                         change((copy) => {
@@ -247,7 +248,9 @@ export function EditableTable({
                                   if (event.key === "Enter") {
                                     event.preventDefault();
                                     setError(
-                                      "Для переноса строки в ячейке используйте <br>.",
+                                      t(
+                                        "Для переноса строки в ячейке используйте <br>.",
+                                      ),
                                     );
                                     return;
                                   }
@@ -268,7 +271,9 @@ export function EditableTable({
                                   ensureVisible(event.currentTarget);
                                   if (/[\r\n]/.test(next)) {
                                     setError(
-                                      "Нельзя вставить несколько строк в ячейку. Для переноса используйте <br>.",
+                                      t(
+                                        "Нельзя вставить несколько строк в ячейку. Для переноса используйте <br>.",
+                                      ),
                                     );
                                     return;
                                   }
@@ -287,8 +292,8 @@ export function EditableTable({
                 <button
                   type="button"
                   className="table-add table-add-row"
-                  aria-label="Добавить строку"
-                  title="Добавить строку"
+                  aria-label={t("Добавить строку")}
+                  title={t("Добавить строку")}
                   disabled={(table.rows.length + 1) * table.align.length > 5000}
                   onClick={() => {
                     const row = table.rows.length;
@@ -306,8 +311,8 @@ export function EditableTable({
               <button
                 type="button"
                 className="table-add table-add-column"
-                aria-label="Добавить столбец"
-                title="Добавить столбец"
+                aria-label={t("Добавить столбец")}
+                title={t("Добавить столбец")}
                 disabled={
                   table.align.length >= 50 ||
                   table.rows.length * (table.align.length + 1) > 5000
@@ -326,16 +331,15 @@ export function EditableTable({
               </button>
             </div>
           </div>
-          {error && <p role="alert">{error}</p>}
+          {error && <p role="alert">{t(error)}</p>}
           {context.menu}
         </>
       ) : (
-        <p>Эту таблицу можно изменить в исходнике заметки.</p>
+        <p>{t("Эту таблицу можно изменить в исходнике заметки.")}</p>
       )}
     </div>
   );
 }
-
 function CellInput({
   value,
   preview,
@@ -346,6 +350,7 @@ function CellInput({
   preview?: ReactNode;
   align: string;
 }) {
+  useLocale();
   const ref = useRef<HTMLTextAreaElement>(null);
   useLayoutEffect(() => {
     const element = ref.current;

@@ -22,6 +22,210 @@ import { createHash } from "node:crypto";
 const root = resolve(import.meta.dirname, "../..");
 const executable = resolve(root, "src-tauri/target/e2e/release/aether.exe");
 
+test("language switching preserves drafts, editor history and preference", async () => {
+  const run = await mkdtemp(join(root, ".build-cache/native-language-"));
+  const vault = join(run, "Native-MVP"),
+    data = join(run, "data"),
+    profile = join(run, "profile");
+  await mkdir(vault);
+  await mkdir(data);
+  const source = "# Русский заголовок\nСписок\n";
+  await writeFile(join(vault, "Main.md"), source);
+  await writeFile(
+    join(data, "settings.json"),
+    JSON.stringify({ lastVault: vault }),
+  );
+  let app: RunningApp | undefined;
+  try {
+    app = await launch(data, profile, false);
+    let page = app.page;
+    await page.getByRole("button", { name: "Main", exact: true }).click();
+    await setMode(page, "Исходник");
+    let editor = page.getByRole("textbox", { name: "Markdown-редактор" });
+    await editor.press("Control+End");
+    await editor.pressSequentially("Unsaved text");
+    await editor.evaluate((element) => {
+      element.setAttribute("data-language-identity", "original");
+    });
+    await page
+      .getByRole("button", { name: "Язык интерфейса: Русский", exact: true })
+      .click();
+    await expect(page.locator("html")).toHaveAttribute("lang", "en");
+    editor = page.getByRole("textbox", { name: "Markdown editor" });
+    await expect(editor).toHaveAttribute("data-language-identity", "original");
+    await expect(editor).toContainText("Список");
+    await expect(editor).toContainText("Unsaved text");
+    expect(await readFile(join(vault, "Main.md"), "utf8")).toBe(source);
+    await editor.press("Control+z");
+    await expect(editor).not.toContainText("Unsaved text");
+    await editor.press("Control+y");
+    await expect(editor).toContainText("Unsaved text");
+    await editor.press("Control+s");
+    await expect
+      .poll(() => readFile(join(vault, "Main.md"), "utf8"))
+      .toContain("Unsaved text");
+    await closeNative(
+      app,
+      page.getByRole("button", { name: "Close window", exact: true }),
+    );
+    app = await launch(data, profile, false, "en");
+    page = app.page;
+    await expect(
+      page.getByRole("button", {
+        name: "Interface language: English",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "Interface language: English", exact: true })
+      .click();
+    await expect(
+      page.getByRole("textbox", { name: "Markdown-редактор" }),
+    ).toContainText("Русский заголовок");
+  } finally {
+    await stop(app);
+  }
+});
+
+for (const language of ["en", "ru"] as const)
+  test(`documentation screenshots ${language}`, async () => {
+    test.skip(
+      process.env.AETHER_DOC_SCREENSHOTS !== "1",
+      "Run the documentation capture command explicitly",
+    );
+    test.setTimeout(60000);
+    const run = await mkdtemp(join(root, ".build-cache/docs-capture-"));
+    const vaultName = language === "en" ? "Aether Demo" : "Демо Aether";
+    const vault = join(run, vaultName),
+      data = join(run, "data");
+    const en = language === "en";
+    await mkdir(vault);
+    await mkdir(data);
+    await mkdir(join(vault, en ? "Templates" : "Шаблоны"));
+    await mkdir(join(vault, ".obsidian"));
+    const title = en ? "Aether overview" : "Обзор Aether",
+      other = en ? "Project Atlas" : "Проект Атлас";
+    const content = en
+      ? `---\nproject: Aether\nstatus: Writing\ntags: [notes, local-first]\n---\n# Ideas, connected.\n\nA calm place to write, follow a connection, and turn a thought into something useful. Your notes stay yours: ordinary Markdown files in a local folder.\n\n## A small plan for today\n\n- [x] Capture a thought\n- [ ] Connect it to [[${other}|Project Atlas]]\n- [ ] Make room for the next idea\n\n> [!tip] Keep the context close\n> Tables, properties and attachments belong beside your writing.\n>\n> | Focus | Next step |\n> | --- | --- |\n> | A clear question | Write a short note |\n> | A useful connection | Add a wiki link |\n\n## Sources and small details\n\nHighlights ==make a thought stand out==. Footnotes keep a source nearby.[^source]\n\n[^source]: A reference worth returning to.\n`
+      : `---\nпроект: Aether\nстатус: Работаю\ntags: [заметки, локально]\n---\n# Мысли становятся связями\n\nСпокойное место, чтобы писать, следовать за связями и превращать мысль во что-то полезное. Заметки остаются вашими: обычные Markdown-файлы в локальной папке.\n\n## Небольшой план на сегодня\n\n- [x] Записать мысль\n- [ ] Связать её с [[${other}|проектом «Атлас»]]\n- [ ] Оставить место следующей идее\n\n> [!tip] Контекст всегда рядом\n> Таблицы, свойства и вложения находятся прямо в заметке.\n>\n> | Фокус | Следующий шаг |\n> | --- | --- |\n> | Чёткий вопрос | Написать короткую заметку |\n> | Полезная связь | Добавить wiki-ссылку |\n\n## Источники и детали\n\nВыделение ==помогает заметить главное==. Сноски сохраняют источник рядом.[^source]\n\n[^source]: Ссылка, к которой стоит вернуться.\n`;
+    await writeFile(join(vault, title + ".md"), content);
+    await writeFile(
+      join(vault, other + ".md"),
+      en
+        ? `# Project Atlas\n\nA small collection of ideas, sources and next steps.\n\n## Next step\nWrite one clear paragraph, then return to [[${title}]].\n`
+        : `# Проект Атлас\n\nНебольшая коллекция идей, источников и следующих шагов.\n\n## Следующий шаг\nНаписать один ясный абзац и вернуться к [[${title}]].\n`,
+    );
+    await writeFile(
+      join(vault, en ? "Templates/Daily note.md" : "Шаблоны/Заметка дня.md"),
+      en
+        ? "---\ndate: '{{date}}'\n---\n## {{title}}\n\nToday: {{date:DD.MM.YYYY}}\n\n- [ ] One useful thought\n"
+        : "---\nдата: '{{date}}'\n---\n## {{title}}\n\nСегодня: {{date:DD.MM.YYYY}}\n\n- [ ] Одна полезная мысль\n",
+    );
+    await writeFile(
+      join(vault, ".obsidian/templates.json"),
+      JSON.stringify({ folder: en ? "Templates" : "Шаблоны" }),
+    );
+    await writeFile(
+      join(data, "settings.json"),
+      JSON.stringify({ lastVault: vault }),
+    );
+    const destination = join(root, "docs/screenshots", language);
+    await mkdir(destination, { recursive: true });
+    let app: RunningApp | undefined;
+    try {
+      app = await launch(data, join(run, "profile"), false, "ru", vaultName);
+      const page = app.page;
+      await page.setViewportSize({ width: 1440, height: 1150 });
+      if (en)
+        await page
+          .getByRole("button", {
+            name: "Язык интерфейса: Русский",
+            exact: true,
+          })
+          .click();
+      await page.getByRole("button", { name: title, exact: true }).click();
+      const mode = async (label: string) => {
+        const name = en ? "Note mode" : "Режим заметки";
+        await page.getByRole("button", { name, exact: true }).click();
+        await page
+          .getByRole("group", { name, exact: true })
+          .getByRole("button", { name: label, exact: true })
+          .click();
+      };
+      const audit = async () => {
+        if (en) {
+          const text = await page.locator("body").innerText();
+          expect(text).not.toMatch(/[А-Яа-яЁё]/);
+        }
+      };
+      await mode("Live Preview");
+      await expect(
+        page.getByRole("group", {
+          name: en ? "Table editor" : "Редактор таблицы",
+        }),
+      ).toBeVisible();
+      await page.mouse.move(0, 0);
+      await audit();
+      await page.screenshot({ path: join(destination, "workspace-dark.png") });
+      await page
+        .getByRole("button", {
+          name: en ? "Toggle theme" : "Переключить тему",
+          exact: true,
+        })
+        .click();
+      await expect(
+        page.getByRole("group", {
+          name: en ? "Table editor" : "Редактор таблицы",
+        }),
+      ).toBeVisible();
+      await page.mouse.move(0, 0);
+      await audit();
+      await page.screenshot({ path: join(destination, "workspace-light.png") });
+      await page
+        .getByRole("button", {
+          name: en ? "Toggle theme" : "Переключить тему",
+          exact: true,
+        })
+        .click();
+      await mode(en ? "Reading" : "Чтение");
+      await page
+        .getByRole("link", {
+          name: en ? "Project Atlas" : "проектом «Атлас»",
+          exact: true,
+        })
+        .hover();
+      await expect(
+        page.getByRole("region", {
+          name: en ? "Link preview" : "Предпросмотр ссылки",
+        }),
+      ).toContainText(en ? "small collection" : "коллекция");
+      await audit();
+      await page.screenshot({ path: join(destination, "link-preview.png") });
+      await page.keyboard.press("Escape");
+      await page
+        .getByRole("region", { name: en ? "Note preview" : "Просмотр заметки" })
+        .focus();
+      await page.keyboard.press("Control+p");
+      await page
+        .getByRole("button", {
+          name: en ? "Insert template" : "Вставить шаблон",
+          exact: true,
+        })
+        .click();
+      await expect(
+        page.getByRole("button", {
+          name: en ? "Daily note.md" : "Заметка дня.md",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await audit();
+      await page.screenshot({ path: join(destination, "templates.png") });
+      expect(await readFile(join(vault, title + ".md"), "utf8")).toBe(content);
+    } finally {
+      await stop(app);
+    }
+  });
+
 test("writing workflows: folding, hover, property chips, callout tables and templates", async () => {
   test.setTimeout(60000);
   const run = await mkdtemp(join(root, ".build-cache/native-writing-"));
@@ -2273,6 +2477,8 @@ async function launch(
   data: string,
   profile: string,
   showRelations = true,
+  language: "ru" | "en" = "ru",
+  vaultName = "Native-MVP",
 ): Promise<RunningApp> {
   const port = await freePort();
   const child = spawn(executable, [], {
@@ -2320,15 +2526,29 @@ async function launch(
       )
       .toBeGreaterThan(0);
     const page = browser.contexts().flatMap((context) => context.pages())[0];
-    await page.getByRole("button", { name: "Хранилище: Native-MVP" }).waitFor();
+    await page
+      .getByRole("button", {
+        name: `${language === "en" ? "Vault" : "Хранилище"}: ${vaultName}`,
+      })
+      .waitFor();
     if (
       showRelations &&
       (await page
-        .getByRole("button", { name: "Переключить правую панель" })
+        .getByRole("button", {
+          name:
+            language === "en"
+              ? "Toggle right sidebar"
+              : "Переключить правую панель",
+        })
         .getAttribute("aria-expanded")) === "false"
     )
       await page
-        .getByRole("button", { name: "Переключить правую панель" })
+        .getByRole("button", {
+          name:
+            language === "en"
+              ? "Toggle right sidebar"
+              : "Переключить правую панель",
+        })
         .click();
     return { child, browser, page, exited };
   } catch (error) {

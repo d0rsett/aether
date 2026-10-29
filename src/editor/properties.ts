@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import {
   isAlias,
   isMap,
@@ -6,7 +7,6 @@ import {
   parseDocument,
   type Node,
 } from "yaml";
-
 export type PropertyType =
   "text" | "list" | "number" | "date" | "datetime" | "checkbox";
 export type PropertyTypes = Record<string, string>;
@@ -19,9 +19,19 @@ export interface NoteProperty {
   value: PropertyValue;
 }
 export type PropertyAction =
-  | { key: string; rename: string }
-  | { key: string; value: PropertyValue; create: boolean }
-  | { key: string; remove: true };
+  | {
+      key: string;
+      rename: string;
+    }
+  | {
+      key: string;
+      value: PropertyValue;
+      create: boolean;
+    }
+  | {
+      key: string;
+      remove: true;
+    };
 export interface PropertyCommand {
   id: number;
   action: PropertyAction;
@@ -33,9 +43,8 @@ const invalid =
 const normalize = (text: string) => text.replace(/\r\n/g, "\n");
 function validateKey(key: string) {
   if (!key.trim() || key.length > 256 || /[\x00-\x1f\x7f]/.test(key))
-    throw new Error("Введите имя свойства длиной до 256 символов.");
+    throw new Error(t("Введите имя свойства длиной до 256 символов."));
 }
-
 function frontmatter(content: string) {
   const text = normalize(content);
   const bom = text.startsWith("\uFEFF") ? 1 : 0;
@@ -45,7 +54,7 @@ function frontmatter(content: string) {
   const close = /^[ \t]*(?:---|\.\.\.)[ \t]*$/gm;
   close.lastIndex = from;
   const match = close.exec(text);
-  if (!match || match.index - from > 65_536) throw new Error(invalid);
+  if (!match || match.index - from > 65536) throw new Error(invalid);
   return {
     text,
     from,
@@ -146,7 +155,7 @@ function property(
   return {
     key,
     type: "unsupported",
-    value: "Сложное значение — редактируется в исходнике",
+    value: t("Сложное значение \u2014 редактируется в исходнике"),
   };
 }
 export function readProperties(
@@ -169,7 +178,7 @@ export function readProperties(
             return {
               ...item,
               type: "unsupported" as const,
-              value: "Неизвестный тип Obsidian — откройте исходник",
+              value: t("Неизвестный тип Obsidian \u2014 откройте исходник"),
             };
           if (
             configured &&
@@ -179,8 +188,9 @@ export function readProperties(
             return {
               ...item,
               type: "unsupported" as const,
-              value:
-                "Тип в настройках Obsidian не совпадает со значением — откройте исходник",
+              value: t(
+                "Тип в настройках Obsidian не совпадает со значением \u2014 откройте исходник",
+              ),
             };
           }
           return isScalar(pair.key) && (pair.key.anchor || pair.key.tag)
@@ -193,7 +203,6 @@ export function readProperties(
     return { items: [], expected: "", error: invalid };
   }
 }
-
 export function configuredPropertyType(
   value: string | undefined,
 ): PropertyType | undefined {
@@ -214,7 +223,6 @@ export function configuredPropertyType(
     return value;
   return undefined;
 }
-
 export function propertyValue(
   key: string,
   type: PropertyType,
@@ -226,13 +234,13 @@ export function propertyValue(
   if (type === "checkbox") return checked;
   if (type === "number") {
     if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(text.trim()))
-      throw new Error("Введите число, например 12 или 3.5.");
+      throw new Error(t("Введите число, например 12 или 3.5."));
     const value = Number(text);
     if (
       !Number.isFinite(value) ||
       (Number.isInteger(value) && !Number.isSafeInteger(value))
     )
-      throw new Error("Число слишком велико для точного редактирования.");
+      throw new Error(t("Число слишком велико для точного редактирования."));
     return value;
   }
   if (type === "date") {
@@ -241,7 +249,7 @@ export function propertyValue(
       !Number.isFinite(Date.parse(text)) ||
       new Date(text).toISOString().slice(0, 10) !== text
     )
-      throw new Error("Выберите существующую дату.");
+      throw new Error(t("Выберите существующую дату."));
     return text;
   }
   if (type === "datetime") {
@@ -259,7 +267,7 @@ export function propertyValue(
       Number(match[4] || 0) > 59
     )
       throw new Error(
-        "Введите существующую дату и время, например 2026-10-28T14:30:00.",
+        t("Введите существующую дату и время, например 2026-10-28T14:30:00."),
       );
     return text;
   }
@@ -274,18 +282,19 @@ export function propertyValue(
       values.some((value) => !/^[\p{L}\p{N}_/-]+$/u.test(value))
     )
       throw new Error(
-        "Теги не должны содержать пробелы. Укажите каждый тег с новой строки.",
+        t(
+          "Теги не должны содержать пробелы. Укажите каждый тег с новой строки.",
+        ),
       );
     if (
       key === "aliases" &&
       values.some((value) => /[\[\]|#\x00-\x1f\x7f]/.test(value))
     )
-      throw new Error("Псевдонимы не должны содержать символы []|#.");
+      throw new Error(t("Псевдонимы не должны содержать символы []|#."));
     return values;
   }
   return text;
 }
-
 export function propertyEdit(
   content: string,
   action: PropertyAction,
@@ -295,7 +304,7 @@ export function propertyEdit(
   const header = parsed(content);
   if (header.source !== expected)
     throw new Error(
-      "Свойства изменились, пока была открыта форма. Откройте её заново.",
+      t("Свойства изменились, пока была открыта форма. Откройте её заново."),
     );
   const map = isMap(header.document.contents) ? header.document.contents : null;
   const pair = map?.items.find(
@@ -304,9 +313,9 @@ export function propertyEdit(
   if ("rename" in action) {
     validateKey(action.rename);
     if (!pair || !isScalar(pair.key) || !pair.key.range)
-      throw new Error("Свойство больше не существует.");
+      throw new Error(t("Свойство больше не существует."));
     if (action.rename !== action.key && map?.has(action.rename))
-      throw new Error("Свойство с таким именем уже существует.");
+      throw new Error(t("Свойство с таким именем уже существует."));
     return {
       from: header.from + pair.key.range[0],
       to: header.from + pair.key.range[1],
@@ -320,8 +329,8 @@ export function propertyEdit(
   )
     throw new Error(
       pair
-        ? "Свойство с таким именем уже существует."
-        : "Свойство больше не существует. Откройте форму заново.",
+        ? t("Свойство с таким именем уже существует.")
+        : t("Свойство больше не существует. Откройте форму заново."),
     );
   if (
     pair &&
@@ -330,21 +339,21 @@ export function propertyEdit(
       pair.key.anchor ||
       pair.key.tag)
   )
-    throw new Error("Это свойство можно изменить в исходнике заметки.");
+    throw new Error(t("Это свойство можно изменить в исходнике заметки."));
   // Values are JSON scalars/arrays, a portable subset of YAML. Never evaluate
   // aliases or convert unrelated nodes into JavaScript objects.
   if (
     !removing &&
-    (JSON.stringify(action.value).length > 65_536 ||
+    (JSON.stringify(action.value).length > 65536 ||
       (typeof action.value === "number" && !Number.isFinite(action.value)))
   )
-    throw new Error("Значение свойства слишком велико.");
+    throw new Error(t("Значение свойства слишком велико."));
   const literal = removing ? "" : JSON.stringify(action.value);
   let from: number, to: number, insert: string;
   if (!header.exists) {
     const entry = `${JSON.stringify(action.key)}: ${literal}\n`;
-    if (entry.length > 65_536)
-      throw new Error("Свойства превышают допустимый размер 64 КБ.");
+    if (entry.length > 65536)
+      throw new Error(t("Свойства превышают допустимый размер 64 КБ."));
     return {
       from: header.from,
       to: header.to,
@@ -394,7 +403,7 @@ export function propertyEdit(
   }
   const result = header.text.slice(0, from) + insert + header.text.slice(to);
   const next = parsed(result);
-  if (next.source.length > 65_536)
-    throw new Error("Свойства превышают допустимый размер 64 КБ.");
+  if (next.source.length > 65536)
+    throw new Error(t("Свойства превышают допустимый размер 64 КБ."));
   return { from, to, insert };
 }

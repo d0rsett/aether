@@ -1,5 +1,5 @@
+import { t, getLocale } from "../i18n";
 import { invoke, isTauri } from "@tauri-apps/api/core";
-
 export interface VaultInfo {
   id: string;
   name: string;
@@ -69,7 +69,6 @@ export interface RenameApplied {
   note: Note;
   directory?: boolean;
 }
-
 export const desktop = isTauri();
 export interface IndexStatus {
   running: boolean;
@@ -114,10 +113,21 @@ export interface Inspection {
     tags: string[];
     properties: Record<string, unknown>;
     warning: string | null;
-    headings: { title: string; level: number; line: number }[];
+    headings: {
+      title: string;
+      level: number;
+      line: number;
+    }[];
   };
-  backlinks: { path: string; title: string; line: number; mentions?: number }[];
-  outgoing: (WikiLink & { resolution: Resolution })[];
+  backlinks: {
+    path: string;
+    title: string;
+    line: number;
+    mentions?: number;
+  }[];
+  outgoing: (WikiLink & {
+    resolution: Resolution;
+  })[];
 }
 export const api = {
   propertyTypes: (vaultId: string) =>
@@ -141,17 +151,30 @@ export const api = {
   importAttachments: (
     vaultId: string,
     source: string,
-    uploads: { name: string; data: string }[],
+    uploads: {
+      name: string;
+      data: string;
+    }[],
     rootImages = false,
   ) =>
-    invoke<{ path: string; link: string }[]>("import_attachments", {
+    invoke<
+      {
+        path: string;
+        link: string;
+      }[]
+    >("import_attachments", {
       vaultId,
       source,
       uploads,
       rootImages,
     }),
   attachmentLinks: (vaultId: string, source: string, paths: string[]) =>
-    invoke<{ path: string; link: string }[]>("attachment_links", {
+    invoke<
+      {
+        path: string;
+        link: string;
+      }[]
+    >("attachment_links", {
       vaultId,
       source,
       paths,
@@ -165,7 +188,9 @@ export const api = {
   renameDirectory: (vaultId: string, path: string, name: string) =>
     invoke<RenameApplied>("rename_directory", { vaultId, path, name }),
   trashDirectory: (vaultId: string, path: string) =>
-    invoke<{ trash: string }>("trash_directory", { vaultId, path }),
+    invoke<{
+      trash: string;
+    }>("trash_directory", { vaultId, path }),
   reveal: (vaultId: string, path = "") =>
     invoke<void>("reveal_in_explorer", { vaultId, path }),
   anchorOptions: (vaultId: string, path: string, content: string) =>
@@ -187,7 +212,10 @@ export const api = {
   readImage: (vaultId: string, source: string, target: string, wiki: boolean) =>
     invoke<string>("read_image", { vaultId, source, target, wiki }),
   readMedia: (vaultId: string, source: string, target: string, wiki: boolean) =>
-    invoke<{ mime: string; data: string }>("read_media", {
+    invoke<{
+      mime: string;
+      data: string;
+    }>("read_media", {
       vaultId,
       source,
       target,
@@ -198,7 +226,10 @@ export const api = {
     target: string,
     kind: "image" | "audio" | "video" | "pdf",
   ) =>
-    invoke<{ mime: string; data: string }>("read_external_media", {
+    invoke<{
+      mime: string;
+      data: string;
+    }>("read_external_media", {
       vaultId,
       target,
       kind,
@@ -207,11 +238,13 @@ export const api = {
     invoke<string>("document_link", { vaultId, source, target }),
   openExternal: (url: string) => invoke<void>("open_external", { url }),
   restore: () => invoke<VaultInfo | null>("restore_vault"),
-  choose: () => invoke<VaultInfo | null>("choose_vault"),
+  choose: () =>
+    invoke<VaultInfo | null>("choose_vault", { language: getLocale() }),
   vaults: () => invoke<VaultInfo[]>("list_vaults"),
   switchVault: (vaultId: string) =>
     invoke<VaultInfo>("switch_vault", { vaultId }),
-  chooseVaultParent: () => invoke<string | null>("choose_vault_parent"),
+  chooseVaultParent: () =>
+    invoke<string | null>("choose_vault_parent", { language: getLocale() }),
   createVault: (name: string, parent: string) =>
     invoke<VaultInfo>("create_vault", { name, parent }),
   list: (vaultId: string, path: string) =>
@@ -272,23 +305,29 @@ export const api = {
   search: (vaultId: string, query: SearchQuery) =>
     invoke<SearchPage>("search_notes", { vaultId, query }),
   linkSuggestions: (vaultId: string, text: string) =>
-    invoke<{ path: string; alias: string | null }[]>("link_suggestions", {
+    invoke<
+      {
+        path: string;
+        alias: string | null;
+      }[]
+    >("link_suggestions", {
       vaultId,
       text,
     }),
   resolve: (vaultId: string, source: string, target: string) =>
     invoke<Resolution>("resolve_link", { vaultId, source, target }),
 };
-
 export function errorMessage(error: unknown): string {
   if (typeof error === "object" && error !== null && "code" in error) {
     const detail = error as AppError;
     if (detail.code === "Conflict")
-      return "Файл изменился на диске. Ваш текст сохранён в редакторе. Сохраните копию или перечитайте файл.";
+      return t(
+        "Файл изменился на диске. Ваш текст сохранён в редакторе. Сохраните копию или перечитайте файл.",
+      );
     if (detail.code === "AlreadyExists")
-      return "Файл или папка с таким именем уже существует.";
-    if (detail.code === "NoVault") return "Откройте хранилище заново.";
-    return detail.message ?? detail.code;
+      return t("Файл или папка с таким именем уже существует.");
+    if (detail.code === "NoVault") return t("Откройте хранилище заново.");
+    return t(detail.message ?? detail.code);
   }
-  return error instanceof Error ? error.message : String(error);
+  return t(error instanceof Error ? error.message : String(error));
 }

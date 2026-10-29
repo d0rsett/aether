@@ -1,7 +1,7 @@
+import { t } from "../i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Modal } from "./Modal";
 import type { Ask, Question } from "../app/useWorkspace";
-
 export function useQuestion() {
   const [question, setQuestion] = useState<Question | null>(null);
   const [value, setValue] = useState("");
@@ -29,11 +29,11 @@ export function useQuestion() {
         }}
       >
         {question.description && (
-          <p className="modal-description">{question.description}</p>
+          <p className="modal-description">{t(question.description)}</p>
         )}
         {question.initial !== undefined && (
           <label className="input-label">
-            Имя и путь
+            {t(" Имя и путь ")}
             <input
               autoFocus
               value={value}
@@ -49,14 +49,14 @@ export function useQuestion() {
             className="button secondary"
             onClick={() => answer(null)}
           >
-            Отмена
+            {t(" Отмена ")}
           </button>
           <button
             autoFocus={question.initial === undefined}
             className={`button ${question.dangerous ? "danger" : "primary"}`}
             type="submit"
           >
-            {question.label ?? "Продолжить"}
+            {t(question.label ?? "Продолжить")}
           </button>
         </div>
       </form>

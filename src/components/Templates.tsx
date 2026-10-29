@@ -1,8 +1,8 @@
+import { t, useLocale } from "../i18n";
 import { useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../services/api";
 import { expandTemplate } from "../editor/templates";
 import { Modal } from "./Modal";
-
 export function Templates({
   vaultId,
   path,
@@ -16,6 +16,7 @@ export function Templates({
   onInsert: (text: string) => void;
   onClose: () => void;
 }) {
+  useLocale();
   const [folder, setFolder] = useState("Templates"),
     [files, setFiles] = useState<string[]>([]),
     [error, setError] = useState(""),
@@ -31,7 +32,7 @@ export function Templates({
       })
       .catch(() => {
         if (active.current)
-          setError("Не удалось прочитать папку шаблонов Obsidian.");
+          setError(t("Не удалось прочитать папку шаблонов Obsidian."));
       });
     return () => {
       active.current = false;
@@ -57,7 +58,9 @@ export function Templates({
       .catch(() => {
         if (current)
           setError(
-            "Папка не найдена или недоступна. Укажите папку шаблонов либо сохраните здесь первый шаблон.",
+            t(
+              "Папка не найдена или недоступна. Укажите папку шаблонов либо сохраните здесь первый шаблон.",
+            ),
           );
       });
     return () => {
@@ -84,25 +87,26 @@ export function Templates({
     }
   };
   return (
-    <Modal title="Шаблоны заметок" onClose={onClose}>
+    <Modal title={t("Шаблоны заметок")} onClose={onClose}>
       <div className="templates-form">
         <label>
-          Папка шаблонов
+          {t(" Папка шаблонов ")}
           <input
-            aria-label="Папка шаблонов"
+            aria-label={t("Папка шаблонов")}
             value={folder}
             disabled={busy}
             onChange={(event) => setFolder(event.target.value)}
           />
         </label>
         <p>
-          Вставка в позицию курсора. Свойства шаблона дополняют существующие;
-          совпадающие значения заметки сохраняются.
+          {t(
+            " Вставка в позицию курсора. Свойства шаблона дополняют существующие; совпадающие значения заметки сохраняются. ",
+          )}
         </p>
         <p>
           <code>{"{{title}} · {{date}} · {{time}} · {{date:DD.MM.YYYY}}"}</code>
         </p>
-        {error && <p role="alert">{error}</p>}
+        {error && <p role="alert">{t(error)}</p>}
         <div className="templates-list">
           {files.map((file) => (
             <button
@@ -122,7 +126,7 @@ export function Templates({
             try {
               if (!name.trim() || /[\\/:*?"<>|]/.test(name))
                 throw new Error(
-                  "Введите имя шаблона без специальных символов.",
+                  t("Введите имя шаблона без специальных символов."),
                 );
               const parts = folder === "/" ? [] : folder.split("/");
               let prefix = "";
@@ -149,9 +153,9 @@ export function Templates({
           }}
         >
           <label>
-            Сохранить текущую заметку как шаблон
+            {t(" Сохранить текущую заметку как шаблон ")}
             <input
-              aria-label="Имя шаблона"
+              aria-label={t("Имя шаблона")}
               value={name}
               disabled={busy}
               onChange={(event) => setName(event.target.value)}
@@ -159,7 +163,7 @@ export function Templates({
             />
           </label>
           <button type="submit" disabled={busy}>
-            Сохранить шаблон
+            {t(" Сохранить шаблон ")}
           </button>
         </form>
       </div>

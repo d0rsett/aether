@@ -1,3 +1,4 @@
+import { t, useLocale } from "../i18n";
 import { Link2 } from "lucide-react";
 import type { useWorkspace } from "../app/useWorkspace";
 import { NoteRelations } from "./NoteRelations";
@@ -18,27 +19,32 @@ export function Inspector({
   inspection: Inspection | null;
   knowledgeError: string;
 }) {
+  useLocale();
   const context = useContextMenu(app.setError);
   return (
     <aside className="inspector">
       <div className="inspector-header">
         <Link2 size={15} />
-        <span>Связи</span>
+        <span>{t("Связи")}</span>
       </div>
       <div className="inspector-content">
         {app.active ? (
           <>
             {knowledgeError && (
               <p className="tree-error">
-                Сведения индекса недоступны: {knowledgeError}
+                {t(" Сведения индекса недоступны: ")}
+                {knowledgeError}
               </p>
             )}
             <NoteRelations
               onContext={(event, path) =>
-                context.show(event, "Действия ссылки", [
-                  { label: "Открыть заметку", run: () => app.open(path) },
+                context.show(event, t("Действия ссылки"), [
                   {
-                    label: "Открыть в проводнике",
+                    label: t("Открыть заметку"),
+                    run: () => app.open(path),
+                  },
+                  {
+                    label: t("Открыть в проводнике"),
                     disabled: !app.vault,
                     run: () => api.reveal(app.vault!.id, path),
                   },
@@ -63,7 +69,7 @@ export function Inspector({
           </>
         ) : (
           <p className="relations-hint">
-            Откройте заметку, чтобы увидеть её связи.
+            {t(" Откройте заметку, чтобы увидеть её связи. ")}
           </p>
         )}
       </div>

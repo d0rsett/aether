@@ -1,8 +1,8 @@
+import { t } from "../i18n";
 import { parseDocument, isMap, isScalar, isAlias, isNode, visit } from "yaml";
 import type { EditorView } from "@codemirror/view";
 import { Text } from "@codemirror/state";
 import { isolateHistory } from "@codemirror/commands";
-
 export function expandTemplate(
   source: string,
   title: string,
@@ -35,7 +35,7 @@ function header(text: string) {
   close.lastIndex = opening[0].length;
   const match = close.exec(text);
   if (match && match.index - opening[0].length > 65536)
-    throw new Error("Свойства шаблона или заметки превышают 64 КБ.");
+    throw new Error(t("Свойства шаблона или заметки превышают 64 КБ."));
   return match
     ? {
         source: text.slice(opening[0].length, match.index),
@@ -54,17 +54,17 @@ export function templateChanges(
   const incoming = header(source),
     current = header(content);
   if (source.startsWith("---\n") && !incoming)
-    throw new Error("В шаблоне не закрыт блок свойств.");
+    throw new Error(t("В шаблоне не закрыт блок свойств."));
   if (!incoming) return [{ from, to, insert: source }];
   const added = parseDocument(incoming.source);
   if (added.errors.length || (added.contents && !isMap(added.contents)))
-    throw new Error("Исправьте свойства в файле шаблона.");
+    throw new Error(t("Исправьте свойства в файле шаблона."));
   if (!added.contents)
     return [{ from, to, insert: source.slice(incoming.end) }];
   visit(added, (_key, node) => {
     if (isAlias(node) || (isNode(node) && "anchor" in node && node.anchor))
       throw new Error(
-        "Для вставки шаблона упростите YAML-ссылки и якоря в его свойствах.",
+        t("Для вставки шаблона упростите YAML-ссылки и якоря в его свойствах."),
       );
   });
   const existing = parseDocument(current?.source ?? "");
@@ -73,18 +73,18 @@ export function templateChanges(
     (existing.contents && !isMap(existing.contents))
   )
     throw new Error(
-      "Исправьте свойства текущей заметки перед вставкой шаблона.",
+      t("Исправьте свойства текущей заметки перед вставкой шаблона."),
     );
   for (const pair of added.contents.items) {
     if (!isScalar(pair.key) || typeof pair.key.value !== "string")
-      throw new Error("Неподдерживаемое имя свойства в шаблоне.");
+      throw new Error(t("Неподдерживаемое имя свойства в шаблоне."));
     if (!existing.has(pair.key.value))
       existing.set(pair.key.value, pair.value?.clone() ?? null);
   }
   const merged = `${current?.bom ?? (content.startsWith("\uFEFF") ? "\uFEFF" : "")}---\n${existing.toString({ lineWidth: 0 })}---\n`;
   const end = current?.end ?? (content.startsWith("\uFEFF") ? 1 : 0);
   if (current && from < end)
-    throw new Error("Поставьте курсор в текст заметки ниже свойств.");
+    throw new Error(t("Поставьте курсор в текст заметки ниже свойств."));
   const body = source.slice(incoming.end);
   return [
     { from: 0, to: end, insert: merged },
@@ -93,7 +93,7 @@ export function templateChanges(
 }
 export function insertTemplate(view: EditorView, template: string) {
   if (view.state.readOnly)
-    throw new Error("Заметка недоступна для редактирования.");
+    throw new Error(t("Заметка недоступна для редактирования."));
   const selection = view.state.selection.main;
   const changes = templateChanges(
     view.state.sliceDoc(),

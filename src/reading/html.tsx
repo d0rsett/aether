@@ -1,8 +1,8 @@
+import { t } from "../i18n";
 import { createElement, Fragment, type ReactNode } from "react";
 import { api, errorMessage, type RenderNode } from "../services/api";
 import { renderNode, safeExternal, type RenderContext } from "./ReadingView";
 import { ExternalMedia, ExternalPage } from "./ExternalMedia";
-
 const allowed = new Set(
   "a abbr b blockquote br caption code dd del details div dl dt em h1 h2 h3 h4 h5 h6 hr i kbd li mark ol p pre s samp small span strong sub summary sup table tbody td th thead tr u ul img".split(
     " ",
@@ -16,7 +16,6 @@ const blocked = new Set(
 const local = (target: string) =>
   !!target &&
   !/^[a-z][a-z\d+.-]*:|^[\\/]{2}|[\u0000-\u001f\u007f]/i.test(target);
-
 // Parse only in an inert template. Never mount source DOM or copy arbitrary
 // attributes: React reconstructs a small passive HTML vocabulary from scratch.
 export function renderHtmlNodes(
@@ -32,8 +31,8 @@ export function renderHtmlNodes(
         : `<span data-${token}="${index}"></span>`,
     )
     .join("");
-  if (markup.length > 262_144)
-    return <span>HTML-фрагмент слишком велик. Откройте исходник.</span>;
+  if (markup.length > 262144)
+    return <span>{t("HTML-фрагмент слишком велик. Откройте исходник.")}</span>;
   const template = document.createElement("template");
   template.innerHTML = markup;
   let count = 0;
@@ -113,7 +112,9 @@ export function renderHtmlNodes(
           />
         );
       if (!local(target))
-        return <span>{node.getAttribute("alt") || "Внешнее изображение"}</span>;
+        return (
+          <span>{node.getAttribute("alt") || t("Внешнее изображение")}</span>
+        );
       return renderNode(
         {
           kind: "image",

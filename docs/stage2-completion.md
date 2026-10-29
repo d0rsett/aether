@@ -1,21 +1,17 @@
-# Завершение этапа 2: реализованный контракт
+# Stage 2: transaction and navigation record
 
-## Rename
+[Русский](stage2-completion.ru.md) · [Documentation](README.md) · [Project](../README.md)
 
-`preview_rename(vaultId, path, newPath, revision, openPaths)` создаёт серверный план из настоящих Markdown-файлов, независимо от поискового кеша. Ответ содержит token, счётчики, первую страницу ссылок до/после и затронутые открытые вкладки. `rename_preview_page(vaultId, token, offset, openPaths)` выдаёт остальные страницы (по 50 изменений). Подтверждение вызывает `apply_rename(vaultId, token)`. Клиент не передаёт заменяемый текст или произвольный план записи. Один активный план хранится в памяти; новый preview заменяет старый, после перезапуска нужно построить новый.
+**Historical engineering milestone.** Current behavior is described in [architecture](architecture.md) and the [API guide](knowledge-api.md).
 
-До применения повторно проверяются состав vault и ревизии файлов. Обновляются только wiki-ссылки/embeds, чьё разрешённое назначение иначе изменится; alias, якоря, BOM, LF/CRLF и кодовые примеры сохраняются. Отдельно учитываются относительные исходящие ссылки перемещаемой заметки и новые неоднозначности. Несохранённые затронутые вкладки блокируют применение.
+## Rename and recovery
 
-Перед первой записью сохраняются before/after snapshots и журнал в `.aether/renames/<id>/`; небольшой указатель — `.aether/rename.json`. Данные синхронизируются до записи Markdown. Ошибка запускает откат с проверкой ревизий. `undo_rename` возвращает предыдущие имена и содержимое только при отсутствии внешних конфликтов. Незавершённая операция обнаруживается после запуска, но восстановление запускает пользователь отдельной кнопкой; автоматической подмены файлов при открытии vault нет. Во время незавершённой операции затронутые пути защищены от записи, несвязанные заметки/копии остаются доступны.
+The server builds rename plans from real Markdown files, independent of the search cache. Preview returns a token, counts, affected tabs and paginated reference changes. Apply accepts the token, never client-authored replacement text. Plans are transient; restart requires a new preview.
 
-Журнал не делает несколько файлов одной файловой транзакцией и не устраняет межпроцессные TOCTOU-гонки. При неизвестной версии файла восстановление останавливается, сохраняя и текущий файл, и backups. Независимый файл в конфликтующем целевом пути не удаляется даже при совпадении содержимого; для промежуточного hard link проверяется filesystem identity (same-file).
+Before applying, vault inventory and revisions are checked again. Supported references preserve display labels, anchors, code examples, BOM and line endings; moving a note also accounts for its relative outgoing links. Dirty affected tabs block application.
 
-## Navigation
+Before/after snapshots and a journal are stored under `.aether/renames/<id>/`, with a pointer at `.aether/rename.json`. Rollback/Undo validate current contents before writing; conflicts keep recovery information. An interrupted operation is detected at startup but recovery requires an explicit user action. Directory transactions additionally retain descendant inventory and remap paths.
 
-`locate_anchor(vaultId, path, content, anchor)` получает актуальный буфер только по явному переходу и возвращает UTF-16 позиции CodeMirror и номер строки. Заголовки извлекаются pulldown-cmark, включая форматированный текст и Setext. Поддерживаются исходное имя, percent-encoded имя, slug и суффиксы повторяющихся slug. Блоки `^id` распознаются только в тексте Markdown вне кода/frontmatter/HTML; отдельная строка с ID относится к предыдущему блоку. Неизвестные/повторяющиеся block ID дают явную ошибку.
+## Navigation and validation
 
-Курсор/прокрутка — локальная операция CodeMirror без замены документа и сброса undo. Фокус возвращается только после разблокировки редактора. Повторный переход к уже открытой заметке использует её текущий буфер, включая несохранённые правки.
-
-## Проверки
-
-Rust: разбор spans, Unicode/CRLF/BOM, неоднозначные пути, перенос между папками, конфликты между preview/apply, откат/undo, частично выполненная операция и повреждённые backups. Frontend: защита dirty-tabs, синхронизация открытых буферов, повторная навигация без потери текста. Native E2E: реальная запись ссылок, отмена/подтверждение preview, переходы к заголовку/блоку, undo и перезапуск с незавершённым журналом.
+Heading/block navigation uses parser ranges and can locate targets in the current dirty buffer without discarding undo. Frontend ignores stale requests. Tests cover link updates, preview cancellation, conflicts, Undo and restart with an interrupted journal. This record describes contracts, not a new claim that every historical test was rerun for a documentation change.

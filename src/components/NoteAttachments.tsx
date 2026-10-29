@@ -1,3 +1,4 @@
+import { t, useLocale } from "../i18n";
 import { useEffect, useState } from "react";
 import {
   ChevronRight,
@@ -12,7 +13,6 @@ import {
 } from "../services/attachments";
 import { imageExtension } from "../services/images";
 import { useContextMenu } from "./ContextMenu";
-
 interface Attachment extends AttachmentReference {
   path: string | null;
   error: string;
@@ -32,6 +32,7 @@ export function NoteAttachments({
   onOpen: (path: string) => void;
   onError: (message: string) => void;
 }) {
+  useLocale();
   const key = `${vaultId}\0${path}`;
   const [state, setState] = useState<{
     key: string;
@@ -104,17 +105,19 @@ export function NoteAttachments({
             aria-hidden="true"
           />
           <Paperclip size={13} aria-hidden="true" />
-          <span>Вложения</span>
+          <span>{t("Вложения")}</span>
           <small>{items.length}</small>
         </summary>
         {!current ? (
-          <p className="relations-hint">Загрузка вложений…</p>
+          <p className="relations-hint">{t("Загрузка вложений\u2026")}</p>
         ) : current.error ? (
           <p className="tree-error" role="alert">
-            {current.error}
+            {t(current.error)}
           </p>
         ) : !items.length ? (
-          <p className="relations-hint">В этой заметке пока нет вложений</p>
+          <p className="relations-hint">
+            {t("В этой заметке пока нет вложений")}
+          </p>
         ) : (
           items.map((item) => {
             const filename = (item.path || item.target).split("/").at(-1)!;
@@ -123,25 +126,25 @@ export function NoteAttachments({
                 key={item.path || item.target}
                 type="button"
                 className="relation-link attachment-link"
-                aria-label={`Вложение: ${item.label || filename}`}
+                aria-label={t`Вложение: ${item.label || filename}`}
                 disabled={!item.path}
                 data-tooltip={item.error || item.path || item.target}
                 onClick={() => open(item)}
                 onContextMenu={(event) => {
                   if (!item.path) return;
-                  context.show(event, "Действия с вложением", [
+                  context.show(event, t("Действия с вложением"), [
                     {
                       label: imageExtension(item.path)
-                        ? "Открыть изображение"
-                        : "Открыть в проводнике",
+                        ? t("Открыть изображение")
+                        : t("Открыть в проводнике"),
                       run: () => open(item),
                     },
                     {
-                      label: "Копировать путь",
+                      label: t("Копировать путь"),
                       run: () => navigator.clipboard.writeText(item.path!),
                     },
                     {
-                      label: "Показать в проводнике",
+                      label: t("Показать в проводнике"),
                       run: () => api.reveal(vaultId, item.path!),
                     },
                   ]);
@@ -154,7 +157,7 @@ export function NoteAttachments({
                 )}
                 <span className="attachment-link-label">
                   {item.label || filename}
-                  <small>{item.path || "Файл не найден"}</small>
+                  <small>{item.path || t("Файл не найден")}</small>
                 </span>
                 <span className="attachment-type" aria-hidden="true">
                   {item.extension}

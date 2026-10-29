@@ -9,6 +9,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Check } from "lucide-react";
+import { t, useLocale } from "../i18n";
 
 export interface ContextAction {
   label: string;
@@ -23,6 +24,7 @@ export interface ContextAction {
 }
 
 export function useContextMenu(onError?: (message: string) => void) {
+  useLocale();
   const id = useId();
   const [menu, setMenu] = useState<{
     x: number;
@@ -106,7 +108,7 @@ export function useContextMenu(onError?: (message: string) => void) {
             className="popover-panel"
             ref={panel}
             role="menu"
-            aria-label={menu.label}
+            aria-label={t(menu.label)}
             onContextMenu={(event) => event.preventDefault()}
             onKeyDown={(event) => {
               if (event.key === "Escape" || event.key === "Tab") {
@@ -173,7 +175,7 @@ function ContextMenuItem({
     <>
       {action.divider && <hr role="separator" />}
       {action.heading && (
-        <div className="context-menu-heading">{action.heading}</div>
+        <div className="context-menu-heading">{t(action.heading)}</div>
       )}
       <button
         role={action.checked === undefined ? "menuitem" : "menuitemcheckbox"}
@@ -183,7 +185,7 @@ function ContextMenuItem({
         onClick={select}
       >
         {action.icon}
-        <span>{action.label}</span>
+        <span>{t(action.label)}</span>
         {action.checked && <Check size={13} />}
         {action.shortcut && <kbd>{action.shortcut}</kbd>}
       </button>

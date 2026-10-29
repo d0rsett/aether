@@ -1,3 +1,4 @@
+import { t, useLocale } from "../i18n";
 import {
   Fragment,
   lazy,
@@ -135,7 +136,6 @@ export function safeExternal(value: string): boolean {
     return false;
   }
 }
-
 function LocalImage({
   target,
   alt,
@@ -149,6 +149,7 @@ function LocalImage({
   wiki: boolean;
   context: Context;
 }) {
+  useLocale();
   const ref = useRef<HTMLSpanElement>(null);
   const [visible, setVisible] = useState(false);
   const [src, setSrc] = useState("");
@@ -198,8 +199,8 @@ function LocalImage({
         <button
           className="image-open"
           ref={button}
-          aria-label={`Открыть изображение: ${label}`}
-          data-tooltip="Открыть изображение"
+          aria-label={t`Открыть изображение: ${label}`}
+          data-tooltip={t("Открыть изображение")}
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -225,7 +226,7 @@ function LocalImage({
         </button>
       ) : (
         <span className="image-placeholder">
-          {error || `Изображение: ${alt || target}`}
+          {error || t`Изображение: ${alt || target}`}
         </span>
       )}
       {description && <span className="image-caption">{description}</span>}
@@ -253,6 +254,7 @@ function Nodes({
   context: Context;
   head?: boolean;
 }) {
+  useLocale();
   if (nodes.some((node) => node.kind === "literalHtml"))
     return renderHtmlNodes(nodes, context, head);
   return nodes.map((node, index) => (
@@ -299,7 +301,7 @@ export function renderNode(
           className="note-embed"
           onClick={() => context.onWiki(node.target)}
         >
-          Показано слишком много встроенных заметок. Открыть:{" "}
+          {t(" Показано слишком много встроенных заметок. Открыть:")}{" "}
           {text(node) || node.target}
         </button>
       );
@@ -428,7 +430,7 @@ export function renderNode(
       const link = blocked ? (
         <span
           className="blocked-link"
-          data-tooltip="Недопустимый протокол ссылки"
+          data-tooltip={t("Недопустимый протокол ссылки")}
         >
           {children}
         </span>
@@ -512,7 +514,7 @@ export function renderNode(
             }
             data-tooltip={
               attachmentTarget.test(node.target)
-                ? "Открыть вложение в проводнике"
+                ? t("Открыть вложение в проводнике")
                 : undefined
             }
             onClick={() =>
@@ -532,7 +534,7 @@ export function renderNode(
         return (
           <button
             className="note-embed attachment-card"
-            data-tooltip="Открыть вложение в проводнике"
+            data-tooltip={t("Открыть вложение в проводнике")}
             onClick={() => revealAttachment(context, node.target, false)}
           >
             <FileText size={17} />
@@ -607,7 +609,7 @@ export function renderNode(
           checked={!!node.level}
           disabled={!context.onTask}
           onChange={() => context.onTask?.(node)}
-          aria-label={node.level ? "Выполнено" : "Не выполнено"}
+          aria-label={node.level ? t("Выполнено") : t("Не выполнено")}
         />
       );
     case "rule":
@@ -630,7 +632,7 @@ export function renderNode(
           {children}
           <button
             type="button"
-            aria-label={`Вернуться из сноски ${node.target}`}
+            aria-label={t`Вернуться из сноски ${node.target}`}
             onClick={(event) =>
               context.onFootnote
                 ? context.onFootnote(node.target, true, node.from)
@@ -647,7 +649,7 @@ export function renderNode(
           <button
             type="button"
             data-footnote-ref={node.target}
-            aria-label={`Перейти к сноске ${node.target}`}
+            aria-label={t`Перейти к сноске ${node.target}`}
             onClick={(event) =>
               context.onFootnote
                 ? context.onFootnote(node.target, false, node.from)
@@ -662,7 +664,6 @@ export function renderNode(
       return children;
   }
 }
-
 export const ReadingView = memo(function ReadingView({
   vaultId,
   path,
@@ -681,7 +682,11 @@ export const ReadingView = memo(function ReadingView({
   vaultId: string;
   path: string;
   content: string;
-  navigation?: (AnchorLocation & { id: number }) | null;
+  navigation?:
+    | (AnchorLocation & {
+        id: number;
+      })
+    | null;
   onWiki: (target: string) => void;
   onError: (message: string) => void;
   theme?: string;
@@ -692,8 +697,12 @@ export const ReadingView = memo(function ReadingView({
   previews?: NotePreviews;
   onNavigate?: (source: string, target: string) => void;
 }) {
+  useLocale();
   const [document, setDocument] = useState<
-    (RenderDocument & { snapshot: string }) | null
+    | (RenderDocument & {
+        snapshot: string;
+      })
+    | null
   >(null);
   const [error, setError] = useState("");
   const host = useRef<HTMLDivElement>(null);
@@ -743,7 +752,7 @@ export const ReadingView = memo(function ReadingView({
       className="reading-scroll"
       ref={host}
       role="region"
-      aria-label="Просмотр заметки"
+      aria-label={t("Просмотр заметки")}
       tabIndex={0}
     >
       <article className="reading-document">
@@ -760,7 +769,7 @@ export const ReadingView = memo(function ReadingView({
         )}
         {error ? (
           <p role="alert" className="tree-error">
-            {error}
+            {t(error)}
           </p>
         ) : document ? (
           <>
@@ -785,11 +794,13 @@ export const ReadingView = memo(function ReadingView({
                 }}
               />
             ) : (
-              <p className="reading-empty">В этой заметке пока нет текста.</p>
+              <p className="reading-empty">
+                {t("В этой заметке пока нет текста.")}
+              </p>
             )}
           </>
         ) : (
-          <p className="reading-empty">Подготовка заметки…</p>
+          <p className="reading-empty">{t("Подготовка заметки\u2026")}</p>
         )}
       </article>
     </div>

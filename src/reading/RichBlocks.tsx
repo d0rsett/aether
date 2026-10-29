@@ -1,7 +1,7 @@
+import { t, useLocale } from "../i18n";
 import { useEffect, useMemo, useState } from "react";
 import katex from "katex";
 import "katex/dist/katex.min.css";
-
 export function MathView({
   value,
   display,
@@ -9,6 +9,7 @@ export function MathView({
   value: string;
   display: boolean;
 }) {
+  useLocale();
   const html = useMemo(
     () =>
       katex.renderToString(value, {
@@ -31,23 +32,25 @@ export function MathView({
 }
 let serial = 0;
 export function Diagram({ code, dark }: { code: string; dark: boolean }) {
-  const [result, setResult] = useState<{ svg: string; height: number } | null>(
-    null,
-  );
+  useLocale();
+  const [result, setResult] = useState<{
+    svg: string;
+    height: number;
+  } | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
     let cancelled = false;
     setResult(null);
     setError("");
     void (async () => {
-      if (code.length > 20_000)
-        throw new Error("Диаграмма превышает 20 000 символов.");
+      if (code.length > 20000)
+        throw new Error(t("Диаграмма превышает 20 000 символов."));
       const { default: mermaid } = await import("mermaid");
       mermaid.initialize({
         startOnLoad: false,
         securityLevel: "strict",
         theme: dark ? "dark" : "neutral",
-        maxTextSize: 20_000,
+        maxTextSize: 20000,
         maxEdges: 300,
         suppressErrorRendering: true,
         flowchart: { htmlLabels: false },
@@ -64,7 +67,9 @@ export function Diagram({ code, dark }: { code: string; dark: boolean }) {
       });
       // Diagram-authored configuration is intentionally excluded; only diagram syntax is accepted.
       if (code.includes("%%{") || /^\s*---/.test(code))
-        throw new Error("Настройки Mermaid внутри заметки не поддерживаются.");
+        throw new Error(
+          t("Настройки Mermaid внутри заметки не поддерживаются."),
+        );
       const { svg } = await mermaid.render(`aether-diagram-${++serial}`, code);
       const parsed = new DOMParser().parseFromString(svg, "image/svg+xml");
       const viewBox = parsed.documentElement
@@ -79,7 +84,7 @@ export function Diagram({ code, dark }: { code: string; dark: boolean }) {
     })().catch(() => {
       if (!cancelled)
         setError(
-          "Не удалось построить диаграмму. Проверьте синтаксис Mermaid.",
+          t("Не удалось построить диаграмму. Проверьте синтаксис Mermaid."),
         );
     });
     return () => {
@@ -93,14 +98,14 @@ export function Diagram({ code, dark }: { code: string; dark: boolean }) {
     <figure className="reading-diagram">
       {result ? (
         <iframe
-          title="Диаграмма Mermaid"
+          title={t("Диаграмма Mermaid")}
           sandbox=""
           srcDoc={srcDoc}
           style={{ height: result.height }}
         />
       ) : (
         <>
-          <figcaption>{error || "Построение диаграммы…"}</figcaption>
+          <figcaption>{error || t("Построение диаграммы\u2026")}</figcaption>
           <pre>
             <code>{code}</code>
           </pre>

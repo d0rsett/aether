@@ -1,3 +1,4 @@
+import { t, useLocale } from "../i18n";
 import {
   useEffect,
   useMemo,
@@ -32,13 +33,15 @@ import {
   type PropertyType,
   type PropertyTypes,
 } from "../editor/properties";
-
 export type PropertyApply = (
   action: PropertyAction,
   expected: string,
   done: (error?: string) => void,
 ) => void;
-const choices: { value: PropertyType; label: string }[] = [
+const choices: {
+  value: PropertyType;
+  label: string;
+}[] = [
   { value: "text", label: "Текст" },
   { value: "list", label: "Список" },
   { value: "number", label: "Число" },
@@ -57,6 +60,7 @@ function TypePicker({
   locked?: boolean;
   onSelect: (type: PropertyType) => void;
 }) {
+  useLocale();
   const menu = useContextMenu();
   const icon = {
     text: Type,
@@ -67,22 +71,25 @@ function TypePicker({
     checkbox: CheckSquare,
   }[type];
   const Icon = icon;
-  const current =
-    choices.find((choice) => choice.value === type)?.label ?? "Текст";
+  const current = t(
+    choices.find((choice) => choice.value === type)?.label ?? "Текст",
+  );
   return (
     <>
       <button
         type="button"
         className="inline-property-type"
         aria-label={label}
-        title={locked ? `${current} · встроенное свойство` : `Тип: ${current}`}
+        title={
+          locked ? t`${current} · встроенное свойство` : t`Тип: ${current}`
+        }
         aria-haspopup="menu"
         onClick={(event) =>
           menu.show(
             event,
             label,
             choices.map((choice, index) => ({
-              label: choice.label,
+              label: t(choice.label),
               icon: (() => {
                 const ChoiceIcon = {
                   text: Type,
@@ -97,8 +104,8 @@ function TypePicker({
               heading:
                 index === 0
                   ? locked
-                    ? "Тип встроенного свойства"
-                    : "Тип для всего хранилища"
+                    ? t("Тип встроенного свойства")
+                    : t("Тип для всего хранилища")
                   : undefined,
               checked: choice.value === type,
               disabled: locked && choice.value !== type,
@@ -115,7 +122,13 @@ function TypePicker({
     </>
   );
 }
-const invalidDrafts = new Map<string, { text: string; error: string }>();
+const invalidDrafts = new Map<
+  string,
+  {
+    text: string;
+    error: string;
+  }
+>();
 type NewPropertyDraft = {
   name: string;
   type: PropertyType;
@@ -129,7 +142,6 @@ const emptyPropertyDraft = (): NewPropertyDraft => ({
   value: "",
   checked: false,
 });
-
 export function InlineProperties({
   content,
   vaultId,
@@ -145,6 +157,7 @@ export function InlineProperties({
   onSource: () => void;
   onHistory?: (redo: boolean) => void;
 }) {
+  useLocale();
   const [settings, setSettings] = useState<{
     vaultId: string;
     types: PropertyTypes;
@@ -180,7 +193,9 @@ export function InlineProperties({
         if (active) {
           setCatalog({});
           setCatalogError(
-            "Не удалось загрузить подсказки свойств. Значения можно ввести вручную.",
+            t(
+              "Не удалось загрузить подсказки свойств. Значения можно ввести вручную.",
+            ),
           );
         }
       });
@@ -201,7 +216,7 @@ export function InlineProperties({
           setSettings({
             vaultId,
             types: {},
-            error: "Не удалось прочитать типы свойств Obsidian.",
+            error: t("Не удалось прочитать типы свойств Obsidian."),
           });
       });
     return () => {
@@ -220,7 +235,10 @@ export function InlineProperties({
   useEffect(() => {
     const reload = (event: Event) => {
       const detail = (
-        event as CustomEvent<{ vaultId: string; types: PropertyTypes }>
+        event as CustomEvent<{
+          vaultId: string;
+          types: PropertyTypes;
+        }>
       ).detail;
       if (detail.vaultId === vaultId) setSettings({ ...detail, error: "" });
     };
@@ -229,9 +247,9 @@ export function InlineProperties({
   }, [vaultId]);
   const saveType = async (key: string, type: PropertyType) => {
     if (!settings || settings.error)
-      throw new Error("Типы свойств ещё не загружены.");
+      throw new Error(t("Типы свойств ещё не загружены."));
     if (pendingType.current)
-      throw new Error("Дождитесь сохранения типа свойства.");
+      throw new Error(t("Дождитесь сохранения типа свойства."));
     pendingType.current = true;
     try {
       const types = await api.setPropertyType(
@@ -247,7 +265,9 @@ export function InlineProperties({
       );
       if (identity.current !== formKey)
         throw new Error(
-          "Заметка изменилась. Тип сохранён для хранилища; значение заметки не изменено.",
+          t(
+            "Заметка изменилась. Тип сохранён для хранилища; значение заметки не изменено.",
+          ),
         );
     } finally {
       pendingType.current = false;
@@ -276,37 +296,40 @@ export function InlineProperties({
     return (
       <section
         className="inline-properties inline-properties-empty"
-        aria-label="Свойства заметки"
+        aria-label={t("Свойства заметки")}
       >
         <button
           type="button"
           className="inline-property-add"
           onClick={startAdding}
         >
-          <Plus size={14} /> Добавить свойство
+          <Plus size={14} />
+          {t(" Добавить свойство ")}
         </button>
       </section>
     );
   }
   return (
-    <section className="inline-properties" aria-label="Свойства заметки">
+    <section className="inline-properties" aria-label={t("Свойства заметки")}>
       <details open>
         <summary>
           <ChevronRight className="inline-properties-chevron" size={14} />
-          <span>Свойства</span>
+          <span>{t("Свойства")}</span>
           <small>{parsed.items.length}</small>
         </summary>
         {!ready ? (
-          <p className="inline-property-message">Загрузка свойств…</p>
+          <p className="inline-property-message">
+            {t("Загрузка свойств\u2026")}
+          </p>
         ) : settings.error || parsed.error ? (
           <p className="inline-property-error" role="alert">
-            {settings.error || parsed.error}
+            {t(settings.error || parsed.error)}
           </p>
         ) : (
           <div
             className="inline-property-grid"
             role="table"
-            aria-label="Таблица свойств"
+            aria-label={t("Таблица свойств")}
           >
             {parsed.items.map((item) => (
               <PropertyRow
@@ -318,7 +341,9 @@ export function InlineProperties({
                   const assigned = configuredTypeName(settings.types, name);
                   if (assigned && configuredPropertyType(assigned) !== type)
                     throw new Error(
-                      "У этого имени уже задан другой тип в хранилище. Сначала измените тип свойства.",
+                      t(
+                        "У этого имени уже задан другой тип в хранилище. Сначала измените тип свойства.",
+                      ),
                     );
                   if (!assigned) await saveType(name, type);
                 }}
@@ -342,7 +367,7 @@ export function InlineProperties({
         )}
         {error && (
           <p className="inline-property-error" role="alert">
-            {error}
+            {t(error)}
           </p>
         )}
         {ready &&
@@ -356,7 +381,9 @@ export function InlineProperties({
                 try {
                   if (configuredName && !configured)
                     throw new Error(
-                      "Неизвестный тип свойства Obsidian. Добавьте его в исходнике.",
+                      t(
+                        "Неизвестный тип свойства Obsidian. Добавьте его в исходнике.",
+                      ),
                     );
                   const value = propertyValue(
                     name.trim(),
@@ -386,7 +413,7 @@ export function InlineProperties({
                   setError(
                     reason instanceof Error
                       ? reason.message
-                      : "Не удалось добавить свойство.",
+                      : t("Не удалось добавить свойство."),
                   );
                 }
               }}
@@ -395,7 +422,7 @@ export function InlineProperties({
                 <div className="inline-property-name inline-property-new-name">
                   <TypePicker
                     type={chosen}
-                    label="Тип нового свойства"
+                    label={t("Тип нового свойства")}
                     locked={
                       !!configuredName ||
                       name.trim() === "tags" ||
@@ -405,13 +432,13 @@ export function InlineProperties({
                   />
                   <input
                     autoFocus
-                    aria-label="Имя нового свойства"
+                    aria-label={t("Имя нового свойства")}
                     list={suggestionId}
                     value={name}
                     onChange={(event) =>
                       updateForm({ name: event.target.value })
                     }
-                    placeholder="Имя свойства"
+                    placeholder={t("Имя свойства")}
                     required
                     maxLength={256}
                   />
@@ -420,7 +447,7 @@ export function InlineProperties({
                   {chosen === "checkbox" ? (
                     <input
                       type="checkbox"
-                      aria-label="Значение нового свойства"
+                      aria-label={t("Значение нового свойства")}
                       checked={newChecked}
                       onChange={(event) =>
                         updateForm({ checked: event.target.checked })
@@ -428,8 +455,8 @@ export function InlineProperties({
                     />
                   ) : chosen === "list" ? (
                     <textarea
-                      aria-label="Значение нового свойства"
-                      placeholder="Каждое значение с новой строки"
+                      aria-label={t("Значение нового свойства")}
+                      placeholder={t("Каждое значение с новой строки")}
                       value={newValue}
                       onChange={(event) =>
                         updateForm({ value: event.target.value })
@@ -437,8 +464,8 @@ export function InlineProperties({
                     />
                   ) : (
                     <input
-                      aria-label="Значение нового свойства"
-                      placeholder="Значение"
+                      aria-label={t("Значение нового свойства")}
+                      placeholder={t("Значение")}
                       list={`${suggestionId}-value`}
                       type={chosen === "date" ? "date" : "text"}
                       value={newValue}
@@ -451,15 +478,15 @@ export function InlineProperties({
                 <div className="inline-property-new-actions">
                   <button
                     type="submit"
-                    aria-label="Добавить"
-                    title="Добавить свойство"
+                    aria-label={t("Добавить")}
+                    title={t("Добавить свойство")}
                   >
                     <Check size={15} />
                   </button>
                   <button
                     type="button"
-                    aria-label="Отмена"
-                    title="Отменить добавление"
+                    aria-label={t("Отмена")}
+                    title={t("Отменить добавление")}
                     onClick={() => {
                       newPropertyDrafts.delete(formKey);
                       setForm(emptyPropertyDraft());
@@ -478,7 +505,8 @@ export function InlineProperties({
               className="inline-property-add"
               onClick={startAdding}
             >
-              <Plus size={14} /> Добавить свойство
+              <Plus size={14} />
+              {t(" Добавить свойство ")}
             </button>
           ))}
         <button
@@ -486,7 +514,7 @@ export function InlineProperties({
           className="inline-property-source"
           onClick={onSource}
         >
-          Открыть свойства в исходнике
+          {t(" Открыть свойства в исходнике ")}
         </button>
         {catalogError && (
           <p className="inline-property-message">{catalogError}</p>
@@ -510,7 +538,6 @@ export function InlineProperties({
     </section>
   );
 }
-
 function PropertyList({
   name,
   value,
@@ -530,6 +557,7 @@ function PropertyList({
   onFocus: () => void;
   onBlur: () => void;
 }) {
+  useLocale();
   const items = value ? value.split("\n") : [];
   const [entry, setEntry] = useState("");
   const id = useId();
@@ -550,7 +578,7 @@ function PropertyList({
       {items.map((item, index) => (
         <span className="property-chip" key={index}>
           <input
-            aria-label={`Элемент ${index + 1} свойства ${name}`}
+            aria-label={t`Элемент ${index + 1} свойства ${name}`}
             value={item}
             style={{ width: `${Math.max(3, Math.min(24, item.length + 1))}ch` }}
             onChange={(event) =>
@@ -566,7 +594,7 @@ function PropertyList({
           />
           <button
             type="button"
-            aria-label={`Удалить элемент ${index + 1} свойства ${name}`}
+            aria-label={t`Удалить элемент ${index + 1} свойства ${name}`}
             onClick={() =>
               onChange(items.filter((_, at) => at !== index).join("\n"))
             }
@@ -576,8 +604,8 @@ function PropertyList({
         </span>
       ))}
       <input
-        aria-label={`Значение ${name}`}
-        placeholder="Добавить значение…"
+        aria-label={t`Значение ${name}`}
+        placeholder={t("Добавить значение\u2026")}
         list={id}
         value={entry}
         onChange={(event) => setEntry(event.target.value)}
@@ -609,7 +637,6 @@ function PropertyList({
     </div>
   );
 }
-
 function PropertyRow({
   item,
   suggestions,
@@ -637,6 +664,7 @@ function PropertyRow({
   onSource: () => void;
   onHistory?: (redo: boolean) => void;
 }) {
+  useLocale();
   const displayType = item.type === "unsupported" ? assignedType : item.type;
   const valuesId = useId();
   const [nameDraft, setNameDraft] = useState(item.key);
@@ -676,7 +704,7 @@ function PropertyRow({
         },
       );
     } catch (reason) {
-      const message = `${reason instanceof Error ? reason.message : "Не удалось изменить свойство."} Значение пока не применено.`;
+      const message = t`${reason instanceof Error ? reason.message : t("Не удалось изменить свойство.")} Значение пока не применено.`;
       invalidDrafts.set(draftKey, { text, error: message });
       setError(message);
     }
@@ -706,7 +734,7 @@ function PropertyRow({
         {displayType && (
           <TypePicker
             type={displayType}
-            label={`Тип свойства ${item.key}`}
+            label={t`Тип свойства ${item.key}`}
             locked={typeLocked}
             onSelect={async (nextType) => {
               try {
@@ -718,7 +746,7 @@ function PropertyRow({
                   nextType === "checkbox" &&
                   !/^(true|false)$/i.test(draft.trim())
                 )
-                  throw new Error("Для флажка укажите true или false.");
+                  throw new Error(t("Для флажка укажите true или false."));
                 const value = propertyValue(
                   item.key,
                   nextType,
@@ -735,7 +763,7 @@ function PropertyRow({
                 setError(
                   reason instanceof Error
                     ? reason.message
-                    : "Не удалось изменить тип.",
+                    : t("Не удалось изменить тип."),
                 );
               }
             }}
@@ -743,7 +771,7 @@ function PropertyRow({
         )}
         <input
           className="property-key-input"
-          aria-label={`Имя свойства ${item.key}`}
+          aria-label={t`Имя свойства ${item.key}`}
           value={nameDraft}
           onChange={(event) => setNameDraft(event.target.value)}
           onKeyDown={(event) => {
@@ -762,12 +790,14 @@ function PropertyRow({
             }
             try {
               if (names.includes(name))
-                throw new Error("Свойство с таким именем уже существует.");
+                throw new Error(t("Свойство с таким именем уже существует."));
               if (
                 ["tags", "aliases", "cssclasses"].includes(name) &&
                 item.type !== "list"
               )
-                throw new Error("Для этого имени требуется список значений.");
+                throw new Error(
+                  t("Для этого имени требуется список значений."),
+                );
               if (
                 displayType &&
                 !["tags", "aliases", "cssclasses"].includes(name)
@@ -781,7 +811,7 @@ function PropertyRow({
               setError(
                 reason instanceof Error
                   ? reason.message
-                  : "Не удалось переименовать свойство.",
+                  : t("Не удалось переименовать свойство."),
               );
               setNameDraft(item.key);
             }
@@ -800,7 +830,7 @@ function PropertyRow({
         ) : item.type === "checkbox" ? (
           <input
             type="checkbox"
-            aria-label={`Значение ${item.key}`}
+            aria-label={t`Значение ${item.key}`}
             checked={item.value === true}
             onChange={(event) => update("", event.target.checked)}
           />
@@ -816,7 +846,7 @@ function PropertyRow({
           />
         ) : (
           <input
-            aria-label={`Значение ${item.key}`}
+            aria-label={t`Значение ${item.key}`}
             list={valuesId}
             value={draft}
             type={item.type === "date" ? "date" : "text"}
@@ -829,7 +859,7 @@ function PropertyRow({
         )}
         {error && (
           <span className="inline-property-error" role="alert">
-            {error}
+            {t(error)}
           </span>
         )}
       </span>
@@ -841,8 +871,8 @@ function PropertyRow({
       <button
         type="button"
         className="inline-property-delete"
-        aria-label={`Удалить свойство ${item.key}`}
-        title="Удалить свойство"
+        aria-label={t`Удалить свойство ${item.key}`}
+        title={t("Удалить свойство")}
         onClick={() =>
           onApply({ key: item.key, remove: true }, expected, (message) => {
             if (!message) invalidDrafts.delete(draftKey);

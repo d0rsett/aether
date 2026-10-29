@@ -1,3 +1,4 @@
+import { t, useLocale, setLocale } from "../i18n";
 import { Welcome } from "../components/Welcome";
 import { FormattingToolbar } from "../components/FormattingToolbar";
 import { Templates } from "../components/Templates";
@@ -12,6 +13,7 @@ import {
   FolderPlus,
   Info,
   LoaderCircle,
+  Languages,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
@@ -60,13 +62,11 @@ function readFlag(name: string, fallback: boolean): boolean {
     return fallback;
   }
 }
-
 const MarkdownEditor = lazy(() =>
   import("../editor/MarkdownEditor").then((module) => ({
     default: module.MarkdownEditor,
   })),
 );
-
 function initialTheme(): string {
   try {
     return localStorage.getItem("aether.theme") ?? "dark";
@@ -74,8 +74,11 @@ function initialTheme(): string {
     return "dark";
   }
 }
-
 export function App() {
+  const locale = useLocale();
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
   const { ask, dialog } = useQuestion();
   const renameReview = useRenameReview();
   const vaultCreation = useVaultCreation();
@@ -148,7 +151,11 @@ export function App() {
   const [stats, setStats] = useState({ words: 0, chars: 0, lines: 0 });
   const [mode, setMode] = useState<Mode>("live");
   const [propertyCommand, setPropertyCommand] = useState<
-    (PropertyCommand & { path: string; vaultId: string }) | null
+    | (PropertyCommand & {
+        path: string;
+        vaultId: string;
+      })
+    | null
   >(null);
   const propertyId = useRef(0);
   const [propertyHistory, setPropertyHistory] = useState<{
@@ -228,7 +235,6 @@ export function App() {
     if (knowledge.status && !knowledge.status.running)
       app.setRefresh((n) => n + 1);
   }, [knowledge.status?.revision, knowledge.status?.running, app.setRefresh]);
-
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     try {
@@ -298,59 +304,87 @@ export function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-
+  const changeLanguage = (next: "ru" | "en") => {
+    if (!setLocale(next))
+      app.setError(
+        t(
+          "Не удалось сохранить язык интерфейса. Выбор действует до закрытия приложения.",
+        ),
+      );
+  };
   const commands = [
     {
-      title: "Вставить шаблон",
+      title: "Language: English",
+      shortcut: "",
+      enabled: true,
+      action: () => changeLanguage("en"),
+    },
+    {
+      title: "Язык: Русский",
+      shortcut: "",
+      enabled: true,
+      action: () => changeLanguage("ru"),
+    },
+    {
+      title: t("Вставить шаблон"),
       shortcut: "",
       enabled: !!app.active,
       action: () => setTemplates(true),
     },
     {
-      title: "Создать хранилище",
+      title: t("Создать хранилище"),
       shortcut: "Ctrl Shift N",
       action: () => void app.createVault(),
       enabled: true,
     },
     {
-      title: "Панель форматирования",
+      title: t("Панель форматирования"),
       shortcut: "",
       action: () => setFormatting(!formatting),
       enabled: !!app.active,
     },
     {
-      title: "Номера строк",
+      title: t("Номера строк"),
       shortcut: "",
       action: () => setLineNumbers(!lineNumbers),
       enabled: !!app.active,
     },
     {
-      title: "Связи и свойства",
+      title: t("Связи и свойства"),
       shortcut: "",
       action: () => setRight(!right),
       enabled: true,
     },
     ...(
       [
-        { type: "bold", label: "Жирный" },
-        { type: "italic", label: "Курсив" },
-        { type: "heading", label: "Заголовок" },
-        { type: "code", label: "Код" },
-        { type: "quote", label: "Цитата" },
-        { type: "list", label: "Список" },
-        { type: "link", label: "Wiki-ссылка" },
+        { type: "bold", label: t("Жирный") },
+        { type: "italic", label: t("Курсив") },
+        {
+          type: "heading",
+          label: t("Заголовок"),
+        },
+        { type: "code", label: t("Код") },
+        { type: "quote", label: t("Цитата") },
+        { type: "list", label: t("Список") },
+        { type: "link", label: t("Wiki-ссылка") },
       ] as const
     ).map((item) => ({
-      title: `Форматирование: ${item.label}`,
+      title: t`Форматирование: ${item.label}`,
       shortcut: "",
       action: () => format(item.type),
       enabled: !!app.active && mode !== "reading",
     })),
     ...(
       [
-        { key: "source", title: "Исходный Markdown" },
+        {
+          key: "source",
+          title: t("Исходный Markdown"),
+        },
         { key: "live", title: "Live Preview" },
-        { key: "reading", title: "Режим чтения" },
+        {
+          key: "reading",
+          title: t("Режим чтения"),
+        },
       ] as const
     ).map((item) => ({
       title: item.title,
@@ -360,14 +394,14 @@ export function App() {
     })),
     {
       title: app.renameState?.pending
-        ? "Восстановить переименование"
-        : "Отменить переименование",
+        ? t("Восстановить переименование")
+        : t("Отменить переименование"),
       shortcut: "",
       action: () => void app.undoRename(),
       enabled: !!app.renameState,
     },
     {
-      title: "Поиск по хранилищу",
+      title: t("Поиск по хранилищу"),
       shortcut: "Ctrl Shift F",
       action: () => {
         setLeft(true);
@@ -376,61 +410,60 @@ export function App() {
       enabled: !!app.vault,
     },
     {
-      title: "Открыть хранилище",
+      title: t("Открыть хранилище"),
       shortcut: "Ctrl O",
       action: () => void app.choose(),
       enabled: true,
     },
     {
-      title: "Новая заметка",
+      title: t("Новая заметка"),
       shortcut: "Ctrl N",
       action: () => void app.create(),
       enabled: !!app.vault,
     },
     {
-      title: "Создать папку",
+      title: t("Создать папку"),
       shortcut: "",
       action: () => void app.create(true),
       enabled: !!app.vault,
     },
     {
-      title: "Сохранить заметку",
+      title: t("Сохранить заметку"),
       shortcut: "Ctrl S",
       action: () => void app.save(),
       enabled: !!app.active,
     },
     {
-      title: "Переименовать заметку",
+      title: t("Переименовать заметку"),
       shortcut: "",
       action: () => void app.editTitle(),
       enabled: !!app.active,
     },
     {
-      title: "Предпросмотр переименования",
+      title: t("Предпросмотр переименования"),
       shortcut: "",
       action: () => void app.rename(),
       enabled: !!app.active,
     },
     {
-      title: "Сохранить копию",
+      title: t("Сохранить копию"),
       shortcut: "",
       action: () => void app.create(false, true),
       enabled: !!app.active,
     },
     {
-      title: "Перечитать с диска",
+      title: t("Перечитать с диска"),
       shortcut: "",
       action: () => void app.reload(),
       enabled: !!app.active,
     },
     {
-      title: "Переключить тему",
+      title: t("Переключить тему"),
       shortcut: "",
       action: () => setTheme(theme === "dark" ? "light" : "dark"),
       enabled: true,
     },
   ];
-
   const entryMenu = (event: MouseEvent<HTMLElement>, entry: FileEntry) => {
     if (app.busy) {
       event.preventDefault();
@@ -438,14 +471,17 @@ export function App() {
       return;
     }
     if (!entry.isDirectory && imageExtension(entry.path)) {
-      context.show(event, "Действия с изображением", [
-        { label: "Открыть изображение", run: () => app.open(entry.path) },
+      context.show(event, t("Действия с изображением"), [
         {
-          label: "Копировать путь",
+          label: t("Открыть изображение"),
+          run: () => app.open(entry.path),
+        },
+        {
+          label: t("Копировать путь"),
           run: () => navigator.clipboard.writeText(entry.path),
         },
         {
-          label: "Открыть в проводнике",
+          label: t("Открыть в проводнике"),
           run: () => api.reveal(app.vault!.id, entry.path),
         },
       ]);
@@ -453,46 +489,49 @@ export function App() {
     }
     context.show(
       event,
-      entry.isDirectory ? "Действия с папкой" : "Действия с файлом",
+      entry.isDirectory ? t("Действия с папкой") : t("Действия с файлом"),
       [
         ...(entry.isDirectory
           ? [
               {
-                label: "Новая заметка",
+                label: t("Новая заметка"),
                 run: () => app.create(false, false, entry.path),
               },
               {
-                label: "Новая папка",
+                label: t("Новая папка"),
                 run: () => app.createFolderQuick(entry.path),
               },
               {
-                label: "Переименовать",
+                label: t("Переименовать"),
                 run: () => app.setEntryEdit(entry.path),
               },
             ]
           : [
-              { label: "Открыть заметку", run: () => app.open(entry.path) },
               {
-                label: "Переименовать",
+                label: t("Открыть заметку"),
+                run: () => app.open(entry.path),
+              },
+              {
+                label: t("Переименовать"),
                 run: () => app.setEntryEdit(entry.path),
               },
             ]),
         {
-          label: "Копировать путь",
+          label: t("Копировать путь"),
           run: () => navigator.clipboard.writeText(entry.path),
         },
         {
-          label: "Открыть в проводнике",
+          label: t("Открыть в проводнике"),
           run: () => api.reveal(app.vault!.id, entry.path),
         },
         ...(entry.isDirectory
           ? [
               {
-                label: "Обновить дерево",
+                label: t("Обновить дерево"),
                 run: () => app.setRefresh((n) => n + 1),
               },
               {
-                label: "Переместить в корзину",
+                label: t("Переместить в корзину"),
                 danger: true,
                 divider: true,
                 run: () => app.removeDirectory(entry.path),
@@ -500,7 +539,7 @@ export function App() {
             ]
           : [
               {
-                label: "Переместить в корзину",
+                label: t("Переместить в корзину"),
                 danger: true,
                 divider: true,
                 run: () => app.remove(entry.path),
@@ -520,7 +559,7 @@ export function App() {
   };
   const changeProperty: PropertyApply = (action, expected, done) => {
     if (!app.active || !app.vault) {
-      done("Откройте заметку заново.");
+      done(t("Откройте заметку заново."));
       return;
     }
     setPropertyCommand({
@@ -578,21 +617,39 @@ export function App() {
         onError={app.setError}
       >
         <div className="titlebar-drag-space" data-tauri-drag-region />
-        <div className="panel-toggles" role="group" aria-label="Боковые панели">
+        <div
+          className="panel-toggles"
+          role="group"
+          aria-label={t("Боковые панели")}
+        >
           <button
             className="icon-button"
-            aria-label="Переключить левую панель"
+            aria-label={
+              locale === "en"
+                ? "Interface language: English"
+                : "Язык интерфейса: Русский"
+            }
+            data-tooltip={
+              locale === "en" ? "Switch to Russian" : "Switch to English"
+            }
+            onClick={() => changeLanguage(locale === "en" ? "ru" : "en")}
+          >
+            <Languages size={17} />
+          </button>
+          <button
+            className="icon-button"
+            aria-label={t("Переключить левую панель")}
             aria-expanded={left}
-            data-tooltip="Левая панель · Ctrl+\\"
+            data-tooltip={t("Левая панель · Ctrl+\\")}
             onClick={() => setLeft(!left)}
           >
             {left ? <PanelLeftClose size={17} /> : <PanelLeftOpen size={17} />}
           </button>
           <button
             className="icon-button chrome-right-toggle"
-            aria-label="Переключить правую панель"
+            aria-label={t("Переключить правую панель")}
             aria-expanded={right}
-            data-tooltip="Связи и свойства"
+            data-tooltip={t("Связи и свойства")}
             onClick={() => setRight(!right)}
           >
             {right ? (
@@ -605,14 +662,14 @@ export function App() {
       </Titlebar>
 
       <div className="workspace-shell">
-        <nav className="activity-rail" aria-label="Панели приложения">
+        <nav className="activity-rail" aria-label={t("Панели приложения")}>
           <button
             className={
               "rail-button " + (left && leftView === "explorer" ? "active" : "")
             }
-            aria-label="Показать проводник"
+            aria-label={t("Показать проводник")}
             aria-pressed={left && leftView === "explorer"}
-            data-tooltip="Файлы"
+            data-tooltip={t("Файлы")}
             onClick={() => {
               setLeft(true);
               setLeftView("explorer");
@@ -624,9 +681,9 @@ export function App() {
             className={
               "rail-button " + (left && leftView === "search" ? "active" : "")
             }
-            aria-label="Поиск по хранилищу"
+            aria-label={t("Поиск по хранилищу")}
             aria-pressed={left && leftView === "search"}
-            data-tooltip="Поиск · Ctrl+Shift+F"
+            data-tooltip={t("Поиск · Ctrl+Shift+F")}
             onClick={() => {
               setLeft(true);
               setLeftView("search");
@@ -636,8 +693,8 @@ export function App() {
           </button>
           <button
             className="rail-button"
-            aria-label="Палитра команд"
-            data-tooltip="Команды · Ctrl+P"
+            aria-label={t("Палитра команд")}
+            data-tooltip={t("Команды · Ctrl+P")}
             onClick={() => {
               setPalette(true);
               setQuery("");
@@ -648,16 +705,16 @@ export function App() {
           <div className="rail-bottom">
             <button
               className="rail-button"
-              aria-label="Переключить тему"
-              data-tooltip="Переключить тему"
+              aria-label={t("Переключить тему")}
+              data-tooltip={t("Переключить тему")}
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
             >
               {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
             </button>
             <button
               className="rail-button"
-              aria-label="Справка"
-              data-tooltip="Справка"
+              aria-label={t("Справка")}
+              data-tooltip={t("Справка")}
               onClick={() => setHelp(true)}
             >
               <CircleHelp size={18} />
@@ -669,15 +726,15 @@ export function App() {
           <aside className="sidebar" ref={sidebarRef}>
             <div className="sidebar-toolbar">
               <span className="sidebar-view-title">
-                {leftView === "explorer" ? "Файлы" : "Поиск"}
+                {leftView === "explorer" ? t("Файлы") : t("Поиск")}
               </span>
               <div className="sidebar-tools">
                 {leftView === "explorer" ? (
                   <>
                     <button
                       className="icon-button"
-                      aria-label="Новая заметка"
-                      data-tooltip="Новая заметка · Ctrl+N"
+                      aria-label={t("Новая заметка")}
+                      data-tooltip={t("Новая заметка · Ctrl+N")}
                       disabled={!app.vault || app.busy}
                       onClick={() => void app.create()}
                     >
@@ -685,15 +742,15 @@ export function App() {
                     </button>
                     <button
                       className="icon-button"
-                      aria-label="Новая папка"
-                      data-tooltip="Новая папка"
+                      aria-label={t("Новая папка")}
+                      data-tooltip={t("Новая папка")}
                       disabled={!app.vault || app.busy}
                       onClick={() => void app.createFolderQuick()}
                     >
                       <FolderPlus size={16} />
                     </button>
                     <Popover
-                      label="Действия с файлами"
+                      label={t("Действия с файлами")}
                       icon={<MoreHorizontal size={17} />}
                     >
                       {" "}
@@ -701,7 +758,7 @@ export function App() {
                         disabled={!app.vault || app.busy}
                         onClick={() => app.setRefresh((n) => n + 1)}
                       >
-                        Обновить дерево
+                        {t(" Обновить дерево ")}
                       </button>
                       <button
                         disabled={!app.vault}
@@ -714,19 +771,19 @@ export function App() {
                               );
                         }}
                       >
-                        Открыть хранилище в проводнике
+                        {t(" Открыть хранилище в проводнике ")}
                       </button>
                       <button
                         disabled={app.busy}
                         onClick={() => void app.choose()}
                       >
-                        Открыть хранилище
+                        {t(" Открыть хранилище ")}
                       </button>
                     </Popover>
                   </>
                 ) : (
                   <Popover
-                    label="Действия поиска"
+                    label={t("Действия поиска")}
                     icon={<MoreHorizontal size={17} />}
                   >
                     <button
@@ -737,7 +794,7 @@ export function App() {
                         }))
                       }
                     >
-                      Очистить запрос
+                      {t(" Очистить запрос ")}
                     </button>
                     <button
                       onClick={() =>
@@ -747,7 +804,7 @@ export function App() {
                         }))
                       }
                     >
-                      Сбросить фильтры
+                      {t(" Сбросить фильтры ")}
                     </button>
                     <button
                       onClick={() =>
@@ -757,7 +814,7 @@ export function App() {
                         }))
                       }
                     >
-                      Обновить результаты
+                      {t(" Обновить результаты ")}
                     </button>
                   </Popover>
                 )}
@@ -792,17 +849,17 @@ export function App() {
               }}
               onContextMenu={(event) => {
                 if (leftView !== "explorer" || !app.vault) return;
-                context.show(event, "Действия проводника", [
+                context.show(event, t("Действия проводника"), [
                   {
-                    label: "Новая заметка",
+                    label: t("Новая заметка"),
                     run: () => app.create(false, false, ""),
                   },
                   {
-                    label: "Новая папка",
+                    label: t("Новая папка"),
                     run: () => app.createFolderQuick(),
                   },
                   {
-                    label: "Обновить дерево",
+                    label: t("Обновить дерево"),
                     divider: true,
                     run: () => app.setRefresh((n) => n + 1),
                   },
@@ -820,7 +877,7 @@ export function App() {
                 <>
                   {dragged && (
                     <div className="tree-root-dropzone">
-                      Переместить в корень
+                      {t(" Переместить в корень ")}
                     </div>
                   )}
                   <FileTree
@@ -849,7 +906,7 @@ export function App() {
                   />
                 </>
               ) : (
-                <p className="tree-empty">Выберите папку с заметками.</p>
+                <p className="tree-empty">{t("Выберите папку с заметками.")}</p>
               )}
             </div>
             <VaultSwitcher app={app} />
@@ -870,29 +927,30 @@ export function App() {
             <div className="banner error" role="alert">
               <Info size={16} />
               <span>
-                Обнаружено незавершённое переименование: {app.renameState.from}{" "}
-                → {app.renameState.to}. Затронутые файлы защищены от записи.
+                {t(" Обнаружено незавершённое переименование: ")}
+                {app.renameState.from} → {app.renameState.to}
+                {t(". Затронутые файлы защищены от записи. ")}
               </span>
               <button disabled={app.busy} onClick={() => void app.undoRename()}>
-                Восстановить
+                {t(" Восстановить ")}
               </button>
             </div>
           )}
           {app.error && (
             <div className="banner error" role="alert">
               <Info size={16} />
-              <span>{app.error}</span>
+              <span>{t(app.error)}</span>
               {app.active && (
                 <button
                   onClick={() => void app.create(false, true)}
                   disabled={app.busy}
                 >
-                  Сохранить копию
+                  {t(" Сохранить копию ")}
                 </button>
               )}
               <button
                 className="icon-button"
-                aria-label="Скрыть ошибку"
+                aria-label={t("Скрыть ошибку")}
                 onClick={() => app.setError("")}
               >
                 <X size={15} />
@@ -903,7 +961,7 @@ export function App() {
             <div className="banner preview">
               <Info size={15} />
               <span>
-                Предпросмотр интерфейса. Работа с файлами доступна через{" "}
+                {t(" Предпросмотр интерфейса. Работа с файлами доступна через")}{" "}
                 <code>npm run tauri dev</code>.
               </span>
             </div>
@@ -939,8 +997,8 @@ export function App() {
                 <Suspense
                   fallback={
                     <div className="tree-loading">
-                      <LoaderCircle size={16} className="spin" /> Загрузка
-                      редактора…
+                      <LoaderCircle size={16} className="spin" />
+                      {t(" Загрузка редактора\u2026 ")}
                     </div>
                   }
                 >
@@ -1113,22 +1171,28 @@ export function App() {
           )}
           <footer className="status-bar">
             <div>
-              {app.busy && <span>Выполняется операция…</span>}
+              {app.busy && <span>{t("Выполняется операция\u2026")}</span>}
               {app.notice && (
                 <button
                   className="status-notice"
-                  data-tooltip={app.notice}
+                  data-tooltip={t(app.notice)}
                   onClick={() => app.setNotice("")}
                 >
-                  {app.notice}
+                  {t(app.notice)}
                 </button>
               )}
             </div>
             <div>
               {app.active && (
                 <>
-                  <span>{stats.words.toLocaleString("ru")} слов</span>
-                  <span>{stats.chars.toLocaleString("ru")} символов</span>
+                  <span>
+                    {stats.words.toLocaleString(locale)}
+                    {t(" слов")}
+                  </span>
+                  <span>
+                    {stats.chars.toLocaleString(locale)}
+                    {t(" символов")}
+                  </span>
                 </>
               )}
             </div>
@@ -1178,15 +1242,15 @@ export function App() {
       {context.menu}
       {renameReview.dialog}
       {palette && (
-        <Modal title="Палитра команд" onClose={() => setPalette(false)}>
+        <Modal title={t("Палитра команд")} onClose={() => setPalette(false)}>
           <div className="palette-search">
             <Search size={17} />
             <input
               autoFocus
-              placeholder="Введите название команды…"
+              placeholder={t("Введите название команды\u2026")}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              aria-label="Поиск команды"
+              aria-label={t("Поиск команды")}
             />
           </div>
           <div className="command-list">
@@ -1211,25 +1275,25 @@ export function App() {
         </Modal>
       )}
       {help && (
-        <Modal title="Быстрый старт" onClose={() => setHelp(false)}>
+        <Modal title={t("Быстрый старт")} onClose={() => setHelp(false)}>
           <p className="modal-description">
-            Откройте папку с Markdown-файлами или создайте пустую папку в
-            системном диалоге. Заметки сохраняются по Ctrl+S. Несохранённые
-            черновики резервируются локально через 700 мс после ввода.
+            {t(
+              " Откройте папку с Markdown-файлами или создайте пустую папку в системном диалоге. Заметки сохраняются по Ctrl+S. Несохранённые черновики резервируются локально через 700 мс после ввода. ",
+            )}
           </p>
           <div className="shortcut-list">
             {[
-              ["Открыть хранилище", "Ctrl O"],
-              ["Создать хранилище", "Ctrl Shift N"],
-              ["Новая заметка", "Ctrl N"],
-              ["Сохранить", "Ctrl S"],
-              ["Закрыть вкладку", "Ctrl W"],
-              ["Палитра команд", "Ctrl P"],
-              ["Поиск в заметке", "Ctrl F"],
-              ["Замена", "Ctrl H"],
-              ["Чтение / Live Preview", "Ctrl E"],
-              ["Жирный / курсив", "Ctrl B / Ctrl I"],
-              ["Отмена / повтор", "Ctrl Z / Ctrl Y"],
+              [t("Открыть хранилище"), "Ctrl O"],
+              [t("Создать хранилище"), "Ctrl Shift N"],
+              [t("Новая заметка"), "Ctrl N"],
+              [t("Сохранить"), "Ctrl S"],
+              [t("Закрыть вкладку"), "Ctrl W"],
+              [t("Палитра команд"), "Ctrl P"],
+              [t("Поиск в заметке"), "Ctrl F"],
+              [t("Замена"), "Ctrl H"],
+              [t("Чтение / Live Preview"), "Ctrl E"],
+              [t("Жирный / курсив"), "Ctrl B / Ctrl I"],
+              [t("Отмена / повтор"), "Ctrl Z / Ctrl Y"],
             ].map(([label, shortcut]) => (
               <div key={label}>
                 <span>{label}</span>
@@ -1238,10 +1302,9 @@ export function App() {
             ))}
           </div>
           <p className="modal-description">
-            Source Mode · Ctrl+щелчок по [[wiki-ссылке]] открывает заметку.
-            Поиск по хранилищу — Ctrl+Shift+F. Backlinks, теги и свойства
-            находятся справа. Режимы исходника, Live Preview и чтения
-            переключаются над заметкой.
+            {t(
+              " Source Mode · Ctrl+щелчок по [[wiki-ссылке]] открывает заметку. Поиск по хранилищу \u2014 Ctrl+Shift+F. Backlinks, теги и свойства находятся справа. Режимы исходника, Live Preview и чтения переключаются над заметкой. ",
+            )}
           </p>
         </Modal>
       )}

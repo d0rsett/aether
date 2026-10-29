@@ -1,3 +1,4 @@
+import { t, useLocale } from "../i18n";
 import { useEffect, useState } from "react";
 import { FileText, LoaderCircle, Search } from "lucide-react";
 import {
@@ -7,8 +8,8 @@ import {
   type SearchPage,
   type SearchQuery,
 } from "../services/api";
-
 export function Highlighted({ text }: { text: string }) {
+  useLocale();
   return (
     <>
       {text.split("\u0001").map((part, index) => {
@@ -25,7 +26,6 @@ export function Highlighted({ text }: { text: string }) {
     </>
   );
 }
-
 export function SearchPanel({
   vaultId,
   status,
@@ -35,8 +35,12 @@ export function SearchPanel({
   vaultId: string;
   status: IndexStatus | null;
   onOpen: (path: string) => void;
-  command?: { id: number; action: "clear" | "filters" | "refresh" } | null;
+  command?: {
+    id: number;
+    action: "clear" | "filters" | "refresh";
+  } | null;
 }) {
+  useLocale();
   const [query, setQuery] = useState<SearchQuery>({
     text: "",
     path: "",
@@ -95,41 +99,41 @@ export function SearchPanel({
   const change = (key: keyof SearchQuery, value: string) =>
     setQuery((current) => ({ ...current, [key]: value, offset: 0 }));
   return (
-    <section className="search-panel" aria-label="Поиск по хранилищу">
+    <section className="search-panel" aria-label={t("Поиск по хранилищу")}>
       <div className="vault-search-input">
         <Search size={15} />
         <input
           autoFocus
-          aria-label="Поиск по содержимому"
-          placeholder="Поиск по заметкам…"
+          aria-label={t("Поиск по содержимому")}
+          placeholder={t("Поиск по заметкам\u2026")}
           value={query.text}
           onChange={(e) => change("text", e.target.value)}
         />
       </div>
       <details className="search-filters">
-        <summary>Фильтры</summary>
+        <summary>{t("Фильтры")}</summary>
         <input
-          aria-label="Фильтр пути"
-          placeholder="Папка / путь"
+          aria-label={t("Фильтр пути")}
+          placeholder={t("Папка / путь")}
           value={query.path}
           onChange={(e) => change("path", e.target.value)}
         />
         <input
-          aria-label="Фильтр тега"
-          placeholder="#тег"
+          aria-label={t("Фильтр тега")}
+          placeholder={t("#тег")}
           value={query.tag}
           onChange={(e) => change("tag", e.target.value)}
         />
         <div className="property-filter">
           <input
-            aria-label="Имя свойства"
-            placeholder="Свойство"
+            aria-label={t("Имя свойства")}
+            placeholder={t("Свойство")}
             value={query.property}
             onChange={(e) => change("property", e.target.value)}
           />
           <input
-            aria-label="Значение свойства"
-            placeholder="Значение"
+            aria-label={t("Значение свойства")}
+            placeholder={t("Значение")}
             value={query.value}
             onChange={(e) => change("value", e.target.value)}
           />
@@ -140,17 +144,18 @@ export function SearchPanel({
           <LoaderCircle size={12} className="spin" />
         ) : null}
         {status?.running
-          ? `Индексация · ${status.indexed}`
-          : `${status?.indexed ?? 0} заметок в индексе`}
+          ? t`Индексация · ${status.indexed}`
+          : t`${status?.indexed ?? 0} заметок в индексе`}
       </div>
       {status?.errors ? (
         <p className="tree-error" data-tooltip={status.message ?? undefined}>
-          Ошибки индексации: {status.errors}
+          {t(" Ошибки индексации: ")}
+          {status.errors}
         </p>
       ) : null}
       {error && (
         <p role="alert" className="tree-error">
-          {error}
+          {t(error)}
         </p>
       )}
       <div className="search-results">
@@ -176,8 +181,8 @@ export function SearchPanel({
         {!busy && !result.hits.length && (
           <p className="tree-empty">
             {status?.running
-              ? "Поиск обновится после индексации"
-              : "Совпадений нет"}
+              ? t("Поиск обновится после индексации")
+              : t("Совпадений нет")}
           </p>
         )}
       </div>
@@ -190,19 +195,19 @@ export function SearchPanel({
               setQuery((q) => ({ ...q, offset: Math.max(0, q.offset - 50) }))
             }
           >
-            Назад
+            {t(" Назад ")}
           </button>
           <span>
             {result.hits.length
               ? `${query.offset + 1}–${query.offset + result.hits.length}`
-              : "Нет результатов"}
+              : t("Нет результатов")}
           </span>
           <button
             className="text-button"
             disabled={!result.hasMore || busy}
             onClick={() => setQuery((q) => ({ ...q, offset: q.offset + 50 }))}
           >
-            Далее
+            {t(" Далее ")}
           </button>
         </div>
       )}

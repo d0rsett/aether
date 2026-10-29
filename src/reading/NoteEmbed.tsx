@@ -1,9 +1,9 @@
+import { t, useLocale } from "../i18n";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { FileText, ExternalLink } from "lucide-react";
 import { api, type RenderDocument } from "../services/api";
 import { NotePreviews } from "../services/notePreviews";
 import { renderNode, type RenderContext } from "./ReadingView";
-
 export function NoteEmbed({
   target,
   label,
@@ -17,6 +17,7 @@ export function NoteEmbed({
   wiki?: boolean;
   preview?: boolean;
 }) {
+  useLocale();
   const [fallback] = useState(() => new NotePreviews());
   const store = context.previews ?? fallback;
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
@@ -51,12 +52,14 @@ export function NoteEmbed({
     setDocument(null);
     setError("");
     if (tooDeep) {
-      setError("Достигнута глубина вложений. Откройте исходную заметку.");
+      setError(t("Достигнута глубина вложений. Откройте исходную заметку."));
       return;
     }
     const release = store.acquire();
     if (!release) {
-      setError("Слишком много вложенных заметок. Откройте исходную заметку.");
+      setError(
+        t("Слишком много вложенных заметок. Откройте исходную заметку."),
+      );
       return;
     }
     void (async () => {
@@ -70,8 +73,10 @@ export function NoteEmbed({
         if (!value.path) {
           setError(
             value.status === "ambiguous"
-              ? "Найдено несколько заметок. Уточните путь в ссылке."
-              : "Заметка не найдена. Проверьте ссылку или откройте её, чтобы создать заметку.",
+              ? t("Найдено несколько заметок. Уточните путь в ссылке.")
+              : t(
+                  "Заметка не найдена. Проверьте ссылку или откройте её, чтобы создать заметку.",
+                ),
           );
         } else {
           setResolution({ path: value.path, key: requestKey });
@@ -80,7 +85,9 @@ export function NoteEmbed({
       .catch(() => {
         if (!disposed)
           setError(
-            "Не удалось найти заметку. Проверьте хранилище и повторите попытку.",
+            t(
+              "Не удалось найти заметку. Проверьте хранилище и повторите попытку.",
+            ),
           );
       });
     return () => {
@@ -88,7 +95,6 @@ export function NoteEmbed({
       release();
     };
   }, [requestKey, store, tooDeep]);
-
   const path = resolution?.key === requestKey ? resolution.path : undefined;
   const buffer =
     snapshot.vaultId === context.vaultId && path
@@ -117,8 +123,12 @@ export function NoteEmbed({
         if (!disposed)
           setError(
             anchor
-              ? "Не удалось показать фрагмент. Проверьте заголовок или ID блока в исходной заметке."
-              : "Не удалось прочитать заметку. Проверьте файл и повторите попытку.",
+              ? t(
+                  "Не удалось показать фрагмент. Проверьте заголовок или ID блока в исходной заметке.",
+                )
+              : t(
+                  "Не удалось прочитать заметку. Проверьте файл и повторите попытку.",
+                ),
           );
       });
     }, 120);
@@ -134,7 +144,7 @@ export function NoteEmbed({
       ? document.value
       : null;
   const message = cyclic
-    ? "Циклическое встраивание. Откройте исходную заметку."
+    ? t("Циклическое встраивание. Откройте исходную заметку.")
     : error;
   const open = () => {
     if (wiki) context.onWiki(target);
@@ -144,14 +154,14 @@ export function NoteEmbed({
         .then(context.onWiki)
         .catch(() =>
           context.onError(
-            "Не удалось открыть исходную заметку. Проверьте ссылку.",
+            t("Не удалось открыть исходную заметку. Проверьте ссылку."),
           ),
         );
   };
   return (
     <section
       className={`note-transclusion${preview ? " note-hover-content" : ""}`}
-      aria-label={`Встроенная заметка: ${label}`}
+      aria-label={t`Встроенная заметка: ${label}`}
     >
       <div className="note-transclusion-header">
         <FileText size={14} />
@@ -163,11 +173,11 @@ export function NoteEmbed({
             ? (path ?? target.split("#")[0])
                 .split("/")
                 .at(-1)
-                ?.replace(/\.md$/i, "") || "Текущая заметка"
+                ?.replace(/\.md$/i, "") || t("Текущая заметка")
             : label}
           {preview && anchor && (
             <small>
-              {anchor.startsWith("^") ? "Блок" : "Раздел"}:{" "}
+              {anchor.startsWith("^") ? t("Блок") : t("Раздел")}:{" "}
               {anchor.replace(/^\^/, "")}
             </small>
           )}
@@ -175,18 +185,18 @@ export function NoteEmbed({
         <button
           type="button"
           onClick={open}
-          aria-label={`Открыть оригинал: ${label}`}
-          data-tooltip="Открыть исходную заметку"
+          aria-label={t`Открыть оригинал: ${label}`}
+          data-tooltip={t("Открыть исходную заметку")}
         >
           <ExternalLink size={14} />
         </button>
       </div>
       {message ? (
         <div className="note-transclusion-message">
-          <span>{message}</span>
+          <span>{t(message)}</span>
           {!cyclic && !tooDeep && (
             <button type="button" onClick={() => retry((value) => value + 1)}>
-              Повторить
+              {t(" Повторить ")}
             </button>
           )}
         </div>
@@ -194,7 +204,7 @@ export function NoteEmbed({
         <div className="note-transclusion-body">
           {current.warning && (
             <p className="tree-error">
-              Не удалось разобрать часть свойств исходной заметки.
+              {t(" Не удалось разобрать часть свойств исходной заметки. ")}
             </p>
           )}
           {current.nodes.length ? (
@@ -225,12 +235,16 @@ export function NoteEmbed({
                             );
                           else
                             context.onError(
-                              "Не удалось открыть ссылку из встроенной заметки.",
+                              t(
+                                "Не удалось открыть ссылку из встроенной заметки.",
+                              ),
                             );
                         })
                         .catch(() =>
                           context.onError(
-                            "Не удалось открыть ссылку из встроенной заметки.",
+                            t(
+                              "Не удалось открыть ссылку из встроенной заметки.",
+                            ),
                           ),
                         );
                   },
@@ -238,12 +252,14 @@ export function NoteEmbed({
               </div>
             ))
           ) : (
-            <p className="reading-empty">В этом фрагменте пока нет текста.</p>
+            <p className="reading-empty">
+              {t("В этом фрагменте пока нет текста.")}
+            </p>
           )}
         </div>
       ) : (
         <div className="note-transclusion-message" role="status">
-          Загрузка заметки…
+          {t(" Загрузка заметки\u2026 ")}
         </div>
       )}
     </section>

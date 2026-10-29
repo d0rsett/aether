@@ -1,8 +1,8 @@
+import { t, useLocale } from "../i18n";
 import { useEffect, useState } from "react";
 import { FolderOpen, Image as ImageIcon, LoaderCircle } from "lucide-react";
 import { api, errorMessage } from "../services/api";
 import { imageExtension } from "../services/images";
-
 export function ImageDocument({
   vaultId,
   path,
@@ -12,6 +12,7 @@ export function ImageDocument({
   path: string;
   onError: (message: string) => void;
 }) {
+  useLocale();
   const [src, setSrc] = useState("");
   const [error, setError] = useState("");
   const [dimensions, setDimensions] = useState("");
@@ -38,7 +39,7 @@ export function ImageDocument({
     };
   }, [vaultId, path]);
   return (
-    <section className="image-document" aria-label={`Изображение: ${path}`}>
+    <section className="image-document" aria-label={t`Изображение: ${path}`}>
       <div className="document-toolbar image-document-header">
         <div className="breadcrumbs">
           <ImageIcon size={15} />
@@ -49,8 +50,8 @@ export function ImageDocument({
           <span className="image-format">{imageExtension(path)}</span>
           <button
             className="icon-button"
-            aria-label="Показать изображение в проводнике"
-            data-tooltip="Показать в проводнике"
+            aria-label={t("Показать изображение в проводнике")}
+            data-tooltip={t("Показать в проводнике")}
             onClick={() =>
               void api
                 .reveal(vaultId, path)
@@ -64,7 +65,7 @@ export function ImageDocument({
       <div className="image-document-canvas">
         {error ? (
           <p className="tree-error" role="alert">
-            {error}
+            {t(error)}
           </p>
         ) : src ? (
           <img
@@ -81,7 +82,7 @@ export function ImageDocument({
           <LoaderCircle
             size={22}
             className="spin"
-            aria-label="Загрузка изображения"
+            aria-label={t("Загрузка изображения")}
           />
         )}
       </div>

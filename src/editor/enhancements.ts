@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { syntaxTree } from "@codemirror/language";
 import { Text, type EditorState, type Range } from "@codemirror/state";
 import {
@@ -75,7 +76,7 @@ export function formatSelection(
         insert: Text.of([
           "",
           "",
-          "| Заголовок | Заголовок |",
+          t("| Заголовок | Заголовок |"),
           "| --- | --- |",
           "|  |  |",
           "",
@@ -201,7 +202,6 @@ export const wikiSyntax = ViewPlugin.fromClass(
   },
   { decorations: (instance) => instance.decorations },
 );
-
 export const livePreview = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
@@ -223,7 +223,10 @@ export const livePreview = ViewPlugin.fromClass(
         view.state.selection.ranges.some(
           (selection) => selection.from <= to && selection.to >= from,
         );
-      const wiki: { from: number; to: number }[] = [];
+      const wiki: {
+        from: number;
+        to: number;
+      }[] = [];
       const visited = new Set<number>();
       for (const range of view.visibleRanges) {
         const first = view.state.doc.lineAt(range.from).number;
@@ -384,7 +387,6 @@ export function applyWikiCompletion(
     userEvent: "input.complete",
   });
 }
-
 export function linkCompletion(vaultId: string, path: string) {
   return autocompletion({
     icons: false,

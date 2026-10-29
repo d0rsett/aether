@@ -1,8 +1,8 @@
+import { t } from "../i18n";
 import { Facet, type Extension } from "@codemirror/state";
 import { EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import { api, errorMessage } from "../services/api";
 import { imageDragType, imageExtension } from "../services/images";
-
 interface Config {
   vaultId: string;
   path: string;
@@ -20,24 +20,25 @@ const mimeExtensions: Record<string, string> = {
   "image/bmp": "bmp",
   "image/svg+xml": "svg",
 };
-
 function pastedName(file: File) {
-  return `Новое изображение.${mimeExtensions[file.type] ?? imageExtension(file.name)?.toLowerCase() ?? "png"}`;
+  return t`Новое изображение.${mimeExtensions[file.type] ?? imageExtension(file.name)?.toLowerCase() ?? "png"}`;
 }
-
 function base64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result).split(",")[1]);
     reader.onerror = () =>
-      reject(new Error(`Не удалось прочитать ${file.name}`));
+      reject(new Error(t`Не удалось прочитать ${file.name}`));
     reader.readAsDataURL(file);
   });
 }
-
 class AttachmentInput {
   destroyed = false;
-  pending = new Set<{ from: number; to: number; text: string }>();
+  pending = new Set<{
+    from: number;
+    to: number;
+    text: string;
+  }>();
   queue: Promise<void> = Promise.resolve();
   constructor(readonly view: EditorView) {}
   update(update: ViewUpdate) {
@@ -78,12 +79,14 @@ class AttachmentInput {
           files.reduce((total, file) => total + file.size, 0) > 50 * 1024 * 1024
         )
           throw new Error(
-            "За один раз можно вставить до 20 файлов общим размером до 50 МБ.",
+            t(
+              "За один раз можно вставить до 20 файлов общим размером до 50 МБ.",
+            ),
           );
         for (const file of files) {
           const limit = file.type.startsWith("image/") ? 8 : 25;
           if (file.size > limit * 1024 * 1024)
-            throw new Error(`${file.name}: размер превышает ${limit} МБ.`);
+            throw new Error(t`${file.name}: размер превышает ${limit} МБ.`);
         }
         const uploads = await Promise.all(
           files.map(async (file) => ({
@@ -125,7 +128,6 @@ class AttachmentInput {
       .finally(() => this.pending.delete(mark));
   }
 }
-
 const plugin = ViewPlugin.fromClass(AttachmentInput, {
   eventHandlers: {
     paste(event: ClipboardEvent) {
@@ -155,14 +157,16 @@ const plugin = ViewPlugin.fromClass(AttachmentInput, {
       if (internal) {
         const config = this.view.state.facet(configuration);
         try {
-          const payload: { vaultId?: string; path?: string } =
-            JSON.parse(internal);
+          const payload: {
+            vaultId?: string;
+            path?: string;
+          } = JSON.parse(internal);
           if (
             payload.vaultId !== config.vaultId ||
             typeof payload.path !== "string" ||
             !imageExtension(payload.path)
           )
-            throw new Error("Перетащите изображение из текущего хранилища.");
+            throw new Error(t("Перетащите изображение из текущего хранилища."));
           this.insert([], false, position, payload.path);
         } catch (error) {
           config.onError(errorMessage(error));
@@ -173,11 +177,9 @@ const plugin = ViewPlugin.fromClass(AttachmentInput, {
     },
   },
 });
-
 export function attachmentInput(config: Config): Extension {
   return [configuration.of(config), plugin];
 }
-
 export async function pasteClipboard(view: EditorView): Promise<boolean> {
   if (!view.plugin(plugin) || !navigator.clipboard.read) return false;
   let items: ClipboardItem[];
@@ -200,7 +202,7 @@ export async function pasteClipboard(view: EditorView): Promise<boolean> {
   }
   if (!files.length) return false;
   if (view.state.doc !== original)
-    throw new Error("Текст изменился. Откройте меню вставки ещё раз.");
+    throw new Error(t("Текст изменился. Откройте меню вставки ещё раз."));
   view.dispatch({
     selection: { anchor: selected.anchor, head: selected.head },
   });

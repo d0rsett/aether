@@ -1,4 +1,6 @@
+import { t, useLocale } from "../i18n";
 export function BrandMark() {
+  useLocale();
   return (
     <svg
       className="brand-mark"
@@ -7,7 +9,7 @@ export function BrandMark() {
       viewBox="0 0 24 24"
       fill="none"
       role="img"
-      aria-label="Логотип Aether"
+      aria-label={t("Логотип Aether")}
     >
       <path
         d="M12 3 3.8 20 12 15.5 20.2 20 12 3Z"

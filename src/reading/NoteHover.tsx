@@ -1,8 +1,8 @@
+import { t, useLocale } from "../i18n";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { NoteEmbed } from "./NoteEmbed";
 import type { RenderContext } from "./ReadingView";
-
 export function NoteHover({
   target,
   wiki,
@@ -14,6 +14,7 @@ export function NoteHover({
   context: RenderContext;
   children: ReactNode;
 }) {
+  useLocale();
   const host = useRef<HTMLSpanElement>(null);
   const popup = useRef<HTMLElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -112,7 +113,7 @@ export function NoteHover({
           <section
             ref={popup}
             role="region"
-            aria-label="Предпросмотр ссылки"
+            aria-label={t("Предпросмотр ссылки")}
             className="note-hover"
             style={position}
             onPointerEnter={() => clearTimeout(timer.current)}

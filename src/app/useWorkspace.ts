@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import {
   api,
@@ -14,7 +15,6 @@ import type { RequestVault } from "../components/CreateVaultDialog";
 import { dirty, initialWorkspace, workspaceReducer } from "../workspace/model";
 import { readWorkspace, writeWorkspace } from "../workspace/storage";
 import { imageExtension } from "../services/images";
-
 export interface Question {
   title: string;
   description?: string;
@@ -23,7 +23,6 @@ export interface Question {
   dangerous?: boolean;
 }
 export type Ask = (question: Question) => Promise<string | null>;
-
 export function useWorkspace(
   ask: Ask,
   reviewRename?: ReviewRename,
@@ -40,7 +39,11 @@ export function useWorkspace(
   const [entryEdit, setEntryEdit] = useState<string | null>(null);
   const [renameState, setRenameState] = useState<RenameState | null>(null);
   const [navigation, setNavigation] = useState<
-    (AnchorLocation & { path: string; id: number }) | null
+    | (AnchorLocation & {
+        path: string;
+        id: number;
+      })
+    | null
   >(null);
   const [titleFocus, setTitleFocus] = useState<{
     path: string;
@@ -54,7 +57,6 @@ export function useWorkspace(
   const selected = workspace.tabs.find((t) => t.path === workspace.active);
   const active = selected?.kind === "image" ? undefined : selected;
   const activeImage = selected?.kind === "image" ? selected : undefined;
-
   const task = useCallback(async (action: () => Promise<void>) => {
     if (running.current) return false;
     running.current = true;
@@ -71,7 +73,6 @@ export function useWorkspace(
       setBusy(false);
     }
   }, []);
-
   const persist = useCallback(() => {
     const current = ref.current;
     if (current.vault) {
@@ -79,14 +80,15 @@ export function useWorkspace(
         writeWorkspace(current.vault.id, current.workspace);
       } catch {
         setError(
-          "Не удалось сохранить резервный черновик: локальное хранилище заполнено или недоступно. Сохраните заметку на диск (Ctrl+S).",
+          t(
+            "Не удалось сохранить резервный черновик: локальное хранилище заполнено или недоступно. Сохраните заметку на диск (Ctrl+S).",
+          ),
         );
         return false;
       }
     }
     return true;
   }, []);
-
   const loadVault = useCallback(async (next: VaultInfo) => {
     dispatch({ type: "reset" });
     setVault(next);
@@ -137,11 +139,11 @@ export function useWorkspace(
       dispatch({ type: "activate", path: stored.active });
     if (recovered)
       setNotice(
-        `Восстановлены несохранённые черновики: ${recovered}. Проверьте текст и сохраните его.`,
+        t`Восстановлены несохранённые черновики: ${recovered}. Проверьте текст и сохраните его.`,
       );
     if (failed.length)
       setError(
-        `Не удалось прочитать файлы. ${failed.join(" · ")} Доступные черновики открыты в редакторе; их можно сохранить как копии.`,
+        t`Не удалось прочитать файлы. ${failed.join(" · ")} Доступные черновики открыты в редакторе; их можно сохранить как копии.`,
       );
     setRefresh((n) => n + 1);
     try {
@@ -155,7 +157,6 @@ export function useWorkspace(
       setError(errorMessage(e));
     }
   }, []);
-
   useEffect(() => {
     if (!desktop || initialized.current) return;
     initialized.current = true;
@@ -165,13 +166,11 @@ export function useWorkspace(
       if (next) await loadVault(next);
     });
   }, [task, loadVault]);
-
   useEffect(() => {
     if (busy) return;
     const timer = window.setTimeout(persist, 700);
     return () => window.clearTimeout(timer);
   }, [workspace, vault, busy, persist]);
-
   useEffect(() => {
     const handler = (event: BeforeUnloadEvent) => {
       persist();
@@ -182,7 +181,6 @@ export function useWorkspace(
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
   }, [persist]);
-
   useEffect(() => {
     if (!desktop) return;
     let disposed = false;
@@ -197,10 +195,11 @@ export function useWorkspace(
             if (
               ref.current.workspace.tabs.some(dirty) &&
               (await ask({
-                title: "Закрыть приложение?",
-                description:
+                title: t("Закрыть приложение?"),
+                description: t(
                   "Есть несохранённые изменения. Черновики будут сохранены для восстановления, исходные файлы останутся без изменений.",
-                label: "Закрыть",
+                ),
+                label: t("Закрыть"),
               })) === null
             )
               return;
@@ -217,22 +216,24 @@ export function useWorkspace(
       unlisten?.();
     };
   }, [ask, persist]);
-
   const changeVault = (select: () => Promise<VaultInfo | null>) =>
     task(async () => {
       if (!desktop) {
         setError(
-          "Выбор локальной папки доступен в desktop-приложении. Запустите npm run tauri dev.",
+          t(
+            "Выбор локальной папки доступен в desktop-приложении. Запустите npm run tauri dev.",
+          ),
         );
         return;
       }
       if (
         ref.current.workspace.tabs.some(dirty) &&
         (await ask({
-          title: "Сменить хранилище?",
-          description:
+          title: t("Сменить хранилище?"),
+          description: t(
             "Несохранённые изменения останутся в резервных черновиках этого хранилища.",
-          label: "Продолжить",
+          ),
+          label: t("Продолжить"),
         })) === null
       )
         return;
@@ -250,10 +251,9 @@ export function useWorkspace(
       const options = await requestVault?.();
       if (!options) return null;
       if (!options.name.trim() || /[\\/]/.test(options.name))
-        throw new Error("Введите имя папки без пути.");
+        throw new Error(t("Введите имя папки без пути."));
       return api.createVault(options.name.trim(), options.parent.trim());
     });
-
   const open = (path: string) =>
     task(async () => {
       const current = ref.current;
@@ -269,7 +269,6 @@ export function useWorkspace(
       const note = await api.read(current.vault.id, path);
       dispatch({ type: "open", note });
     });
-
   const save = () =>
     task(async () => {
       const { vault: current, workspace: state } = ref.current;
@@ -287,9 +286,8 @@ export function useWorkspace(
         content: tab.content,
         revision,
       });
-      setNotice("Изменения сохранены на диск.");
+      setNotice(t("Изменения сохранены на диск."));
     });
-
   const close = (path: string) =>
     task(async () => {
       const tab = ref.current.workspace.tabs.find((t) => t.path === path);
@@ -297,17 +295,17 @@ export function useWorkspace(
         tab &&
         dirty(tab) &&
         (await ask({
-          title: "Закрыть несохранённую заметку?",
-          description:
+          title: t("Закрыть несохранённую заметку?"),
+          description: t(
             "Изменения этой вкладки будут отброшены. Чтобы сохранить их, отмените действие и нажмите Ctrl+S.",
-          label: "Отбросить изменения",
+          ),
+          label: t("Отбросить изменения"),
           dangerous: true,
         })) === null
       )
         return;
       dispatch({ type: "close", path });
     });
-
   const create = (directory = false, copy = false, parent = folder) =>
     task(async () => {
       const current = ref.current.vault;
@@ -318,19 +316,20 @@ export function useWorkspace(
       const prefix = parent ? `${parent}/` : "";
       const name = await ask({
         title: directory
-          ? "Новая папка"
+          ? t("Новая папка")
           : copy
-            ? "Сохранить копию"
-            : "Новая заметка",
-        description:
+            ? t("Сохранить копию")
+            : t("Новая заметка"),
+        description: t(
           "Путь относительно хранилища. Родительская папка должна существовать.",
+        ),
         initial: directory
-          ? `${prefix}Новая папка`
-          : `${prefix}${copy ? "Копия" : "Без названия"}.md`,
-        label: "Создать",
+          ? t`${prefix}Новая папка`
+          : `${prefix}${copy ? t("Копия") : t("Без названия")}.md`,
+        label: t("Создать"),
       });
       if (name === null) return;
-      if (!name.trim()) throw new Error("Укажите имя.");
+      if (!name.trim()) throw new Error(t("Укажите имя."));
       if (directory) {
         await api.mkdir(current.id, name.trim());
       } else {
@@ -343,7 +342,6 @@ export function useWorkspace(
       }
       setRefresh((n) => n + 1);
     });
-
   const createFolderQuick = (parent = "") =>
     task(async () => {
       const current = ref.current.vault;
@@ -351,7 +349,7 @@ export function useWorkspace(
       const entries = await api.list(current.id, parent);
       const used = new Set(entries.map((entry) => entry.name.toLowerCase()));
       for (let index = 0; index < 10000; index++) {
-        const name = `Новая папка${index ? ` ${index}` : ""}`;
+        const name = t`Новая папка${index ? ` ${index}` : ""}`;
         if (used.has(name.toLowerCase())) continue;
         const path = (parent ? `${parent}/` : "") + name;
         try {
@@ -371,9 +369,8 @@ export function useWorkspace(
         setRefresh((n) => n + 1);
         return;
       }
-      throw new Error("Не удалось подобрать свободное имя папки.");
+      throw new Error(t("Не удалось подобрать свободное имя папки."));
     });
-
   const editTitle = (path = ref.current.workspace.active) =>
     task(async () => {
       const current = ref.current.vault;
@@ -383,7 +380,6 @@ export function useWorkspace(
       else dispatch({ type: "open", note: await api.read(current.id, path) });
       setTitleFocus((previous) => ({ path, id: (previous?.id ?? 0) + 1 }));
     });
-
   const createQuick = () =>
     task(async () => {
       const current = ref.current.vault;
@@ -391,7 +387,7 @@ export function useWorkspace(
       const entries = await api.list(current.id, "");
       const used = new Set(entries.map((entry) => entry.name.toLowerCase()));
       for (let index = 0; index < 10000; index++) {
-        const name = `Новая заметка${index ? ` ${index}` : ""}.md`;
+        const name = t`Новая заметка${index ? ` ${index}` : ""}.md`;
         if (used.has(name.toLowerCase())) continue;
         const path = name;
         try {
@@ -414,9 +410,8 @@ export function useWorkspace(
           throw error;
         }
       }
-      throw new Error("Не удалось подобрать свободное имя заметки.");
+      throw new Error(t("Не удалось подобрать свободное имя заметки."));
     });
-
   const rename = (targetPath?: string, suggestedPath?: string) =>
     task(async () => {
       const current = ref.current.vault;
@@ -449,9 +444,11 @@ export function useWorkspace(
       }
       const tab = tabs.find((t) => t.path === selectedPath);
       if (tab && dirty(tab))
-        throw new Error("Сохраните изменения перед переименованием (Ctrl+S).");
+        throw new Error(
+          t("Сохраните изменения перед переименованием (Ctrl+S)."),
+        );
       if (!suggestedPath && !reviewRename)
-        throw new Error("Предпросмотр переименования недоступен.");
+        throw new Error(t("Предпросмотр переименования недоступен."));
       const revision =
         tab?.revision ?? (await api.read(current.id, selectedPath)).revision;
       const preview = suggestedPath
@@ -472,18 +469,18 @@ export function useWorkspace(
       if (!preview) return;
       if (tabs.some((t) => t.path === preview.to && t.path !== preview.from))
         throw new Error(
-          "Закройте вкладку целевого пути перед переименованием.",
+          t("Закройте вкладку целевого пути перед переименованием."),
         );
       if (
         tabs.some((t) => dirty(t) && preview.affectedOpenPaths.includes(t.path))
       )
-        throw new Error("Сначала сохраните затронутые вкладки.");
+        throw new Error(t("Сначала сохраните затронутые вкладки."));
       try {
         const result = await api.applyRename(current.id, preview.token);
         await synchronizeRename(current.id, result, preview.affectedOpenPaths);
         if (!suggestedPath)
           setNotice(
-            `Переименовано. Обновлено ссылок: ${preview.links}. Действие можно отменить в панели сведений.`,
+            t`Переименовано. Обновлено ссылок: ${preview.links}. Действие можно отменить в панели сведений.`,
           );
       } finally {
         setRenameState(
@@ -495,7 +492,6 @@ export function useWorkspace(
         setRefresh((n) => n + 1);
       }
     });
-
   const synchronizeRename = async (
     vaultId: string,
     result: RenameApplied,
@@ -526,7 +522,7 @@ export function useWorkspace(
           });
         } catch (error) {
           setError(
-            `Папка переименована, но вкладка ${path} не перечитана: ${errorMessage(error)}`,
+            t`Папка переименована, но вкладка ${path} не перечитана: ${errorMessage(error)}`,
           );
         }
       }
@@ -561,10 +557,9 @@ export function useWorkspace(
     }
     if (failures.length)
       setError(
-        `Операция завершена на диске, но не все вкладки перечитаны: ${failures.join(" · ")}`,
+        t`Операция завершена на диске, но не все вкладки перечитаны: ${failures.join(" · ")}`,
       );
   };
-
   const undoRename = () =>
     task(async () => {
       const current = ref.current.vault;
@@ -580,15 +575,19 @@ export function useWorkspace(
         tabs.some((t) => dirty(t) && state.affectedOpenPaths.includes(t.path))
       )
         throw new Error(
-          "Сначала сохраните копии или закройте затронутые несохранённые вкладки.",
+          t(
+            "Сначала сохраните копии или закройте затронутые несохранённые вкладки.",
+          ),
         );
       if (
         (await ask({
           title: state.pending
-            ? "Восстановить переименование?"
-            : "Отменить переименование?",
-          description: `${state.to} → ${state.from}. Будут восстановлены прежние имена и ссылки. При внешних изменениях операция остановится, сохранив файлы и резервные копии.`,
-          label: state.pending ? "Восстановить" : "Отменить переименование",
+            ? t("Восстановить переименование?")
+            : t("Отменить переименование?"),
+          description: t`${state.to} → ${state.from}. Будут восстановлены прежние имена и ссылки. При внешних изменениях операция остановится, сохранив файлы и резервные копии.`,
+          label: state.pending
+            ? t("Восстановить")
+            : t("Отменить переименование"),
         })) === null
       )
         return;
@@ -599,7 +598,7 @@ export function useWorkspace(
           state.pending,
         );
         await synchronizeRename(current.id, result, state.affectedOpenPaths);
-        setNotice("Прежние имена и ссылки восстановлены.");
+        setNotice(t("Прежние имена и ссылки восстановлены."));
       } finally {
         setRenameState(
           await api.renameState(
@@ -610,7 +609,6 @@ export function useWorkspace(
         setRefresh((n) => n + 1);
       }
     });
-
   const remove = (targetPath?: string) =>
     task(async () => {
       const current = ref.current.vault;
@@ -621,25 +619,26 @@ export function useWorkspace(
       if (!current || !selectedPath) return;
       if (tab && dirty(tab))
         throw new Error(
-          "Сохраните изменения перед удалением или закройте вкладку, отбросив их.",
+          t(
+            "Сохраните изменения перед удалением или закройте вкладку, отбросив их.",
+          ),
         );
       const revision =
         tab?.revision ?? (await api.read(current.id, selectedPath)).revision;
       if (
         (await ask({
-          title: "Переместить заметку в корзину?",
-          description: `${selectedPath} будет сохранена в .aether/trash внутри хранилища.`,
-          label: "В корзину",
+          title: t("Переместить заметку в корзину?"),
+          description: t`${selectedPath} будет сохранена в .aether/trash внутри хранилища.`,
+          label: t("В корзину"),
           dangerous: true,
         })) === null
       )
         return;
       const path = await api.trash(current.id, selectedPath, revision);
       dispatch({ type: "close", path: selectedPath });
-      setNotice(`Файл перемещён в ${path}`);
+      setNotice(t`Файл перемещён в ${path}`);
       setRefresh((n) => n + 1);
     });
-
   const reload = () =>
     task(async () => {
       const current = ref.current.vault;
@@ -650,10 +649,11 @@ export function useWorkspace(
       if (
         dirty(tab) &&
         (await ask({
-          title: "Загрузить версию с диска?",
-          description:
+          title: t("Загрузить версию с диска?"),
+          description: t(
             "Несохранённый текст будет заменён. Перед этим можно сохранить копию.",
-          label: "Перечитать",
+          ),
+          label: t("Перечитать"),
           dangerous: true,
         })) === null
       )
@@ -661,7 +661,6 @@ export function useWorkspace(
       const note: Note = await api.read(current.id, tab.path);
       dispatch({ type: "replace", path: tab.path, note });
     });
-
   const openWiki = (source: string, target: string) =>
     task(async () => {
       const current = ref.current.vault;
@@ -692,24 +691,25 @@ export function useWorkspace(
       }
       if (resolution.status === "ambiguous")
         throw new Error(
-          `Неоднозначная ссылка. Укажите полный путь: ${resolution.candidates.join(", ")}`,
+          t`Неоднозначная ссылка. Укажите полный путь: ${resolution.candidates.join(", ")}`,
         );
       if (!resolution.createPath)
         throw new Error(
-          "Ссылка выходит за пределы хранилища или содержит недопустимый путь.",
+          t(
+            "Ссылка выходит за пределы хранилища или содержит недопустимый путь.",
+          ),
         );
       const name = await ask({
-        title: "Создать связанную заметку?",
-        description: `Заметка «${target}» пока не существует.`,
+        title: t("Создать связанную заметку?"),
+        description: t`Заметка «${target}» пока не существует.`,
         initial: resolution.createPath,
-        label: "Создать",
+        label: t("Создать"),
       });
       if (name === null) return;
       const note = await api.create(current.id, name.trim());
       dispatch({ type: "open", note });
       setRefresh((n) => n + 1);
     });
-
   return {
     vault,
     knownVaults,
@@ -741,9 +741,9 @@ export function useWorkspace(
         if (!current) return;
         if (
           (await ask({
-            title: "Переместить папку в корзину?",
-            description: `${path} со всем содержимым будет сохранена в .aether/trash внутри хранилища.`,
-            label: "В корзину",
+            title: t("Переместить папку в корзину?"),
+            description: t`${path} со всем содержимым будет сохранена в .aether/trash внутри хранилища.`,
+            label: t("В корзину"),
             dangerous: true,
           })) === null
         )
@@ -774,7 +774,7 @@ export function useWorkspace(
         );
         setEntryEdit(null);
         setRefresh((n) => n + 1);
-        setNotice(`Папка сохранена в ${result.trash}`);
+        setNotice(t`Папка сохранена в ${result.trash}`);
       }),
     editTitle,
     entryEdit,

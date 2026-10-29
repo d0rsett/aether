@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import {
   foldGutter,
   foldKeymap,
@@ -12,7 +13,6 @@ import {
   type ViewUpdate,
 } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
-
 // Gutter blocks include heading padding and wrapped lines. Align the icon with
 // the first visible text line, without changing CodeMirror's text coordinates.
 const alignFoldMarkers = ViewPlugin.fromClass(
@@ -28,7 +28,10 @@ const alignFoldMarkers = ViewPlugin.fromClass(
       this.view.requestMeasure({
         key: this,
         read: (view) => {
-          const offsets: { marker: HTMLElement; offset: number }[] = [];
+          const offsets: {
+            marker: HTMLElement;
+            offset: number;
+          }[] = [];
           for (const marker of view.dom.querySelectorAll<HTMLElement>(
             ".fold-toggle",
           )) {
@@ -89,7 +92,6 @@ const alignFoldMarkers = ViewPlugin.fromClass(
     }
   },
 );
-
 export const noteFolding = [
   codeFolding({ placeholderText: "…" }),
   alignFoldMarkers,
@@ -105,7 +107,10 @@ export const noteFolding = [
     );
     if (header && from < header[0].length) return null;
     const tree = syntaxTree(state);
-    let section: { from: number; to: number } | null = null;
+    let section: {
+      from: number;
+      to: number;
+    } | null = null;
     tree.iterate({
       enter(node) {
         if (
@@ -145,7 +150,7 @@ export const noteFolding = [
       const marker = document.createElement("span");
       marker.className = "fold-toggle";
       marker.dataset.foldState = open ? "open" : "closed";
-      marker.title = open ? "Свернуть раздел" : "Развернуть раздел";
+      marker.title = open ? t("Свернуть раздел") : t("Развернуть раздел");
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
       svg.setAttribute("width", "14");
       svg.setAttribute("height", "14");

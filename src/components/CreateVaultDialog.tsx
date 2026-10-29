@@ -1,17 +1,20 @@
+import { t, useLocale } from "../i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FolderOpen } from "lucide-react";
 import { api, errorMessage } from "../services/api";
 import { Modal } from "./Modal";
-
-export type VaultOptions = { name: string; parent: string };
+export type VaultOptions = {
+  name: string;
+  parent: string;
+};
 export type RequestVault = () => Promise<VaultOptions | null>;
-
 function CreateVaultDialog({
   onAnswer,
 }: {
   onAnswer: (value: VaultOptions | null) => void;
 }) {
-  const [name, setName] = useState("Мои заметки");
+  useLocale();
+  const [name, setName] = useState(t("Мои заметки"));
   const [parent, setParent] = useState("");
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState("");
@@ -35,21 +38,21 @@ function CreateVaultDialog({
     }
   };
   return (
-    <Modal title="Новое хранилище" onClose={() => onAnswer(null)}>
+    <Modal title={t("Новое хранилище")} onClose={() => onAnswer(null)}>
       <form
         className="vault-form"
         onSubmit={(event) => {
           event.preventDefault();
           if (picking) return;
           if (!name.trim() || /[\\/]/.test(name)) {
-            setError("Введите имя папки без пути.");
+            setError(t("Введите имя папки без пути."));
             return;
           }
           onAnswer({ name: name.trim(), parent: parent.trim() });
         }}
       >
         <label className="input-label">
-          Название хранилища
+          {t(" Название хранилища ")}
           <input
             required
             value={name}
@@ -58,32 +61,35 @@ function CreateVaultDialog({
           />
         </label>
         <div className="input-label">
-          <label htmlFor="vault-parent-path">Расположение</label>
+          <label htmlFor="vault-parent-path">{t("Расположение")}</label>
           <span className="vault-location">
             <input
               id="vault-parent-path"
               required
               value={parent}
               onChange={(event) => setParent(event.target.value)}
-              placeholder="Введите путь или выберите папку"
+              placeholder={t("Введите путь или выберите папку")}
             />
             <button
               type="button"
               className="button secondary"
               disabled={picking}
               onClick={() => void browse()}
-              aria-label="Выбрать папку"
+              aria-label={t("Выбрать папку")}
             >
-              <FolderOpen size={16} /> Обзор…
+              <FolderOpen size={16} />
+              {t(" Обзор\u2026 ")}
             </button>
           </span>
         </div>
         <p className="modal-description">
-          В выбранной папке будет создана новая папка с названием хранилища.
+          {t(
+            " В выбранной папке будет создана новая папка с названием хранилища. ",
+          )}
         </p>
         {error && (
           <p role="alert" className="tree-error">
-            {error}
+            {t(error)}
           </p>
         )}
         <div className="modal-actions">
@@ -92,21 +98,20 @@ function CreateVaultDialog({
             className="button secondary"
             onClick={() => onAnswer(null)}
           >
-            Отмена
+            {t(" Отмена ")}
           </button>
           <button
             type="submit"
             className="button primary"
             disabled={picking || !name.trim() || !parent.trim()}
           >
-            Создать хранилище
+            {t(" Создать хранилище ")}
           </button>
         </div>
       </form>
     </Modal>
   );
 }
-
 export function useVaultCreation() {
   const [open, setOpen] = useState(false);
   const pending = useRef<((value: VaultOptions | null) => void) | null>(null);

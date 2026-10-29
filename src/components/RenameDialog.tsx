@@ -1,7 +1,7 @@
+import { t, useLocale } from "../i18n";
 import { useCallback, useRef, useState } from "react";
 import { Modal } from "./Modal";
 import { api, errorMessage, type RenamePreview } from "../services/api";
-
 export interface RenameRequest {
   vaultId: string;
   path: string;
@@ -13,7 +13,6 @@ export interface RenameRequest {
 export type ReviewRename = (
   request: RenameRequest,
 ) => Promise<RenamePreview | null>;
-
 function RenameDialog({
   request,
   finish,
@@ -21,6 +20,7 @@ function RenameDialog({
   request: RenameRequest;
   finish: (result: RenamePreview | null) => void;
 }) {
+  useLocale();
   const [name, setName] = useState(request.suggestedPath ?? request.path);
   const [preview, setPreview] = useState<RenamePreview | null>(null);
   const [loading, setLoading] = useState(false);
@@ -62,7 +62,7 @@ function RenameDialog({
   };
   return (
     <Modal
-      title="Переименовать заметку"
+      title={t("Переименовать заметку")}
       onClose={() => {
         if (!loading) finish(null);
       }}
@@ -75,11 +75,12 @@ function RenameDialog({
         }}
       >
         <p>
-          Проверьте новый путь и изменения wiki-ссылок. Родительская папка
-          должна существовать.
+          {t(
+            " Проверьте новый путь и изменения wiki-ссылок. Родительская папка должна существовать. ",
+          )}
         </p>
         <label>
-          Имя и путь
+          {t(" Имя и путь ")}
           <input
             value={name}
             disabled={loading}
@@ -95,26 +96,31 @@ function RenameDialog({
           type="submit"
           disabled={loading || name.trim() === request.path || !name.trim()}
         >
-          Предпросмотр
+          {t(" Предпросмотр ")}
         </button>
         {error && (
           <p role="alert" className="tree-error">
-            {error}
+            {t(error)}
           </p>
         )}
         {preview && (
-          <section aria-label="Изменения ссылок">
+          <section aria-label={t("Изменения ссылок")}>
             <p>
               <strong>
                 {preview.from} → {preview.to}
               </strong>
             </p>
             <p>
-              Файлов: {preview.files} · Изменений ссылок: {preview.links}
+              {t(" Файлов: ")}
+              {preview.files}
+              {t(" · Изменений ссылок: ")}
+              {preview.links}
             </p>
             {preview.unresolved > 0 && (
               <p>
-                Неразрешённых ссылок: {preview.unresolved}. Их текст сохранится.
+                {t(" Неразрешённых ссылок: ")}
+                {preview.unresolved}
+                {t(". Их текст сохранится. ")}
               </p>
             )}
             <div className="rename-changes">
@@ -134,19 +140,21 @@ function RenameDialog({
                 disabled={loading}
                 onClick={() => void load(true)}
               >
-                Ещё изменения
+                {t(" Ещё изменения ")}
               </button>
             )}
-            {!preview.links && <p>Ссылки переписывать не требуется.</p>}
+            {!preview.links && <p>{t("Ссылки переписывать не требуется.")}</p>}
             {blocked.length > 0 && (
               <p role="alert" className="tree-error">
-                Сначала сохраните затронутые вкладки: {blocked.join(", ")}.
-                Затем откройте предпросмотр заново.
+                {t(" Сначала сохраните затронутые вкладки: ")}
+                {blocked.join(", ")}
+                {t(". Затем откройте предпросмотр заново. ")}
               </p>
             )}
             <p className="rename-hint">
-              Перед записью создаются резервные копии. Действие можно отменить в
-              панели сведений.
+              {t(
+                " Перед записью создаются резервные копии. Действие можно отменить в панели сведений. ",
+              )}
             </p>
           </section>
         )}
@@ -157,7 +165,7 @@ function RenameDialog({
             disabled={loading}
             onClick={() => finish(null)}
           >
-            Отмена
+            {t(" Отмена ")}
           </button>
           <button
             className="button primary"
@@ -165,14 +173,13 @@ function RenameDialog({
             disabled={!preview || loading || blocked.length > 0}
             onClick={() => finish(preview)}
           >
-            Применить переименование
+            {t(" Применить переименование ")}
           </button>
         </div>
       </form>
     </Modal>
   );
 }
-
 export function useRenameReview() {
   const [request, setRequest] = useState<RenameRequest | null>(null);
   const resolve = useRef<((result: RenamePreview | null) => void) | null>(null);

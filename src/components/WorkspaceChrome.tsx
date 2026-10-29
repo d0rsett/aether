@@ -1,3 +1,4 @@
+import { t, useLocale } from "../i18n";
 import {
   BookOpen,
   Check,
@@ -36,6 +37,7 @@ export function WorkspaceTabs({
     | "editTitle"
   >;
 }) {
+  useLocale();
   const tabsRef = useRef<HTMLDivElement>(null);
   const context = useContextMenu(app.setError);
   useEffect(() => {
@@ -87,38 +89,38 @@ export function WorkspaceTabs({
         className="tabs"
         ref={tabsRef}
         role="tablist"
-        aria-label="Открытые заметки"
+        aria-label={t("Открытые заметки")}
       >
         {app.workspace.tabs.map((tab) => (
           <div
             className={`tab ${app.workspace.active === tab.path ? "active" : ""}`}
             key={tab.path}
             onContextMenu={(event) =>
-              context.show(event, "Действия вкладки", [
+              context.show(event, t("Действия вкладки"), [
                 {
                   label:
                     tab.kind === "image"
-                      ? "Перейти к изображению"
-                      : "Перейти к заметке",
+                      ? t("Перейти к изображению")
+                      : t("Перейти к заметке"),
                   disabled: app.busy,
                   run: () => app.dispatch({ type: "activate", path: tab.path }),
                 },
                 {
-                  label: "Переименовать",
+                  label: t("Переименовать"),
                   disabled: app.busy || tab.kind === "image",
                   run: () => app.editTitle(tab.path),
                 },
                 {
-                  label: "Копировать путь",
+                  label: t("Копировать путь"),
                   run: () => navigator.clipboard.writeText(tab.path),
                 },
                 {
-                  label: "Открыть в проводнике",
+                  label: t("Открыть в проводнике"),
                   disabled: !app.vault,
                   run: () => api.reveal(app.vault!.id, tab.path),
                 },
                 {
-                  label: "Закрыть вкладку",
+                  label: t("Закрыть вкладку"),
                   shortcut: "Ctrl W",
                   divider: true,
                   disabled: app.busy,
@@ -143,13 +145,13 @@ export function WorkspaceTabs({
               {dirty(tab) && (
                 <span
                   className="dirty-dot"
-                  data-tooltip="Есть несохранённые изменения"
+                  data-tooltip={t("Есть несохранённые изменения")}
                 />
               )}
             </button>
             <button
               className="tab-close"
-              aria-label={`Закрыть ${titleOf(tab.path)}`}
+              aria-label={t`Закрыть ${titleOf(tab.path)}`}
               disabled={app.busy}
               onClick={() => void app.close(tab.path)}
             >
@@ -161,8 +163,8 @@ export function WorkspaceTabs({
       {app.vault && app.workspace.tabs.length > 0 && (
         <button
           className="icon-button new-tab"
-          data-tooltip="Новая заметка"
-          aria-label="Открыть новую заметку"
+          data-tooltip={t("Новая заметка")}
+          aria-label={t("Открыть новую заметку")}
           disabled={app.busy}
           onClick={() => void app.createQuick()}
         >
@@ -194,6 +196,7 @@ export function NoteHeader({
   lineWrapping: boolean;
   setLineWrapping: (value: boolean) => void;
 }) {
+  useLocale();
   if (!app.active) return null;
   const parts = app.active.path.split("/");
   parts.pop();
@@ -209,8 +212,8 @@ export function NoteHeader({
         {dirty(app.active) && (
           <button
             className="icon-button note-save"
-            aria-label="Сохранить"
-            data-tooltip="Сохранить · Ctrl+S"
+            aria-label={t("Сохранить")}
+            data-tooltip={t("Сохранить · Ctrl+S")}
             disabled={app.busy}
             onClick={() => void app.save()}
           >
@@ -219,10 +222,12 @@ export function NoteHeader({
         )}
         <button
           className="icon-button"
-          aria-label="Переключить режим чтения"
+          aria-label={t("Переключить режим чтения")}
           aria-pressed={mode === "reading"}
           data-tooltip={
-            mode === "reading" ? "Редактировать · Ctrl+E" : "Читать · Ctrl+E"
+            mode === "reading"
+              ? t("Редактировать · Ctrl+E")
+              : t("Читать · Ctrl+E")
           }
           disabled={app.busy}
           onClick={() => setMode(mode === "reading" ? "live" : "reading")}
@@ -234,15 +239,23 @@ export function NoteHeader({
           )}
         </button>
         <Popover
-          label="Режим заметки"
+          label={t("Режим заметки")}
           icon={<ChevronDown size={14} />}
           disabled={app.busy}
         >
           {(
             [
-              { key: "source", label: "Исходник", icon: Code2 },
+              {
+                key: "source",
+                label: t("Исходник"),
+                icon: Code2,
+              },
               { key: "live", label: "Live Preview", icon: PencilLine },
-              { key: "reading", label: "Чтение", icon: BookOpen },
+              {
+                key: "reading",
+                label: t("Чтение"),
+                icon: BookOpen,
+              },
             ] as const
           ).map((item) => (
             <button
@@ -257,24 +270,28 @@ export function NoteHeader({
           ))}
         </Popover>
         <Popover
-          label="Действия с заметкой"
+          label={t("Действия с заметкой")}
           icon={<MoreHorizontal size={18} />}
           disabled={app.busy}
         >
           <button disabled={!dirty(app.active)} onClick={() => void app.save()}>
-            <span>Сохранить заметку</span>
+            <span>{t("Сохранить заметку")}</span>
             <kbd>Ctrl S</kbd>
           </button>
-          <button onClick={() => void app.editTitle()}>Переименовать</button>
-          <button onClick={() => void app.create(false, true)}>
-            Сохранить копию
+          <button onClick={() => void app.editTitle()}>
+            {t("Переименовать")}
           </button>
-          <button onClick={() => void app.reload()}>Перечитать с диска</button>
+          <button onClick={() => void app.create(false, true)}>
+            {t(" Сохранить копию ")}
+          </button>
+          <button onClick={() => void app.reload()}>
+            {t("Перечитать с диска")}
+          </button>
           {app.renameState && (
             <button onClick={() => void app.undoRename()}>
               {app.renameState.pending
-                ? "Восстановить переименование"
-                : "Отменить переименование"}
+                ? t("Восстановить переименование")
+                : t("Отменить переименование")}
             </button>
           )}
           <hr />
@@ -282,26 +299,26 @@ export function NoteHeader({
             aria-pressed={formatting}
             onClick={() => setFormatting(!formatting)}
           >
-            <span>Панель форматирования</span>
+            <span>{t("Панель форматирования")}</span>
             {formatting && <Check size={13} />}
           </button>
           <button
             aria-pressed={lineNumbers}
             onClick={() => setLineNumbers(!lineNumbers)}
           >
-            <span>Номера строк</span>
+            <span>{t("Номера строк")}</span>
             {lineNumbers && <Check size={13} />}
           </button>
           <button
             aria-pressed={lineWrapping}
             onClick={() => setLineWrapping(!lineWrapping)}
           >
-            <span>Перенос строк</span>
+            <span>{t("Перенос строк")}</span>
             {lineWrapping && <Check size={13} />}
           </button>
           <hr />
           <button className="danger-action" onClick={() => void app.remove()}>
-            Переместить в корзину
+            {t(" Переместить в корзину ")}
           </button>
         </Popover>
       </div>

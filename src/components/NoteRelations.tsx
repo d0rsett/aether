@@ -1,3 +1,4 @@
+import { t, useLocale } from "../i18n";
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -9,7 +10,6 @@ import {
 import type { Inspection } from "../services/api";
 import type { MouseEvent } from "react";
 import { groupRelations } from "../services/relations";
-
 export function NoteRelations({
   data,
   onOpen,
@@ -21,12 +21,14 @@ export function NoteRelations({
   onWiki: (target: string) => void;
   onContext?: (event: MouseEvent<HTMLElement>, path: string) => void;
 }) {
-  if (!data) return <p className="relations-hint">Подготовка сведений…</p>;
+  useLocale();
+  if (!data)
+    return <p className="relations-hint">{t("Подготовка сведений\u2026")}</p>;
   const { incoming, outgoing } = groupRelations(data);
   return (
     <div
       className="note-relations"
-      data-tooltip="Связи по сохранённой версии заметки"
+      data-tooltip={t("Связи по сохранённой версии заметки")}
     >
       {data.metadata.warning && (
         <p className="tree-error">{data.metadata.warning}</p>
@@ -49,7 +51,7 @@ export function NoteRelations({
             aria-hidden="true"
           />
           <ArrowDownLeft size={13} />
-          <span>Обратные ссылки</span>
+          <span>{t("Обратные ссылки")}</span>
           <small>{incoming.length}</small>
         </summary>
         {incoming.length ? (
@@ -65,14 +67,16 @@ export function NoteRelations({
               <span>
                 {link.title}
                 <small>
-                  {link.path} · строка {link.line}
+                  {link.path}
+                  {t(" · строка ")}
+                  {link.line}
                 </small>
               </span>
               {link.mentions > 1 && (
                 <span
                   className="relation-repeat-count"
-                  aria-label={`Упоминаний: ${link.mentions}`}
-                  data-tooltip={`Упоминаний: ${link.mentions}`}
+                  aria-label={t`Упоминаний: ${link.mentions}`}
+                  data-tooltip={t`Упоминаний: ${link.mentions}`}
                 >
                   ×{link.mentions}
                 </span>
@@ -80,7 +84,7 @@ export function NoteRelations({
             </button>
           ))
         ) : (
-          <p className="relations-hint">Пока нет обратных ссылок</p>
+          <p className="relations-hint">{t("Пока нет обратных ссылок")}</p>
         )}
       </details>
       <details className="relations-section" open>
@@ -91,7 +95,7 @@ export function NoteRelations({
             aria-hidden="true"
           />
           <ArrowUpRight size={13} />
-          <span>Исходящие ссылки</span>
+          <span>{t("Исходящие ссылки")}</span>
           <small>{outgoing.length}</small>
         </summary>
         {outgoing.length ? (
@@ -101,7 +105,7 @@ export function NoteRelations({
                 className={`relation-link ${link.resolution.status === "missing" ? "missing-link" : ""}`}
                 data-tooltip={[
                   link.resolution.status === "missing"
-                    ? "Создать связанную заметку"
+                    ? t("Создать связанную заметку")
                     : link.resolution.path || link.target,
                   ...link.aliases,
                 ].join("\n")}
@@ -122,14 +126,14 @@ export function NoteRelations({
                   {link.alias ?? link.target}
                   {link.anchor && <small>#{link.anchor}</small>}
                   {link.resolution.status === "ambiguous" && (
-                    <small>Уточните путь</small>
+                    <small>{t("Уточните путь")}</small>
                   )}
                 </span>
                 {link.mentions > 1 && (
                   <span
                     className="relation-repeat-count"
-                    aria-label={`Упоминаний: ${link.mentions}`}
-                    data-tooltip={`Упоминаний: ${link.mentions}`}
+                    aria-label={t`Упоминаний: ${link.mentions}`}
+                    data-tooltip={t`Упоминаний: ${link.mentions}`}
                   >
                     ×{link.mentions}
                   </span>
@@ -150,7 +154,7 @@ export function NoteRelations({
             </div>
           ))
         ) : (
-          <p className="relations-hint">Добавьте [[Название заметки]]</p>
+          <p className="relations-hint">{t("Добавьте [[Название заметки]]")}</p>
         )}
       </details>
     </div>

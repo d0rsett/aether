@@ -1,5 +1,5 @@
+import { t, useLocale } from "../i18n";
 import { useRef, useState } from "react";
-
 export function usePaneWidth(
   side: "left" | "right",
   fallback: number,
@@ -25,7 +25,6 @@ export function usePaneWidth(
   };
   return [width, update] as const;
 }
-
 export function PaneResizeHandle({
   side,
   width,
@@ -41,6 +40,7 @@ export function PaneResizeHandle({
   onWidth: (width: number) => void;
   onCollapse: () => void;
 }) {
+  useLocale();
   const drag = useRef<{
     x: number;
     width: number;
@@ -72,12 +72,14 @@ export function PaneResizeHandle({
       tabIndex={0}
       aria-orientation="vertical"
       aria-label={
-        side === "left" ? "Ширина левой панели" : "Ширина правой панели"
+        side === "left" ? t("Ширина левой панели") : t("Ширина правой панели")
       }
       aria-valuemin={minimum}
       aria-valuemax={420}
       aria-valuenow={Math.round(width)}
-      data-tooltip="Потяните для изменения ширины; уменьшите до края, чтобы скрыть. Двойной щелчок — сброс."
+      data-tooltip={t(
+        "Потяните для изменения ширины; уменьшите до края, чтобы скрыть. Двойной щелчок \u2014 сброс.",
+      )}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         event.preventDefault();

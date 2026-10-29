@@ -1,6 +1,6 @@
+import { t, useLocale } from "../i18n";
 import { useEffect, useRef, useState } from "react";
 import { titleOf } from "../workspace/model";
-
 export function NoteTitle({
   path,
   disabled,
@@ -14,6 +14,7 @@ export function NoteTitle({
   onError: (text: string) => void;
   focusRequest?: number;
 }) {
+  useLocale();
   const original = titleOf(path);
   const [value, setValue] = useState(original);
   const input = useRef<HTMLInputElement>(null);
@@ -39,7 +40,7 @@ export function NoteTitle({
     const name = value.trim();
     if (name === original) return;
     if (!name || /[\\/]/.test(name)) {
-      onError("Укажите имя заметки без разделителей пути.");
+      onError(t("Укажите имя заметки без разделителей пути."));
       return;
     }
     const slash = path.lastIndexOf("/");
@@ -57,8 +58,10 @@ export function NoteTitle({
     <div className="note-title">
       <input
         ref={input}
-        aria-label="Название заметки"
-        data-tooltip="Название заметки · Enter — переименовать, Escape — отменить"
+        aria-label={t("Название заметки")}
+        data-tooltip={t(
+          "Название заметки · Enter \u2014 переименовать, Escape \u2014 отменить",
+        )}
         value={value}
         disabled={disabled}
         spellCheck={false}

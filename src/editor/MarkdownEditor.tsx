@@ -1,3 +1,5 @@
+import { t, useLocale } from "../i18n";
+import { editorPhrases } from "../i18n/editor";
 import { useEffect, useRef } from "react";
 import { toggleTask } from "./tasks";
 import { noteFolding } from "./folding";
@@ -53,7 +55,6 @@ import {
   wikiSyntax,
   type FormatCommand,
 } from "./enhancements";
-
 const highlight = HighlightStyle.define([
   { tag: tags.heading, color: "var(--accent)", fontWeight: "600" },
   { tag: tags.strong, fontWeight: "700" },
@@ -71,25 +72,41 @@ const highlight = HighlightStyle.define([
   },
   { tag: [tags.keyword, tags.bool, tags.number], color: "var(--muted)" },
 ]);
-
 interface Props {
-  templateCommand?: { id: number; text: string } | null;
+  templateCommand?: {
+    id: number;
+    text: string;
+  } | null;
   propertyCommand?: PropertyCommand | null;
-  propertyHistory?: { id: number; redo: boolean } | null;
+  propertyHistory?: {
+    id: number;
+    redo: boolean;
+  } | null;
   propertyFocus?: number;
   previews?: NotePreviews;
   onNavigate?: (source: string, target: string) => void;
-  taskCommand?: { id: number; node: RenderNode; snapshot: string } | null;
+  taskCommand?: {
+    id: number;
+    node: RenderNode;
+    snapshot: string;
+  } | null;
   content: string;
   onChange: (content: string) => void;
   onSave: () => void;
   onWikiLink?: (target: string) => void;
-  navigation?: (AnchorLocation & { id: number }) | null;
+  navigation?:
+    | (AnchorLocation & {
+        id: number;
+      })
+    | null;
   ready?: boolean;
   live?: boolean;
   vaultId?: string;
   path?: string;
-  command?: { id: number; type: FormatCommand } | null;
+  command?: {
+    id: number;
+    type: FormatCommand;
+  } | null;
   visible?: boolean;
   theme?: string;
   onError?: (message: string) => void;
@@ -99,7 +116,6 @@ interface Props {
   showLineNumbers?: boolean;
   lineWrapping?: boolean;
 }
-
 export function MarkdownEditor({
   templateCommand,
   propertyCommand,
@@ -127,6 +143,7 @@ export function MarkdownEditor({
   onAttachmentsImported,
   onPropertiesSource,
 }: Props) {
+  const locale = useLocale();
   const host = useRef<HTMLDivElement>(null);
   const lastTemplate = useRef<number | undefined>(undefined);
   const editor = useRef<EditorView | null>(null);
@@ -163,7 +180,7 @@ export function MarkdownEditor({
   const presentation = useRef(new Compartment());
   const gutter = useRef(new Compartment());
   const wrapping = useRef(new Compartment());
-
+  const language = useRef(new Compartment());
   useEffect(() => {
     if (!host.current) return;
     const view = new EditorView({
@@ -175,6 +192,7 @@ export function MarkdownEditor({
             live && !navigation ? (propertyBodyStart(initial.current) ?? 0) : 0,
         },
         extensions: [
+          language.current.of(EditorState.phrases.of(editorPhrases(locale))),
           gutter.current.of(showLineNumbers ? lineNumbers() : []),
           history(),
           ...(vaultId && path
@@ -256,7 +274,7 @@ export function MarkdownEditor({
             ),
           ),
           EditorView.contentAttributes.of({
-            "aria-label": "Markdown-редактор",
+            "aria-label": t("Markdown-редактор"),
             spellcheck: "false",
           }),
           keymap.of([
@@ -310,7 +328,6 @@ export function MarkdownEditor({
       editor.current = null;
     };
   }, []);
-
   useEffect(() => {
     const view = editor.current;
     if (view && lastText.current !== content) {
@@ -334,7 +351,6 @@ export function MarkdownEditor({
       }
     }
   }, [content]);
-
   useEffect(() => {
     const view = editor.current;
     if (
@@ -353,7 +369,6 @@ export function MarkdownEditor({
     });
     view.focus();
   }, [navigation?.id, ready]);
-
   useEffect(() => {
     let disposed = false;
     editor.current?.dispatch({
@@ -387,7 +402,9 @@ export function MarkdownEditor({
         .catch(() => {
           if (!disposed)
             callbacks.current.onError?.(
-              "Не удалось загрузить визуальные блоки. Исходный Markdown доступен.",
+              t(
+                "Не удалось загрузить визуальные блоки. Исходный Markdown доступен.",
+              ),
             );
         });
     }
@@ -411,7 +428,9 @@ export function MarkdownEditor({
       insertTemplate(editor.current, templateCommand.text);
     } catch (error) {
       callbacks.current.onError?.(
-        error instanceof Error ? error.message : "Не удалось вставить шаблон.",
+        error instanceof Error
+          ? error.message
+          : t("Не удалось вставить шаблон."),
       );
     }
   }, [templateCommand?.id]);
@@ -422,7 +441,9 @@ export function MarkdownEditor({
       !toggleTask(editor.current, taskCommand.node, taskCommand.snapshot)
     )
       callbacks.current.onError?.(
-        "Текст изменился. Переключите задачу ещё раз после обновления просмотра.",
+        t(
+          "Текст изменился. Переключите задачу ещё раз после обновления просмотра.",
+        ),
       );
   }, [taskCommand?.id]);
   useEffect(() => {
@@ -438,7 +459,7 @@ export function MarkdownEditor({
       propertyCommand.done(
         error instanceof Error
           ? error.message
-          : "Не удалось изменить свойство.",
+          : t("Не удалось изменить свойство."),
       );
     }
   }, [propertyCommand?.id]);
@@ -460,6 +481,28 @@ export function MarkdownEditor({
       effects: gutter.current.reconfigure(showLineNumbers ? lineNumbers() : []),
     });
   }, [showLineNumbers]);
+  useEffect(() => {
+    const view = editor.current;
+    if (!view) return;
+    view.dispatch({
+      effects: language.current.reconfigure(
+        EditorState.phrases.of(editorPhrases(locale)),
+      ),
+    });
+    view.contentDOM.setAttribute("aria-label", t("Markdown-редактор"));
+    for (const marker of view.dom.querySelectorAll<HTMLElement>(".fold-toggle"))
+      marker.title = t(
+        marker.dataset.foldState === "open"
+          ? "Свернуть раздел"
+          : "Развернуть раздел",
+      );
+    for (const placeholder of view.dom.querySelectorAll<HTMLElement>(
+      ".cm-foldPlaceholder",
+    )) {
+      placeholder.title = t("Развернуть раздел");
+      placeholder.setAttribute("aria-label", t("Свёрнутый текст"));
+    }
+  }, [locale]);
   useEffect(() => {
     editor.current?.dispatch({
       effects: wrapping.current.reconfigure(
@@ -495,27 +538,27 @@ export function MarkdownEditor({
           const copy = () => navigator.clipboard.writeText(copiedText);
           const ensureCurrent = () => {
             if (editor.current !== view || view.state.readOnly)
-              throw new Error("Редактор недоступен для изменения.");
+              throw new Error(t("Редактор недоступен для изменения."));
             if (view.state.doc !== snapshot)
-              throw new Error("Текст изменился. Откройте меню ещё раз.");
+              throw new Error(t("Текст изменился. Откройте меню ещё раз."));
           };
           const formats = activeFormats(view.state);
           const formatting = selected.empty
             ? []
             : (
                 [
-                  ["bold", "Жирный", "Ctrl B"],
-                  ["italic", "Курсив", "Ctrl I"],
-                  ["code", "Код", ""],
-                  ["heading", "Заголовок", ""],
-                  ["quote", "Цитата", ""],
-                  ["list", "Список", ""],
-                  ["link", "Wiki-ссылка", ""],
+                  ["bold", t("Жирный"), "Ctrl B"],
+                  ["italic", t("Курсив"), "Ctrl I"],
+                  ["code", t("Код"), ""],
+                  ["heading", t("Заголовок"), ""],
+                  ["quote", t("Цитата"), ""],
+                  ["list", t("Список"), ""],
+                  ["link", t("Wiki-ссылка"), ""],
                 ] as const
               ).map(([type, label, shortcut], index) => ({
                 label,
                 shortcut,
-                heading: index === 0 ? "Форматирование" : undefined,
+                heading: index === 0 ? t("Форматирование") : undefined,
                 divider: index === 0,
                 checked: formats.includes(type),
                 disabled: view.state.readOnly,
@@ -527,9 +570,9 @@ export function MarkdownEditor({
                   formatSelection(view, type);
                 },
               }));
-          context.show(event, "Действия редактора", [
+          context.show(event, t("Действия редактора"), [
             {
-              label: "Вставить таблицу",
+              label: t("Вставить таблицу"),
               disabled: view.state.readOnly,
               run: () => {
                 ensureCurrent();
@@ -537,7 +580,7 @@ export function MarkdownEditor({
               },
             },
             {
-              label: "Отменить",
+              label: t("Отменить"),
               shortcut: "Ctrl Z",
               disabled: undoDepth(view.state) === 0 || view.state.readOnly,
               run: () => {
@@ -546,7 +589,7 @@ export function MarkdownEditor({
               },
             },
             {
-              label: "Повторить",
+              label: t("Повторить"),
               shortcut: "Ctrl Y",
               disabled: redoDepth(view.state) === 0 || view.state.readOnly,
               run: () => {
@@ -555,7 +598,7 @@ export function MarkdownEditor({
               },
             },
             {
-              label: "Вырезать",
+              label: t("Вырезать"),
               shortcut: "Ctrl X",
               divider: true,
               disabled: selected.empty || view.state.readOnly,
@@ -571,13 +614,13 @@ export function MarkdownEditor({
               },
             },
             {
-              label: "Копировать",
+              label: t("Копировать"),
               shortcut: "Ctrl C",
               disabled: selected.empty,
               run: copy,
             },
             {
-              label: "Вставить",
+              label: t("Вставить"),
               shortcut: "Ctrl V",
               disabled: view.state.readOnly,
               run: async () => {
@@ -600,7 +643,7 @@ export function MarkdownEditor({
             },
             ...formatting,
             {
-              label: "Выделить всё",
+              label: t("Выделить всё"),
               shortcut: "Ctrl A",
               divider: true,
               run: () => {
@@ -608,7 +651,7 @@ export function MarkdownEditor({
               },
             },
             {
-              label: "Сохранить заметку",
+              label: t("Сохранить заметку"),
               shortcut: "Ctrl S",
               divider: true,
               disabled: view.state.readOnly,

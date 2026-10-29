@@ -1,3 +1,4 @@
+import { t, useLocale } from "../i18n";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   FileAudio,
@@ -17,7 +18,6 @@ const PdfView = lazy(() =>
 );
 export const mediaTarget =
   /\.(pdf|mp3|wav|ogg|m4a|flac|3gp|mp4|webm|mov|mkv|ogv)(?:#|$)/i;
-
 function AudioPlayer({
   url,
   target,
@@ -27,6 +27,7 @@ function AudioPlayer({
   target: string;
   onError: () => void;
 }) {
+  useLocale();
   const audio = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
@@ -40,7 +41,7 @@ function AudioPlayer({
         ref={audio}
         preload="metadata"
         src={url || undefined}
-        aria-label={`Аудио: ${target}`}
+        aria-label={t`Аудио: ${target}`}
         onError={() => {
           if (url) onError();
         }}
@@ -59,7 +60,7 @@ function AudioPlayer({
       <button
         type="button"
         className="audio-play"
-        aria-label={playing ? "Пауза" : "Воспроизвести"}
+        aria-label={playing ? t("Пауза") : t("Воспроизвести")}
         onClick={() => {
           const player = audio.current;
           if (!player || !url) return;
@@ -72,7 +73,7 @@ function AudioPlayer({
       <span className="audio-time">{format(time)}</span>
       <input
         type="range"
-        aria-label="Позиция воспроизведения"
+        aria-label={t("Позиция воспроизведения")}
         min={0}
         max={duration || 0}
         step="any"
@@ -88,7 +89,7 @@ function AudioPlayer({
       <button
         type="button"
         className="media-icon-button"
-        aria-label={muted ? "Включить звук" : "Выключить звук"}
+        aria-label={muted ? t("Включить звук") : t("Выключить звук")}
         onClick={() => {
           if (audio.current) audio.current.muted = !muted;
           setMuted(!muted);
@@ -99,7 +100,6 @@ function AudioPlayer({
     </span>
   );
 }
-
 export function LoadedMedia({
   mime,
   data,
@@ -109,6 +109,7 @@ export function LoadedMedia({
   data: string;
   target: string;
 }) {
+  useLocale();
   const [url, setUrl] = useState("");
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -121,15 +122,16 @@ export function LoadedMedia({
   }, [mime, data]);
   if (mime === "application/pdf")
     return (
-      <Suspense fallback={<span>Подготовка PDF…</span>}>
+      <Suspense fallback={<span>{t("Подготовка PDF\u2026")}</span>}>
         <PdfView data={data} target={target} />
       </Suspense>
     );
   if (failed)
     return (
       <span role="alert">
-        Этот кодек не поддерживается системой. Откройте файл во внешнем
-        приложении.
+        {t(
+          " Этот кодек не поддерживается системой. Откройте файл во внешнем приложении. ",
+        )}
       </span>
     );
   return mime.startsWith("audio/") ? (
@@ -142,11 +144,10 @@ export function LoadedMedia({
       onError={() => {
         if (url) setFailed(true);
       }}
-      aria-label={`Видео: ${target}`}
+      aria-label={t`Видео: ${target}`}
     />
   );
 }
-
 export function LocalMedia({
   target,
   wiki,
@@ -156,17 +157,19 @@ export function LocalMedia({
   wiki: boolean;
   context: RenderContext;
 }) {
+  useLocale();
   const [requested, request] = useState(false);
   const [attempt, retry] = useState(0);
-  const [result, setResult] = useState<{ mime: string; data: string } | null>(
-    null,
-  );
+  const [result, setResult] = useState<{
+    mime: string;
+    data: string;
+  } | null>(null);
   const [error, setError] = useState("");
   const container = useRef<HTMLSpanElement>(null);
   const pdf = /\.pdf(?:#|$)/i.test(target);
   const video = /\.(mp4|webm|mov|mkv|ogv|3gp)(?:#|$)/i.test(target);
   const Icon = pdf ? FileText : video ? FileVideo : FileAudio;
-  const label = pdf ? "PDF-документ" : video ? "Видео" : "Аудиозапись";
+  const label = pdf ? t("PDF-документ") : video ? t("Видео") : t("Аудиозапись");
   const name = target.split("#")[0].split("/").pop() || target;
   useEffect(() => {
     if (pdf || !container.current) return;
@@ -219,8 +222,8 @@ export function LocalMedia({
         <button
           type="button"
           className="media-icon-button"
-          aria-label="Показать файл"
-          title="Показать файл"
+          aria-label={t("Показать файл")}
+          title={t("Показать файл")}
           onClick={() => {
             void api
               .resolveAttachment(context.vaultId, context.path, target, wiki)
@@ -234,8 +237,8 @@ export function LocalMedia({
           <button
             type="button"
             className="media-icon-button"
-            aria-label="Скрыть просмотр"
-            title="Скрыть просмотр"
+            aria-label={t("Скрыть просмотр")}
+            title={t("Скрыть просмотр")}
             onClick={() => request(false)}
           >
             <X size={17} aria-hidden="true" />
@@ -249,19 +252,19 @@ export function LocalMedia({
           onClick={() => request(true)}
         >
           <Play size={15} aria-hidden="true" />
-          {pdf ? "Показать PDF" : "Загрузить проигрыватель"}
+          {pdf ? t("Показать PDF") : t("Загрузить проигрыватель")}
         </button>
       ) : error ? (
         <span role="alert">
-          {error}
+          {t(error)}
           <button type="button" onClick={() => retry((value) => value + 1)}>
-            Повторить
+            {t(" Повторить ")}
           </button>
         </span>
       ) : result ? (
         <LoadedMedia {...result} target={target} />
       ) : (
-        <span role="status">Загрузка вложения…</span>
+        <span role="status">{t("Загрузка вложения\u2026")}</span>
       )}
     </span>
   );

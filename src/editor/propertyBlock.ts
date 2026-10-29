@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { undo, redo } from "@codemirror/commands";
@@ -11,7 +12,6 @@ import {
 import { InlineProperties } from "../components/InlineProperties";
 import { applyProperty } from "./propertyInput";
 import { propertyBodyStart, readProperties } from "./properties";
-
 interface Config {
   vaultId: string;
   path: string;
@@ -70,10 +70,12 @@ class PropertyWidget extends WidgetType {
           onApply: (action, snapshot, done) => {
             try {
               if (!dom.isConnected || !view.dom.isConnected)
-                throw new Error("Редактор больше недоступен.");
+                throw new Error(t("Редактор больше недоступен."));
               if (!accepted.includes(snapshot))
                 throw new Error(
-                  "Свойства изменились. Проверьте значение и повторите попытку.",
+                  t(
+                    "Свойства изменились. Проверьте значение и повторите попытку.",
+                  ),
                 );
               applying = true;
               const hadHeader = /^\uFEFF?---\r?\n/.test(view.state.sliceDoc());
@@ -93,7 +95,7 @@ class PropertyWidget extends WidgetType {
               done(
                 error instanceof Error
                   ? error.message
-                  : "Не удалось изменить свойство.",
+                  : t("Не удалось изменить свойство."),
               );
             } finally {
               applying = false;

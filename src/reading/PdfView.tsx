@@ -1,3 +1,4 @@
+import { t, useLocale } from "../i18n";
 import { useEffect, useRef, useState } from "react";
 import {
   getDocument,
@@ -8,8 +9,8 @@ import {
 } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 GlobalWorkerOptions.workerSrc = workerUrl;
-
 export function PdfView({ data, target }: { data: string; target: string }) {
+  useLocale();
   const options = new URLSearchParams(target.split("#")[1] ?? "");
   const initial = Math.max(1, Number(options.get("page")) || 1);
   const height = Math.max(
@@ -32,7 +33,11 @@ export function PdfView({ data, target }: { data: string; target: string }) {
   const [matches, setMatches] = useState<number[]>([]);
   const [searching, setSearching] = useState(false);
   const [annotations, setAnnotations] = useState<
-    { id: string; title: string; text: string }[]
+    {
+      id: string;
+      title: string;
+      text: string;
+    }[]
   >([]);
   useEffect(() => {
     if (!pageSurface.current) return;
@@ -86,14 +91,14 @@ export function PdfView({ data, target }: { data: string; target: string }) {
       cMapPacked: true,
       useWasm: false,
       useWorkerFetch: false,
-      maxImageSize: 16_000_000,
+      maxImageSize: 16000000,
     });
     task.onPassword = (update: (password: string) => void, reason: number) => {
       if (disposed) return;
       passwordCallback.current = update;
       setPasswordNeeded(true);
       setBusy(false);
-      if (reason === 2) setError("Неверный пароль. Попробуйте ещё раз.");
+      if (reason === 2) setError(t("Неверный пароль. Попробуйте ещё раз."));
     };
     void task.promise
       .then((value) => {
@@ -107,7 +112,7 @@ export function PdfView({ data, target }: { data: string; target: string }) {
       .catch(() => {
         if (!disposed) {
           setError(
-            "Не удалось открыть PDF. Файл повреждён или защищён паролем.",
+            t("Не удалось открыть PDF. Файл повреждён или защищён паролем."),
           );
           setBusy(false);
         }
@@ -149,7 +154,7 @@ export function PdfView({ data, target }: { data: string; target: string }) {
       })().catch(() => {
         if (active) {
           setSearching(false);
-          setError("Не удалось выполнить поиск в PDF.");
+          setError(t("Не удалось выполнить поиск в PDF."));
         }
       });
     }, 250);
@@ -211,7 +216,9 @@ export function PdfView({ data, target }: { data: string; target: string }) {
             )
             .map((note) => ({
               id: String(note.id),
-              title: String(note.titleObj?.str || note.subtype || "Примечание"),
+              title: String(
+                note.titleObj?.str || note.subtype || t("Примечание"),
+              ),
               text: String(note.contentsObj?.str || ""),
             })),
         );
@@ -219,7 +226,7 @@ export function PdfView({ data, target }: { data: string; target: string }) {
       })
       .catch(() => {
         if (!disposed) {
-          setError("Не удалось показать страницу PDF.");
+          setError(t("Не удалось показать страницу PDF."));
           setBusy(false);
         }
       });
@@ -237,7 +244,7 @@ export function PdfView({ data, target }: { data: string; target: string }) {
           disabled={!pdf || page <= 1 || busy}
           onClick={() => setPage(page - 1)}
         >
-          Предыдущая страница
+          {t(" Предыдущая страница ")}
         </button>
         <span aria-live="polite">
           {pdf ? `${page} / ${pdf.numPages}` : "PDF"}
@@ -247,7 +254,7 @@ export function PdfView({ data, target }: { data: string; target: string }) {
           disabled={!pdf || page >= pdf.numPages || busy}
           onClick={() => setPage(page + 1)}
         >
-          Следующая страница
+          {t(" Следующая страница ")}
         </button>
       </span>
       {passwordNeeded && (
@@ -261,7 +268,7 @@ export function PdfView({ data, target }: { data: string; target: string }) {
           }}
         >
           <label>
-            Пароль PDF{" "}
+            {t(" Пароль PDF")}{" "}
             <input
               type="password"
               autoComplete="off"
@@ -269,14 +276,14 @@ export function PdfView({ data, target }: { data: string; target: string }) {
               onChange={(event) => setPassword(event.target.value)}
             />
           </label>
-          <button type="submit">Открыть PDF</button>
+          <button type="submit">{t("Открыть PDF")}</button>
         </form>
       )}
       {pdf && (
         <span className="media-tools">
           <input
-            aria-label="Поиск в PDF"
-            placeholder="Найти в PDF…"
+            aria-label={t("Поиск в PDF")}
+            placeholder={t("Найти в PDF\u2026")}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -284,8 +291,8 @@ export function PdfView({ data, target }: { data: string; target: string }) {
             <>
               <span role="status">
                 {searching
-                  ? "Поиск…"
-                  : `Страниц с совпадениями: ${matches.length}`}
+                  ? t("Поиск\u2026")
+                  : t`Страниц с совпадениями: ${matches.length}`}
               </span>
               <button
                 type="button"
@@ -294,27 +301,30 @@ export function PdfView({ data, target }: { data: string; target: string }) {
                   setPage(matches.find((index) => index > page) ?? matches[0])
                 }
               >
-                Следующее совпадение
+                {t(" Следующее совпадение ")}
               </button>
             </>
           )}
         </span>
       )}
-      {error && <span role="alert">{error}</span>}
-      {busy && <span role="status">Подготовка страницы…</span>}
+      {error && <span role="alert">{t(error)}</span>}
+      {busy && <span role="status">{t("Подготовка страницы\u2026")}</span>}
       <span
         ref={pageSurface}
         className="pdf-pages"
         style={{ maxHeight: height }}
       >
         <span className="pdf-sheet" style={size}>
-          <canvas ref={canvas} aria-label={`Страница PDF ${page}`} />
+          <canvas ref={canvas} aria-label={t`Страница PDF ${page}`} />
           <span ref={textSurface} className="textLayer" />
         </span>
       </span>
       {!!annotations.length && (
         <details>
-          <summary>Аннотации страницы ({annotations.length})</summary>
+          <summary>
+            {t("Аннотации страницы (")}
+            {annotations.length})
+          </summary>
           {annotations.map((note) => (
             <span className="pdf-note" key={note.id}>
               <strong>{note.title}</strong>

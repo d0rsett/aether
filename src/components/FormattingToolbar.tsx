@@ -1,3 +1,4 @@
+import { t, useLocale } from "../i18n";
 import {
   Bold,
   Italic,
@@ -11,7 +12,6 @@ import {
   Files,
 } from "lucide-react";
 import type { FormatCommand } from "../editor/enhancements";
-
 const groups = [
   {
     label: "Начертание",
@@ -35,7 +35,6 @@ const groups = [
     items: [{ type: "link", label: "Wiki-ссылка", icon: Link2 }],
   },
 ] as const;
-
 export function FormattingToolbar({
   disabled,
   onFormat,
@@ -49,13 +48,18 @@ export function FormattingToolbar({
   onTemplates?: () => void;
   active?: FormatCommand[];
 }) {
+  useLocale();
   return (
-    <div className="format-toolbar" role="toolbar" aria-label="Форматирование">
+    <div
+      className="format-toolbar"
+      role="toolbar"
+      aria-label={t("Форматирование")}
+    >
       {groups.map((group, index) => (
         <div
           className={`format-group${index === groups.length - 1 ? " format-tail" : ""}`}
           role="group"
-          aria-label={group.label}
+          aria-label={t(group.label)}
           key={group.label}
         >
           {group.items.map((item) => (
@@ -63,21 +67,22 @@ export function FormattingToolbar({
               key={item.type}
               disabled={disabled}
               data-tooltip={
-                item.label + ("shortcut" in item ? ` · ${item.shortcut}` : "")
+                t(item.label) +
+                ("shortcut" in item ? ` · ${item.shortcut}` : "")
               }
-              aria-label={item.label}
+              aria-label={t(item.label)}
               aria-pressed={active.includes(item.type)}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => onFormat(item.type)}
             >
               <item.icon size={17} strokeWidth={1.8} />
-              {item.type === "link" && <span>Ссылка</span>}
+              {item.type === "link" && <span>{t("Ссылка")}</span>}
             </button>
           ))}
           {index === groups.length - 1 && (
             <button
-              aria-label="Вставить шаблон"
-              data-tooltip="Вставить шаблон"
+              aria-label={t("Вставить шаблон")}
+              data-tooltip={t("Вставить шаблон")}
               disabled={disabled}
               onMouseDown={(event) => event.preventDefault()}
               onClick={onTemplates}
@@ -88,8 +93,8 @@ export function FormattingToolbar({
           {index === groups.length - 1 && (
             <button
               className="format-close"
-              aria-label="Скрыть панель форматирования"
-              data-tooltip="Скрыть панель форматирования"
+              aria-label={t("Скрыть панель форматирования")}
+              data-tooltip={t("Скрыть панель форматирования")}
               onClick={onClose}
             >
               <X size={15} />

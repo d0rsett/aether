@@ -1,11 +1,27 @@
-# Сложные блоки Live Preview
+# Live Preview internals
 
-Расширение CodeMirror получает инертное дерево существующего Rust renderer, включая UTF-16 диапазоны нормализованного документа. Markdown не разбирается новым собственным парсером. Tables, Mermaid, display math и отдельные изображения заменяются block widgets; inline math/images — inline widgets. Source Mode не получает эти decorations.
+[Русский](live-blocks.ru.md) · [Documentation](README.md) · [Project](../README.md)
 
-StateField владеет диапазонами и block decorations (ViewPlugin не должен менять вертикальную структуру документа). При правке неизменённые диапазоны отображаются через ChangeDesc; затронутые блоки сразу возвращаются в исходный Markdown. После паузы строится новый preview из текущего Text snapshot. Устаревший IPC-ответ игнорируется, включая ответ после выключения режима/закрытия вкладки. Создание widgets происходит только для отображаемого CodeMirror диапазона; скрытые вкладки не запрашивают рендеринг.
+## Shared rendering
 
-Парсинг отложен на 160 мс после последней правки. Widget identity сравнивает содержание и тему, а не абсолютные позиции; сдвиг неизменённого блока не требует его перемонтирования. Кнопка редактирования вычисляет актуальную позицию через view.posAtDOM и текущие spans. У block widget нет внешних вертикальных margin: иначе CodeMirror неверно измеряет высоту и адресует щелчки/клавиатурные переходы. Расстояния между блоками задают исходные пустые строки и внутренние отступы.
+The shared Rust Markdown parser supplies rich nodes and UTF-16 source ranges. CodeMirror StateFields own block decorations; ViewPlugins do not change vertical document structure. Source mode omits rich decorations. Reading and widgets reuse rendering components and the same resource restrictions.
 
-Вложенные многострочные блоки с префиксами списка/цитаты, которые нельзя заменить целыми строками, остаются исходным Markdown. Отдельные формулы и изображения внутри обычного абзаца поддерживаются inline. Встраивание содержимого других заметок и редактирование ячеек таблицы в представлении остаются отдельной работой.
+Unchanged ranges map through edits; changed blocks reveal source while a debounced parse of the current snapshot is pending. Stale replies after edits, mode changes, vault changes or destruction are ignored. Hidden tabs do not request unnecessary renders.
 
-Попадание курсора/выделения в строку блока или кнопка «Изменить» раскрывают исходник без изменения текста. Все изменения остаются обычными транзакциями CodeMirror, Undo не сбрасывается. Виджеты используют общий React renderer чтения и те же scoped images, KaTeX trust:false и Mermaid sandbox. ResizeObserver запрашивает измерение высоты при асинхронной загрузке; destroy отключает observers и React roots. Theme и vault/path входят в идентичность preview.
+## Editing and identity
+
+Widget identity includes content/theme/context rather than absolute offsets. Table and property edits validate expected source and use mapped transactions; they preserve selection, undo, line endings and unrelated body edits. Callout tables keep nested source ranges and focused React roots through editing and undo. Ambiguous prefix structures remain in Source.
+
+There must be no external vertical margins on block widgets: CodeMirror measures their height and uses it for caret/selection coordinates. Use internal padding or source blank lines. Asynchronous media height changes request measurement. Destroy handlers release React roots, subscriptions, observers, Blob URLs and pending work.
+
+## Rich content and current buffers
+
+Note previews share unsaved open buffers through the preview store. Each embedded note retains its own link origin and bounded recursion chain; embedded tasks do not edit the parent. Link tooltips use a single themed card and a transparent CodeMirror wrapper.
+
+Images/media, passive HTML, KaTeX and Mermaid keep the same security boundary in Live Preview and Reading. Attachment source links remain accessible for editing. Folding maps through edits; heading controls align with the measured first line of heading text.
+
+## Language changes
+
+React surfaces subscribe to the locale store, including independently mounted widget roots. A CodeMirror Compartment reconfigures editor phrases without replacing the document or editor instance. Existing folding/edit controls update their labels and release subscriptions on destruction. User Markdown is not translated.
+
+Verification must cover caret placement, wrapping, scroll, selection, undo and focus—not just successful rendering. See [native tests](native-testing.md).

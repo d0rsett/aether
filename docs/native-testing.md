@@ -1,22 +1,14 @@
-# Native-приёмка MVP и этапа 2
+# Native testing and screenshots
 
-Четвёртый сценарий `native-live-blocks-*`: изображения, таблица, inline/display math и Mermaid внутри CodeMirror, раскрытие формулы кнопкой, ввод, повторный рендер, реальная запись и побайтовая проверка BOM/CRLF, раскрытие таблицы, смена темы и режима с сохранением Undo, выделение всего документа с раскрытием всех исходных блоков. Снимок — `docs/screenshots/live-rich-blocks.png`. При отказе MVP-сценария harness дополнительно прикладывает текст баннеров своего изолированного runtime для диагностики.
+[Русский](native-testing.ru.md) · [Documentation](README.md) · [Project](../README.md)
 
-Добавлен третий сценарий `native-stage3-*`: Reading Mode текущего dirty-буфера, таблицы/выделения, настоящая загрузка локального PNG через IPC, KaTeX, SVG внутри sandboxed Mermaid iframe, инертный raw HTML, отсутствие запросов внешних изображений, переходы по обычным/wiki-ссылкам к heading/block, возврат в CodeMirror с сохранением Undo, Live Preview, автодополнение имени/heading/block и форматирование. Некорректный Mermaid и недоверенный KaTeX URL не скрывают остальной текст. Физическая мышь и пользовательский vault по-прежнему не используются.
+## Isolated Windows runtime
 
-## Контракт тестового окружения
+Native tests use a release build with the opt-in `e2e` feature, a separate application identifier, an explicit test data directory and a dedicated WebView2 profile. Playwright connects through loopback CDP; no extra Chromium download is needed. Ordinary builds do not enable test data overrides.
 
-`npm run build:e2e` собирает отдельный Release-бинарник с Cargo feature `e2e` в `src-tauri/target/e2e/`. Обычный `Aether Notes.exe` не заменяется. Конфигурация имеет отдельный identifier, скрытое окно и отключённый захват фокуса.
+The harness creates synthetic vaults under ignored `.build-cache/`, operates a hidden child WebView and stops only processes it created. It never types into the user's active application or tests against a personal vault. Artifacts remain for diagnosis; it does not recursively delete test directories.
 
-Только эта сборка понимает `AETHER_E2E_DATA_DIR` — каталог собственного `settings.json`. В обычной сборке этой ветки кода нет. Harness создаёт реальное временное хранилище внутри `.build-cache/native-mvp-*`, заранее записывает путь в тестовые настройки, а затем работает через настоящий интерфейс и IPC. Системный folder-picker уже проверен отдельным smoke-сценарием; здесь обходится только диалог выбора папки, не файловая логика.
-
-Playwright подключается к настоящему WebView2 через локальный CDP — официальный [способ тестирования WebView2](https://playwright.dev/docs/webview2). Дополнительный Chromium не скачивается. Порт выделяется динамически и доступен через loopback. `WEBVIEW2_USER_DATA_FOLDER` указывает на собственный профиль теста; он сохраняется между двумя запусками внутри одного сценария. Никакие настройки окружения ОС глобально не меняются.
-
-Тест не вводит текст в активное окно пользователя: действия выполняет CDP в отдельном WebView. Host-процесс и профиль принадлежат только этому прогону. После завершения останавливается только созданный дочерний процесс. Папка с файлами и отчёт сохраняются для диагностики; рекурсивное удаление не выполняется.
-
-## Запуск на Windows
-
-Из Developer PowerShell:
+## Run
 
 ```powershell
 npm ci
@@ -24,28 +16,26 @@ npm run build:e2e
 npm run test:e2e
 ```
 
-Если зависимости Cargo уже загружены через вспомогательный local registry из README:
+Build again after frontend/host changes so the tests exercise matching code. See [Contributing](../CONTRIBUTING.md#optional-cargo-transport) for the optional offline registry cache. Report: `.build-cache/native-results/report.json`; artifacts: `.build-cache/native-results/artifacts/`.
+
+For a focused localization/editor run:
 
 ```powershell
-$env:AETHER_CARGO_PROXY = '1'
-npm run build:e2e
-npm run test:e2e
+npm run test:e2e -- --grep 'language switching|writing workflows:|editor compatibility:|note properties:'
 ```
 
-Отчёт: `.build-cache/native-results/report.json`; артефакты и снимок: `.build-cache/native-results/artifacts/`.
+The language test verifies the same editor DOM survives switching, user text stays unchanged, undo/redo still works, Save is explicit and language persists across restart. Existing scenarios cover drafts, revisions, rename recovery, navigation, table/property editing, templates and embedded content. Native tests do not benchmark window dragging, FPS or memory.
 
-## Проверяемые сценарии
+## Reproduce documentation screenshots
 
-- Настоящий Release runtime, чтение файлов и вкладки, включая подпапки и кириллицу.
-- Реальное сохранение и проверка байтов CRLF на диске.
-- Создание папки/файла, переименование и отсутствие перезаписи исходного файла по старому пути.
-- Внешнее изменение, отказ сохранять устаревшую ревизию, сохранение копии.
-- Корзина с читаемым оригиналом и запрет выхода за пределы vault.
-- Отмена закрытия при dirty-state, резервирование, остановка host-процесса и повторный запуск с восстановлением вкладок, темы и черновика.
-- Сохранение восстановленного текста в исходный `.md` только по явному действию теста.
-- Второй изолированный сценарий (`native-stage2-*`): переход к форматированному заголовку и `^block` в dirty-буфере без потери Undo, блокировка применения поверх dirty-вкладки, отмена preview без записи, перенос между папками с обновлением ссылок и чистых вкладок, обратная операция с побайтовой проверкой BOM/CRLF, конфликт после preview.
-- Перезапуск с настоящим частично применённым журналом: обнаружение незавершённой операции, отсутствие автоматической записи и восстановление только после нажатия кнопки. Журнал создаётся harness в собственном vault; production fault-injection команд нет.
+After building the test executable:
 
-Щелчок закрытия может завершить host раньше CDP-ответа. Harness допускает потерю ответа только если страница действительно закрыта, затем обязательно проверяет успешный exit code процесса. Все прочие ошибки щелчка остаются ошибками теста.
+```powershell
+$env:AETHER_DOC_SCREENSHOTS = '1'
+npm run test:e2e -- --grep 'documentation screenshots'
+Remove-Item Env:AETHER_DOC_SCREENSHOTS
+```
 
-Результат прогона фиксируется в журнале приёмки только после выполнения. Тесты не являются бенчмарком FPS/RAM и не подтверждают поведение Windows Snap или drag мышью.
+These opt-in captures create separate English/Russian demo vaults, select the actual interface language and save `workspace-dark.png`, `workspace-light.png`, `link-preview.png` and `templates.png` under `docs/screenshots/en/` and `ru/`. They assert that English screens contain no Russian text and original note files remain unchanged. Review both languages and themes visually before publication; screenshots are intentional documentation assets, not personal vault exports.
+
+![English preview capture](screenshots/en/link-preview.png)

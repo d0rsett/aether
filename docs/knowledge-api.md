@@ -1,28 +1,33 @@
-# Этап 2: API и зависимости
+# Knowledge API
 
-Дополнения просмотра: `read_media(vaultId, source, target, wiki)` возвращает `{ mime, data }`, где `data` — base64 локального PDF/аудио/видео. Ядро проверяет путь, сигнатуру и лимит 64 МиБ; команда ничего не записывает. `render_markdown`/`render_note_fragment` сохраняют raw HTML как инертные узлы `literalHtml` для разрешённой frontend-реконструкции, а `target` ячеек таблицы передаёт `left`/`center`/`right` для выравнивания.
+[Русский](knowledge-api.ru.md) · [Documentation](README.md) · [Project](../README.md)
 
-Перед реализацией модулей определён следующий контракт. Markdown-файлы остаются источником истины; SQLite полностью восстанавливается из файлов.
+## Contract and ownership
 
-| Модуль     | Контракт                                                                                                                                     | Зависимости                                                       |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `markdown` | `parse(content) -> ParsedNote {title, text, tags, properties, headings, links, warning}`; wiki-ссылки содержат alias, anchor, embedded, line | pulldown-cmark (CommonMark/GFM/wiki), serde_yaml_ng (frontmatter) |
-| `links`    | `resolve(connection, source, target) -> Resolution {status, path, candidates, createPath}`                                                   | SQLite metadata; Unicode case-folded keys вычисляются Rust        |
-| `indexing` | `open(db_path)`, `scan(vault)`, `update(vault,path)`, `remove(path)`, `inspect(path)`, `search(query,filters,limit,offset)`                  | rusqlite + bundled SQLite/FTS5, walkdir                           |
-| `watching` | владение watcher и фоновым потоком, debounce событий, отмена при смене vault; события статуса и изменений                                    | notify, std channels, существующий blocking runtime Tauri         |
+`src/services/api.ts` defines typed frontend calls; Rust commands in `src-tauri/src/lib.rs` validate the active vault and delegate filesystem/index rules to `aether-core`. Markdown is authoritative; SQLite FTS5 is rebuildable. Responses from stale note/vault requests must be ignored.
 
-IPC: `search_notes`, `inspect_note`, `resolve_link`, `index_status`. Все команды принимают `vaultId`, проверяют активную сессию и выполняются вне UI-потока. Результаты поиска ограничены 50 строками; backlinks — 100. Frontend отбрасывает ответы устаревших запросов.
+| Area         | Calls and behavior                                                                                                                          |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Search/index | `search_notes`, `inspect_note`, `index_status`; bounded results, parameterized filters, background watch refresh                            |
+| Resolution   | `resolve_link`, `link_suggestions`, `locate_anchor`; paths, aliases, heading/block targets and explicit ambiguity                           |
+| Rendering    | `render_markdown`, `render_note_fragment`; current buffer to inert nodes and ranges, no file write                                          |
+| Attachments  | `read_image`, `read_media`; scoped resolution, validated formats and bounded reads                                                          |
+| Properties   | `property_catalog`, `property_types`, `set_property_type`; bounded suggestions, shared types and revision-checked explicit settings updates |
+| Templates    | `template_folder`; Obsidian folder setting with validated fallback                                                                          |
+| Transactions | `preview_rename`, `rename_preview_page`, `apply_rename`, `rename_state`, `undo_rename`; server-owned plans and recoverable journals         |
 
-Для подсказок ссылок добавлен `link_suggestions(vaultId, text) -> {path, alias: string | null}[]` с лимитом 100 вариантов. Он объединяет совпадения путей/имён, YAML-псевдонимов и прежнего поиска по заголовку/тексту. Точные имена и псевдонимы предшествуют частичным совпадениям. Выбор псевдонима вставляет `[[фактический путь|псевдоним]]`; исходные свойства не изменяются.
+See the TypeScript contract and Rust serialization for exact request/response fields. Update both together when changing IPC.
 
-Поиск FTS5 использует Unicode61; русский и английский проверяются тестами. Введённый текст превращается в quoted prefix terms, не исполняется как SQL/произвольный FTS-синтаксис. Фильтры пути, тега и свойства передаются параметрами. Подсветка совпадений возвращается как текстовые маркеры, которые React рендерит через `<mark>`, без HTML injection.
+## Resolution and indexing
 
-Правила wiki resolution: точный путь от корня, затем соседняя заметка, затем единственное совпадение basename во всём vault, затем YAML `aliases` для короткого имени. Для `./`/`../` сначала применяется путь от исходной папки, выход за корень запрещён. При нескольких совпадениях возвращаются кандидаты; произвольный выбор запрещён. `#Раздел` и `#^block-id` отделяются от цели; подпись после `|` не влияет на разрешение. Пустая цель относится к текущей заметке.
+Wiki resolution checks root paths, neighboring notes, unique basenames and then short-name YAML aliases. Explicit relative paths remain relative and may not escape the vault. Display labels do not define identity; heading/block anchors remain separate targets. Multiple matches return candidates.
 
-Индекс использует отдельный файл в app data (в E2E — свой test data). Фоновая первичная индексация не удерживает mutex файловых команд. Сохранение обновляет одну заметку; назначения индексированных wiki-ссылок пересчитываются с учётом добавленных и удалённых псевдонимов. Watcher не записывает исходные заметки и не подменяет dirty-буфер внешними изменениями.
+Search uses Unicode61 with quoted prefix terms; input is not arbitrary SQL or FTS syntax. Path/tag/property filters are bound parameters. Highlight markers become React text/mark elements. Search pages are bounded; link suggestions carry actual paths and optional display aliases.
 
-Контракт реализованного preview/rollback и навигации описан в [stage2-completion.md](stage2-completion.md). Новые IPC: `preview_rename`, `rename_preview_page`, `apply_rename`, `rename_state`, `undo_rename`, `locate_anchor`. Прямая команда переименования без предпросмотра удалена из IPC. После успешного применения/отмены индекс затронутых путей обновляется до разблокировки интерфейса; ошибка кеша не отменяет уже выполненную файловую операцию.
+The watcher refreshes index/tree data without saving notes or replacing dirty buffers. Rename planning uses actual files rather than trusting the cache. Index failures do not roll back a completed filesystem transaction.
 
-`template_folder(vaultId)` возвращает настроенную папку из `.obsidian/templates.json` (пустая строка означает корень; при отсутствии настройки — `Templates`). Файл настроек ограничен 64 КиБ; путь проходит resolver активного хранилища.
+## Bounds and desktop integration
 
-`property_catalog(vaultId)` возвращает `Record<string, string[]>` с подсказками имён и простых значений из сохранённого YAML. Обход ограничен 1000 папок/заметок, заголовками до 64 КиБ, 500 именами и 50 значениями на имя. Ссылки YAML не раскрываются; файловая система не изменяется.
+Local raster reads are capped at 8 MiB; PDF/audio/video reads at 64 MiB with format checks. The property catalog bounds traversal, header sizes, names and values; YAML aliases are not expanded. Template settings are bounded and vault scoped.
+
+Folder-picker commands accept optional `language: "ru" | "en"`; omitted language retains Russian compatibility for existing callers. Error details stay structured; supported user-facing messages are translated at the frontend boundary. No general filesystem/shell API is exposed to the renderer.

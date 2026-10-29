@@ -1,7 +1,7 @@
+import { t, useLocale } from "../i18n";
 import { useId, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { DialogSurface } from "./DialogSurface";
-
 export function Modal({
   title,
   onClose,
@@ -13,6 +13,7 @@ export function Modal({
   children: ReactNode;
   className?: string;
 }) {
+  useLocale();
   const titleId = useId();
   return (
     <DialogSurface
@@ -21,10 +22,10 @@ export function Modal({
       onClose={onClose}
     >
       <div className="modal-header">
-        <h2 id={titleId}>{title}</h2>
+        <h2 id={titleId}>{t(title)}</h2>
         <button
           className="icon-button"
-          aria-label="Закрыть диалог"
+          aria-label={t("Закрыть диалог")}
           type="button"
           onClick={onClose}
         >

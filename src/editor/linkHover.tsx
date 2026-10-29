@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import {
   closeHoverTooltips,
   hasHoverTooltips,
@@ -9,7 +10,6 @@ import { createRoot } from "react-dom/client";
 import { NoteEmbed } from "../reading/NoteEmbed";
 import { api, type RenderNode } from "../services/api";
 import type { RenderContext } from "../reading/ReadingView";
-
 export function noteLinkHover(context: RenderContext) {
   let previousDoc: object | undefined;
   let parsed: ReturnType<typeof api.renderMarkdown> | undefined;
@@ -74,7 +74,7 @@ export function noteLinkHover(context: RenderContext) {
             const dom = window.document.createElement("div");
             dom.className = "note-hover";
             dom.setAttribute("role", "region");
-            dom.setAttribute("aria-label", "Предпросмотр ссылки");
+            dom.setAttribute("aria-label", t("Предпросмотр ссылки"));
             const root = createRoot(dom);
             root.render(
               <NoteEmbed

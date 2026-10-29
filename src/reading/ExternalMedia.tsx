@@ -1,3 +1,4 @@
+import { t, useLocale } from "../i18n";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -11,7 +12,6 @@ import { api, errorMessage } from "../services/api";
 import type { RenderContext } from "./ReadingView";
 import { LoadedMedia } from "./LocalMedia";
 import "../styles/external-media.css";
-
 export type ExternalKind = "image" | "audio" | "video" | "pdf";
 export function externalKind(target: string): ExternalKind {
   let path = "";
@@ -25,7 +25,6 @@ export function externalKind(target: string): ExternalKind {
   if (/\.(mp4|webm|mov|mkv|ogv|3gp)$/.test(path)) return "video";
   return "image";
 }
-
 export function ExternalMedia({
   target,
   alt,
@@ -37,11 +36,13 @@ export function ExternalMedia({
   kind: ExternalKind;
   context: RenderContext;
 }) {
+  useLocale();
   const [requested, setRequested] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  const [result, setResult] = useState<{ mime: string; data: string } | null>(
-    null,
-  );
+  const [result, setResult] = useState<{
+    mime: string;
+    data: string;
+  } | null>(null);
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState(false);
   const imageButton = useRef<HTMLButtonElement>(null);
@@ -49,13 +50,13 @@ export function ExternalMedia({
     try {
       return new URL(target).hostname;
     } catch {
-      return "Внешний источник";
+      return t("Внешний источник");
     }
   })();
   const parts = alt.split("|");
   const dimensions = /^(\d+)(?:x(\d+))?$/.exec(parts.at(-1)?.trim() || "");
   const description = (dimensions ? parts.slice(0, -1).join("|") : alt).trim();
-  const label = description || `Изображение: ${name}`;
+  const label = description || t`Изображение: ${name}`;
   const src =
     result && kind === "image"
       ? `data:${result.mime};base64,${result.data}`
@@ -83,20 +84,20 @@ export function ExternalMedia({
         <ImageIcon size={16} aria-hidden="true" />
         <span className="external-origin">
           {kind === "image"
-            ? "Изображение"
+            ? t("Изображение")
             : kind === "pdf"
               ? "PDF"
               : kind === "audio"
-                ? "Аудио"
-                : "Видео"}{" "}
+                ? t("Аудио")
+                : t("Видео")}{" "}
           · {name}
         </span>
         {requested && (
           <button
             type="button"
             className="external-action-icon"
-            aria-label="Скрыть внешнее вложение"
-            title="Скрыть"
+            aria-label={t("Скрыть внешнее вложение")}
+            title={t("Скрыть")}
             onClick={() => {
               setExpanded(false);
               setRequested(false);
@@ -112,20 +113,20 @@ export function ExternalMedia({
           className="external-load"
           onClick={() => setRequested(true)}
         >
-          Загрузить{" "}
+          {t(" Загрузить")}{" "}
           {kind === "image"
-            ? "изображение"
+            ? t("изображение")
             : kind === "audio"
-              ? "аудио"
+              ? t("аудио")
               : kind === "video"
-                ? "видео"
+                ? t("видео")
                 : "PDF"}
         </button>
       ) : error ? (
         <span role="alert" className="external-error">
-          {error}{" "}
+          {t(error)}{" "}
           <button type="button" onClick={() => setAttempt((n) => n + 1)}>
-            Повторить
+            {t(" Повторить ")}
           </button>
         </span>
       ) : result ? (
@@ -135,7 +136,7 @@ export function ExternalMedia({
               ref={imageButton}
               type="button"
               className="image-open"
-              aria-label={`Открыть изображение: ${label}`}
+              aria-label={t`Открыть изображение: ${label}`}
               onClick={() => setExpanded(true)}
             >
               <img
@@ -175,13 +176,13 @@ export function ExternalMedia({
         )
       ) : (
         <span role="status" className="external-status">
-          <LoaderCircle size={15} /> Загрузка…
+          <LoaderCircle size={15} />
+          {t(" Загрузка\u2026 ")}
         </span>
       )}
     </span>
   );
 }
-
 // A remote page is never mounted as an iframe in the application. Opening it is
 // an explicit navigation in the user's browser, separate from media downloads.
 export function ExternalPage({
@@ -191,18 +192,22 @@ export function ExternalPage({
   target: string;
   context: RenderContext;
 }) {
+  useLocale();
   const host = (() => {
     try {
       return new URL(target).hostname;
     } catch {
-      return "Внешняя страница";
+      return t("Внешняя страница");
     }
   })();
   return (
     <span className="external-embed external-page">
       <span className="external-embed-header">
         <ExternalLink size={16} aria-hidden="true" />
-        <span className="external-origin">Внешняя страница · {host}</span>
+        <span className="external-origin">
+          {t("Внешняя страница · ")}
+          {host}
+        </span>
       </span>
       <button
         type="button"
@@ -213,7 +218,7 @@ export function ExternalPage({
             .catch((reason) => context.onError(errorMessage(reason)));
         }}
       >
-        Открыть в браузере
+        {t(" Открыть в браузере ")}
       </button>
     </span>
   );

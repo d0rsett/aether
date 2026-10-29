@@ -1,3 +1,4 @@
+import { t, useLocale } from "../i18n";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import {
   ChevronDown,
@@ -10,7 +11,6 @@ import {
 } from "lucide-react";
 import { api, errorMessage, type FileEntry } from "../services/api";
 import { imageDragType, imageExtension } from "../services/images";
-
 interface Props {
   vaultId: string;
   path?: string;
@@ -32,7 +32,6 @@ interface Props {
   onCancelRename?: () => void;
   onError?: (message: string) => void;
 }
-
 export function FileTree({
   vaultId,
   path = "",
@@ -50,6 +49,7 @@ export function FileTree({
   onCancelRename,
   onError,
 }: Props) {
+  useLocale();
   const [entries, setEntries] = useState<FileEntry[] | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -72,18 +72,21 @@ export function FileTree({
   if (error)
     return (
       <p className="tree-error" role="alert">
-        {error}
+        {t(error)}
       </p>
     );
   if (!entries)
     return (
       <div className="tree-loading">
-        <LoaderCircle size={14} className="spin" /> Загрузка…
+        <LoaderCircle size={14} className="spin" />
+        {t(" Загрузка\u2026 ")}
       </div>
     );
   if (!entries.length)
     return (
-      <p className="tree-empty">{path ? "Папка пуста" : "Пока нет заметок"}</p>
+      <p className="tree-empty">
+        {path ? t("Папка пуста") : t("Пока нет заметок")}
+      </p>
     );
   return (
     <ul className="file-tree">
@@ -112,11 +115,13 @@ export function FileTree({
     </ul>
   );
 }
-
 function TreeEntry({
   entry,
   ...props
-}: Omit<Props, "path"> & { entry: FileEntry }) {
+}: Omit<Props, "path"> & {
+  entry: FileEntry;
+}) {
+  useLocale();
   const [expanded, setExpanded] = useState(false);
   const [over, setOver] = useState(false);
   const imageType = !entry.isDirectory ? imageExtension(entry.path) : null;
@@ -252,14 +257,16 @@ function TreeEntry({
     </li>
   );
 }
-
 function EntryNameEditor({
   entry,
   busy,
   onRename,
   onCancelRename,
   onError,
-}: Omit<Props, "path"> & { entry: FileEntry }) {
+}: Omit<Props, "path"> & {
+  entry: FileEntry;
+}) {
+  useLocale();
   const original = entry.isDirectory
     ? entry.name
     : entry.name.replace(/\.(md|markdown)$/i, "");
@@ -282,7 +289,7 @@ function EntryNameEditor({
       return;
     }
     if (!name.trim() || /[\\/]/.test(name)) {
-      onError?.("Введите имя без полного пути и разделителей папок.");
+      onError?.(t("Введите имя без полного пути и разделителей папок."));
       return;
     }
     pending.current = true;
@@ -299,7 +306,7 @@ function EntryNameEditor({
         ref={input}
         value={name}
         disabled={busy}
-        aria-label={entry.isDirectory ? "Имя папки" : "Имя файла"}
+        aria-label={entry.isDirectory ? t("Имя папки") : t("Имя файла")}
         size={Math.min(32, Math.max(16, name.length + 1))}
         onChange={(event) => setName(event.target.value)}
         onBlur={commit}

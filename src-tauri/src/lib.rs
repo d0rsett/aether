@@ -286,17 +286,29 @@ async fn restore_vault(state: State<'_, AppState>) -> Result<Option<VaultInfo>> 
     .await
 }
 
+#[derive(serde::Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+enum InterfaceLanguage {
+    #[default]
+    Ru,
+    En,
+}
+
 #[tauri::command]
 async fn choose_vault(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
+    language: Option<InterfaceLanguage>,
 ) -> Result<Option<VaultInfo>> {
     let state = state.inner().clone();
     blocking(move || {
         let selected = app
             .dialog()
             .file()
-            .set_title("Открыть хранилище Aether")
+            .set_title(match language.unwrap_or_default() {
+                InterfaceLanguage::Ru => "Открыть хранилище Aether",
+                InterfaceLanguage::En => "Open Aether vault",
+            })
             .blocking_pick_folder();
         selected
             .map(|path| {
@@ -348,11 +360,17 @@ async fn switch_vault(state: State<'_, AppState>, vault_id: String) -> Result<Va
     .await
 }
 #[tauri::command]
-async fn choose_vault_parent(app: tauri::AppHandle) -> Result<Option<String>> {
+async fn choose_vault_parent(
+    app: tauri::AppHandle,
+    language: Option<InterfaceLanguage>,
+) -> Result<Option<String>> {
     blocking(move || {
         app.dialog()
             .file()
-            .set_title("Выберите папку для нового хранилища")
+            .set_title(match language.unwrap_or_default() {
+                InterfaceLanguage::Ru => "Выберите папку для нового хранилища",
+                InterfaceLanguage::En => "Choose a folder for the new vault",
+            })
             .blocking_pick_folder()
             .map(|path| {
                 path.into_path()

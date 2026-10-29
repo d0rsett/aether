@@ -1,3 +1,4 @@
+import { t, subscribeLocale } from "../i18n";
 import { createRoot, type Root } from "react-dom/client";
 import { undo, redo } from "@codemirror/commands";
 import {
@@ -22,7 +23,6 @@ import { renderNode } from "../reading/ReadingView";
 import { toggleTask } from "./tasks";
 import type { NotePreviews } from "../services/notePreviews";
 import { parseTable } from "./tables";
-
 interface Config {
   previews?: NotePreviews;
   onNavigate?: (source: string, target: string) => void;
@@ -80,7 +80,6 @@ function fingerprint(node: RenderNode): string {
     ["from", "to", "line", "endLine"].includes(key) ? undefined : value,
   );
 }
-
 export function collectRichSpans(nodes: RenderNode[], doc: Text): RichSpan[] {
   const spans: RichSpan[] = [];
   const add = (node: RenderNode, range = node, forceBlock = false) => {
@@ -173,7 +172,6 @@ export function collectRichSpans(nodes: RenderNode[], doc: Text): RichSpan[] {
       return result;
     }, []);
 }
-
 function active(state: EditorState, span: RichSpan): boolean {
   return state.selection.ranges.some(
     (range) =>
@@ -188,6 +186,7 @@ const mounted = new WeakMap<
     observer: ResizeObserver | null;
     attachmentIdentity: string | null;
     refreshTable?: (span: RichSpan) => void;
+    releaseLocale?: () => void;
   }
 >();
 class RichWidget extends WidgetType {
@@ -246,25 +245,29 @@ class RichWidget extends WidgetType {
     if (attachment(this.span.node)) dom.dataset.sourceVisible = "true";
     const label =
       this.span.node.kind === "table"
-        ? "таблицу"
+        ? t("таблицу")
         : this.span.node.kind === "callout"
-          ? "выноску"
+          ? t("выноску")
           : this.span.node.kind === "comment"
-            ? "комментарий"
+            ? t("комментарий")
             : this.span.node.kind === "footnote"
-              ? "сноску"
+              ? t("сноску")
               : ["literalHtml", "paragraph"].includes(this.span.node.kind)
-                ? "HTML-блок"
+                ? t("HTML-блок")
                 : this.span.node.kind === "codeBlock"
-                  ? "диаграмму"
+                  ? t("диаграмму")
                   : this.span.node.kind === "math"
-                    ? "формулу"
-                    : "блок";
+                    ? t("формулу")
+                    : t("блок");
     const edit = document.createElement("button");
     edit.type = "button";
     edit.className = "live-edit-source";
-    edit.textContent = "Изменить";
-    edit.setAttribute("aria-label", `Изменить ${label}`);
+    edit.textContent = t("Изменить");
+    edit.setAttribute("aria-label", t`Изменить ${label}`);
+    const releaseLocale = subscribeLocale(() => {
+      edit.textContent = t("Изменить");
+      edit.setAttribute("aria-label", t`Изменить ${t(label)}`);
+    });
     const reveal = () => {
       // Decorations may have moved since this widget was created. Ask the current view.
       const pos = view.posAtDOM(dom);
@@ -312,7 +315,11 @@ class RichWidget extends WidgetType {
     let blockFrom = this.span.from;
     const nested = new Map<
       RenderNode,
-      { from: number; to: number; source: string }
+      {
+        from: number;
+        to: number;
+        source: string;
+      }
     >();
     const prepareNested = (node: RenderNode) => {
       nested.clear();
@@ -423,7 +430,7 @@ class RichWidget extends WidgetType {
                 ],
               });
               view.focus();
-            } else this.config.onError("Сноска не найдена в заметке.");
+            } else this.config.onError(t("Сноска не найдена в заметке."));
           },
           table:
             this.span.node.kind === "table"
@@ -492,6 +499,7 @@ class RichWidget extends WidgetType {
           });
     observer?.observe(dom);
     mounted.set(dom, {
+      releaseLocale,
       root,
       observer,
       attachmentIdentity: this.attachmentIdentity(),
@@ -571,6 +579,7 @@ class RichWidget extends WidgetType {
     const entry = mounted.get(dom);
     if (!entry) return;
     entry.observer?.disconnect();
+    entry.releaseLocale?.();
     mounted.delete(dom);
     queueMicrotask(() => entry.root.unmount());
   }
@@ -668,7 +677,6 @@ export const richPreviewState = StateField.define<Preview>({
   provide: (field) =>
     EditorView.decorations.from(field, (value) => value.decorations),
 });
-
 const loader = ViewPlugin.fromClass(
   class {
     private timer: ReturnType<typeof setTimeout> | undefined;

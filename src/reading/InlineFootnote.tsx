@@ -1,5 +1,5 @@
+import { t, useLocale } from "../i18n";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-
 export function InlineFootnote({
   number,
   children,
@@ -7,6 +7,7 @@ export function InlineFootnote({
   number: number;
   children: ReactNode;
 }) {
+  useLocale();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLSpanElement>(null);
   const button = useRef<HTMLButtonElement>(null);
@@ -36,7 +37,7 @@ export function InlineFootnote({
         <button
           ref={button}
           type="button"
-          aria-label={`Показать встроенную сноску ${number}`}
+          aria-label={t`Показать встроенную сноску ${number}`}
           aria-expanded={open}
           onClick={() => setOpen(!open)}
         >
