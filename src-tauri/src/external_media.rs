@@ -10,6 +10,18 @@ const MEDIA_LIMIT: usize = 64 * 1024 * 1024;
 const MAX_REDIRECTS: usize = 4;
 static DNS_PENDING: AtomicUsize = AtomicUsize::new(0);
 
+fn try_reserve_dns_slot(pending: &AtomicUsize) -> bool {
+    let mut count = pending.load(Ordering::Relaxed);
+    while count < 8 {
+        match pending.compare_exchange_weak(count, count + 1, Ordering::Relaxed, Ordering::Relaxed)
+        {
+            Ok(_) => return true,
+            Err(actual) => count = actual,
+        }
+    }
+    false
+}
+
 fn bad_url() -> Error {
     Error::InvalidPath(
         "Для загрузки доступен только публичный HTTP(S)-адрес без учётных данных.".into(),
@@ -72,12 +84,7 @@ fn resolve(url: &Url) -> Result<SocketAddr> {
             Err(bad_url())
         };
     }
-    if DNS_PENDING
-        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
-            (value < 8).then_some(value + 1)
-        })
-        .is_err()
-    {
+    if !try_reserve_dns_slot(&DNS_PENDING) {
         return Err(Error::Io(
             "Слишком много одновременных запросов к серверам.".into(),
         ));
@@ -386,6 +393,31 @@ pub fn fetch(raw: &str, kind: &str) -> Result<attachments::Media> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn concurrent_dns_reservations_keep_the_limit_and_recover() {
+        let pending = std::sync::Arc::new(AtomicUsize::new(0));
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(24));
+        let workers: Vec<_> = (0..24)
+            .map(|_| {
+                let pending = pending.clone();
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    try_reserve_dns_slot(&pending)
+                })
+            })
+            .collect();
+        let reserved = workers
+            .into_iter()
+            .map(|worker| usize::from(worker.join().expect("reservation worker")))
+            .sum::<usize>();
+        assert_eq!(reserved, 8);
+        assert_eq!(pending.load(Ordering::Relaxed), 8);
+        assert!(!try_reserve_dns_slot(&pending));
+        pending.fetch_sub(1, Ordering::Relaxed);
+        assert!(try_reserve_dns_slot(&pending));
+        assert_eq!(pending.load(Ordering::Relaxed), 8);
+    }
     #[test]
     fn addresses_and_content_are_checked() {
         for ip in [
