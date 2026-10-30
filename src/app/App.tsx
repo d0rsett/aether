@@ -1,3 +1,4 @@
+import { KnowledgeGraph } from "../components/KnowledgeGraph";
 import { t, useLocale, setLocale } from "../i18n";
 import { Welcome } from "../components/Welcome";
 import { FormattingToolbar } from "../components/FormattingToolbar";
@@ -6,6 +7,7 @@ import { Inspector } from "../components/Inspector";
 import { Titlebar } from "../components/Titlebar";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
+  Waypoints,
   CircleHelp,
   Command,
   FilePlus2,
@@ -138,6 +140,35 @@ export function App() {
     observer.observe(node);
     return () => observer.disconnect();
   }, [left]);
+  const [graph, setGraph] = useState(false);
+  const [graphTab, setGraphTab] = useState(false);
+  const closeGraph = () => {
+    setGraph(false);
+    setGraphTab(false);
+  };
+  useEffect(() => {
+    setGraph(false);
+    setGraphTab(false);
+  }, [app.vault?.id]);
+  useEffect(() => {
+    setGraph(false);
+  }, [app.workspace.active]);
+  useEffect(() => {
+    if (!graph) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.code === "KeyW" &&
+        !document.querySelector("dialog[open]")
+      ) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        closeGraph();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [graph]);
   const [palette, setPalette] = useState(false);
   const [templates, setTemplates] = useState(false);
   const [templateCommand, setTemplateCommand] = useState<{
@@ -314,6 +345,15 @@ export function App() {
   };
   const commands = [
     {
+      title: t("Граф связей"),
+      shortcut: "",
+      enabled: !!app.vault,
+      action: () => {
+        setGraphTab(true);
+        setGraph(true);
+      },
+    },
+    {
       title: "Language: English",
       shortcut: "",
       enabled: true,
@@ -418,13 +458,13 @@ export function App() {
     {
       title: t("Новая заметка"),
       shortcut: "Ctrl N",
-      action: () => void app.create(),
+      action: () => void app.createQuick(),
       enabled: !!app.vault,
     },
     {
       title: t("Создать папку"),
       shortcut: "",
-      action: () => void app.create(true),
+      action: () => void app.createFolderQuick(),
       enabled: !!app.vault,
     },
     {
@@ -495,7 +535,7 @@ export function App() {
           ? [
               {
                 label: t("Новая заметка"),
-                run: () => app.create(false, false, entry.path),
+                run: () => app.createQuick(entry.path),
               },
               {
                 label: t("Новая папка"),
@@ -692,17 +732,27 @@ export function App() {
             <Search size={19} />
           </button>
           <button
-            className="rail-button"
-            aria-label={t("Палитра команд")}
-            data-tooltip={t("Команды · Ctrl+P")}
+            className={`rail-button ${graph ? "active" : ""}`}
+            aria-label={t("Граф связей")}
+            aria-pressed={graph}
+            disabled={!app.vault}
+            data-tooltip={t("Граф связей")}
             onClick={() => {
-              setPalette(true);
-              setQuery("");
+              setGraphTab(true);
+              setGraph(true);
             }}
           >
-            <Command size={19} />
+            <Waypoints size={19} />
           </button>
           <div className="rail-bottom">
+            <button
+              className="rail-button"
+              aria-label={t("Справка")}
+              data-tooltip={t("Справка")}
+              onClick={() => setHelp(true)}
+            >
+              <CircleHelp size={18} />
+            </button>
             <button
               className="rail-button"
               aria-label={t("Переключить тему")}
@@ -713,11 +763,14 @@ export function App() {
             </button>
             <button
               className="rail-button"
-              aria-label={t("Справка")}
-              data-tooltip={t("Справка")}
-              onClick={() => setHelp(true)}
+              aria-label={t("Палитра команд")}
+              data-tooltip={t("Команды · Ctrl+P")}
+              onClick={() => {
+                setPalette(true);
+                setQuery("");
+              }}
             >
-              <CircleHelp size={18} />
+              <Command size={19} />
             </button>
           </div>
         </nav>
@@ -736,7 +789,7 @@ export function App() {
                       aria-label={t("Новая заметка")}
                       data-tooltip={t("Новая заметка · Ctrl+N")}
                       disabled={!app.vault || app.busy}
-                      onClick={() => void app.create()}
+                      onClick={() => void app.createQuick()}
                     >
                       <FilePlus2 size={16} />
                     </button>
@@ -852,7 +905,7 @@ export function App() {
                 context.show(event, t("Действия проводника"), [
                   {
                     label: t("Новая заметка"),
-                    run: () => app.create(false, false, ""),
+                    run: () => app.createQuick(),
                   },
                   {
                     label: t("Новая папка"),
@@ -870,7 +923,10 @@ export function App() {
                 <SearchPanel
                   vaultId={app.vault.id}
                   status={knowledge.status}
-                  onOpen={(path) => void app.open(path)}
+                  onOpen={(path) => {
+                    setGraph(false);
+                    void app.open(path);
+                  }}
                   command={searchCommand}
                 />
               ) : app.vault ? (
@@ -885,7 +941,10 @@ export function App() {
                     vaultId={app.vault.id}
                     active={app.workspace.active}
                     refresh={app.refresh}
-                    onOpen={(path) => void app.open(path)}
+                    onOpen={(path) => {
+                      setGraph(false);
+                      void app.open(path);
+                    }}
                     onFolder={app.setFolder}
                     onContext={entryMenu}
                     editPath={app.entryEdit}
@@ -922,281 +981,316 @@ export function App() {
         )}
 
         <main className="main-pane">
-          <WorkspaceTabs app={app} />
-          {app.renameState?.pending && (
-            <div className="banner error" role="alert">
-              <Info size={16} />
-              <span>
-                {t(" Обнаружено незавершённое переименование: ")}
-                {app.renameState.from} → {app.renameState.to}
-                {t(". Затронутые файлы защищены от записи. ")}
-              </span>
-              <button disabled={app.busy} onClick={() => void app.undoRename()}>
-                {t(" Восстановить ")}
-              </button>
-            </div>
-          )}
-          {app.error && (
-            <div className="banner error" role="alert">
-              <Info size={16} />
-              <span>{t(app.error)}</span>
-              {app.active && (
-                <button
-                  onClick={() => void app.create(false, true)}
-                  disabled={app.busy}
-                >
-                  {t(" Сохранить копию ")}
-                </button>
-              )}
-              <button
-                className="icon-button"
-                aria-label={t("Скрыть ошибку")}
-                onClick={() => app.setError("")}
-              >
-                <X size={15} />
-              </button>
-            </div>
-          )}
-          {!desktop && (
-            <div className="banner preview">
-              <Info size={15} />
-              <span>
-                {t(" Предпросмотр интерфейса. Работа с файлами доступна через")}{" "}
-                <code>npm run tauri dev</code>.
-              </span>
+          <WorkspaceTabs
+            app={app}
+            graph={
+              graphTab
+                ? {
+                    active: graph,
+                    onActivate: () => setGraph(true),
+                    onClose: closeGraph,
+                  }
+                : undefined
+            }
+            onActivateNote={() => setGraph(false)}
+          />
+          {graphTab && app.vault && (
+            <div className="graph-tab-content" hidden={!graph} inert={!graph}>
+              <KnowledgeGraph
+                key={app.vault.id}
+                vaultId={app.vault.id}
+                revision={knowledge.status?.revision ?? 0}
+                active={app.active?.path}
+                onClose={closeGraph}
+                onOpen={(path) => {
+                  setGraph(false);
+                  void app.open(path);
+                }}
+              />
             </div>
           )}
 
-          {app.active || app.activeImage ? (
-            <>
-              <NoteHeader
-                app={app}
-                mode={mode}
-                setMode={setMode}
-                formatting={formatting}
-                setFormatting={setFormatting}
-                lineNumbers={lineNumbers}
-                setLineNumbers={setLineNumbers}
-                lineWrapping={lineWrapping}
-                setLineWrapping={setLineWrapping}
-              />
-              {app.active && formatting && mode !== "reading" && (
-                <FormattingToolbar
-                  onTemplates={() => setTemplates(true)}
-                  active={
-                    formatState.path === app.active.path
-                      ? formatState.formats
-                      : []
-                  }
+          <div className="graph-workspace-content" inert={graph}>
+            {app.renameState?.pending && (
+              <div className="banner error" role="alert">
+                <Info size={16} />
+                <span>
+                  {t(" Обнаружено незавершённое переименование: ")}
+                  {app.renameState.from} → {app.renameState.to}
+                  {t(". Затронутые файлы защищены от записи. ")}
+                </span>
+                <button
                   disabled={app.busy}
-                  onFormat={format}
-                  onClose={() => setFormatting(false)}
-                />
-              )}
-              <div className="document-area" inert={app.busy}>
-                <Suspense
-                  fallback={
-                    <div className="tree-loading">
-                      <LoaderCircle size={16} className="spin" />
-                      {t(" Загрузка редактора\u2026 ")}
-                    </div>
-                  }
+                  onClick={() => void app.undoRename()}
                 >
-                  {app.workspace.tabs.map((tab) => (
-                    <div
-                      className="editor-tab-panel"
-                      role="tabpanel"
-                      hidden={tab.path !== app.workspace.active}
-                      key={`${app.vault?.id}:${tab.path}`}
-                    >
-                      {tab.kind === "image" && app.vault ? (
-                        <ImageDocument
-                          vaultId={app.vault.id}
-                          path={tab.path}
-                          onError={app.setError}
-                        />
-                      ) : (
-                        <>
-                          <NoteTitle
-                            focusRequest={
-                              app.titleFocus?.path === tab.path
-                                ? app.titleFocus.id
-                                : undefined
-                            }
+                  {t(" Восстановить ")}
+                </button>
+              </div>
+            )}
+            {app.error && (
+              <div className="banner error" role="alert">
+                <Info size={16} />
+                <span>{t(app.error)}</span>
+                {app.active && (
+                  <button
+                    onClick={() => void app.create(false, true)}
+                    disabled={app.busy}
+                  >
+                    {t(" Сохранить копию ")}
+                  </button>
+                )}
+                <button
+                  className="icon-button"
+                  aria-label={t("Скрыть ошибку")}
+                  onClick={() => app.setError("")}
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            )}
+            {!desktop && (
+              <div className="banner preview">
+                <Info size={15} />
+                <span>
+                  {t(
+                    " Предпросмотр интерфейса. Работа с файлами доступна через",
+                  )}{" "}
+                  <code>npm run tauri dev</code>.
+                </span>
+              </div>
+            )}
+
+            {app.active || app.activeImage ? (
+              <>
+                <NoteHeader
+                  app={app}
+                  mode={mode}
+                  setMode={setMode}
+                  formatting={formatting}
+                  setFormatting={setFormatting}
+                  lineNumbers={lineNumbers}
+                  setLineNumbers={setLineNumbers}
+                  lineWrapping={lineWrapping}
+                  setLineWrapping={setLineWrapping}
+                />
+                {app.active && formatting && mode !== "reading" && (
+                  <FormattingToolbar
+                    onTemplates={() => setTemplates(true)}
+                    active={
+                      formatState.path === app.active.path
+                        ? formatState.formats
+                        : []
+                    }
+                    disabled={app.busy}
+                    onFormat={format}
+                    onClose={() => setFormatting(false)}
+                  />
+                )}
+                <div className="document-area" inert={app.busy}>
+                  <Suspense
+                    fallback={
+                      <div className="tree-loading">
+                        <LoaderCircle size={16} className="spin" />
+                        {t(" Загрузка редактора\u2026 ")}
+                      </div>
+                    }
+                  >
+                    {app.workspace.tabs.map((tab) => (
+                      <div
+                        className="editor-tab-panel"
+                        role="tabpanel"
+                        hidden={tab.path !== app.workspace.active}
+                        key={`${app.vault?.id}:${tab.path}`}
+                      >
+                        {tab.kind === "image" && app.vault ? (
+                          <ImageDocument
+                            vaultId={app.vault.id}
                             path={tab.path}
-                            disabled={app.busy}
-                            rename={app.rename}
                             onError={app.setError}
                           />
-                          <div
-                            className="editor-host"
-                            hidden={mode === "reading"}
-                          >
-                            <MarkdownEditor
-                              templateCommand={
-                                templateCommand?.path === tab.path &&
-                                templateCommand.vaultId === app.vault?.id
-                                  ? templateCommand
-                                  : null
-                              }
-                              propertyHistory={
-                                propertyHistory?.path === tab.path &&
-                                propertyHistory.vaultId === app.vault?.id
-                                  ? propertyHistory
-                                  : null
-                              }
-                              onPropertiesSource={openPropertiesSource}
-                              propertyFocus={
-                                propertyFocus?.path === tab.path &&
-                                propertyFocus.vaultId === app.vault?.id
-                                  ? propertyFocus.id
+                        ) : (
+                          <>
+                            <NoteTitle
+                              focusRequest={
+                                app.titleFocus?.path === tab.path
+                                  ? app.titleFocus.id
                                   : undefined
                               }
-                              propertyCommand={
-                                propertyCommand?.path === tab.path &&
-                                propertyCommand.vaultId === app.vault?.id
-                                  ? propertyCommand
-                                  : null
-                              }
-                              previews={previews}
-                              onNavigate={(source, target) =>
-                                void app.openWiki(source, target)
-                              }
-                              taskCommand={
-                                taskCommand?.path === tab.path &&
-                                taskCommand.vaultId === app.vault?.id
-                                  ? taskCommand
-                                  : null
-                              }
-                              onAttachmentsImported={() =>
-                                app.setRefresh((value) => value + 1)
-                              }
-                              onFormatsChange={(formats) => {
-                                if (
-                                  actionRef.current.workspace.active !==
-                                  tab.path
-                                )
-                                  return;
-                                setFormatState((previous) =>
-                                  previous.path === tab.path &&
-                                  previous.formats.join() === formats.join()
-                                    ? previous
-                                    : { path: tab.path, formats },
-                                );
-                              }}
-                              showLineNumbers={lineNumbers}
-                              lineWrapping={lineWrapping}
-                              visible={
-                                mode !== "reading" &&
-                                tab.path === app.workspace.active
-                              }
-                              theme={theme}
-                              onError={app.setError}
-                              live={mode === "live"}
-                              vaultId={app.vault?.id}
                               path={tab.path}
-                              command={
-                                formatCommand?.path === tab.path
-                                  ? formatCommand
-                                  : null
-                              }
-                              ready={
-                                !app.busy &&
-                                mode !== "reading" &&
-                                tab.path === app.workspace.active
-                              }
-                              navigation={
-                                app.navigation?.path === tab.path
-                                  ? app.navigation
-                                  : null
-                              }
-                              content={tab.content}
-                              onChange={(content) =>
-                                app.dispatch({
-                                  type: "edit",
-                                  path: tab.path,
-                                  content,
-                                })
-                              }
-                              onSave={() => void app.save()}
-                              onWikiLink={(target) =>
-                                void app.openWiki(tab.path, target)
-                              }
+                              disabled={app.busy}
+                              rename={app.rename}
+                              onError={app.setError}
                             />
-                          </div>
-                          {mode === "reading" &&
-                            tab.path === app.workspace.active &&
-                            app.vault && (
-                              <ReadingView
-                                onProperty={changeProperty}
-                                onPropertyHistory={changePropertyHistory}
+                            <div
+                              className="editor-host"
+                              hidden={mode === "reading"}
+                            >
+                              <MarkdownEditor
+                                templateCommand={
+                                  templateCommand?.path === tab.path &&
+                                  templateCommand.vaultId === app.vault?.id
+                                    ? templateCommand
+                                    : null
+                                }
+                                propertyHistory={
+                                  propertyHistory?.path === tab.path &&
+                                  propertyHistory.vaultId === app.vault?.id
+                                    ? propertyHistory
+                                    : null
+                                }
                                 onPropertiesSource={openPropertiesSource}
+                                propertyFocus={
+                                  propertyFocus?.path === tab.path &&
+                                  propertyFocus.vaultId === app.vault?.id
+                                    ? propertyFocus.id
+                                    : undefined
+                                }
+                                propertyCommand={
+                                  propertyCommand?.path === tab.path &&
+                                  propertyCommand.vaultId === app.vault?.id
+                                    ? propertyCommand
+                                    : null
+                                }
                                 previews={previews}
                                 onNavigate={(source, target) =>
                                   void app.openWiki(source, target)
                                 }
-                                onTask={(node, snapshot) =>
-                                  setTaskCommand((previous) => ({
-                                    id: (previous?.id ?? 0) + 1,
-                                    vaultId: app.vault!.id,
-                                    path: tab.path,
-                                    node,
-                                    snapshot,
-                                  }))
+                                taskCommand={
+                                  taskCommand?.path === tab.path &&
+                                  taskCommand.vaultId === app.vault?.id
+                                    ? taskCommand
+                                    : null
+                                }
+                                onAttachmentsImported={() =>
+                                  app.setRefresh((value) => value + 1)
+                                }
+                                onFormatsChange={(formats) => {
+                                  if (
+                                    actionRef.current.workspace.active !==
+                                    tab.path
+                                  )
+                                    return;
+                                  setFormatState((previous) =>
+                                    previous.path === tab.path &&
+                                    previous.formats.join() === formats.join()
+                                      ? previous
+                                      : { path: tab.path, formats },
+                                  );
+                                }}
+                                showLineNumbers={lineNumbers}
+                                lineWrapping={lineWrapping}
+                                visible={
+                                  mode !== "reading" &&
+                                  tab.path === app.workspace.active
                                 }
                                 theme={theme}
-                                vaultId={app.vault.id}
+                                onError={app.setError}
+                                live={mode === "live"}
+                                vaultId={app.vault?.id}
                                 path={tab.path}
-                                content={tab.content}
+                                command={
+                                  formatCommand?.path === tab.path
+                                    ? formatCommand
+                                    : null
+                                }
+                                ready={
+                                  !app.busy &&
+                                  mode !== "reading" &&
+                                  tab.path === app.workspace.active
+                                }
                                 navigation={
                                   app.navigation?.path === tab.path
                                     ? app.navigation
                                     : null
                                 }
-                                onWiki={(target) =>
+                                content={tab.content}
+                                onChange={(content) =>
+                                  app.dispatch({
+                                    type: "edit",
+                                    path: tab.path,
+                                    content,
+                                  })
+                                }
+                                onSave={() => void app.save()}
+                                onWikiLink={(target) =>
                                   void app.openWiki(tab.path, target)
                                 }
-                                onError={app.setError}
                               />
-                            )}
-                        </>
-                      )}
-                    </div>
-                  ))}
-                </Suspense>
+                            </div>
+                            {mode === "reading" &&
+                              tab.path === app.workspace.active &&
+                              app.vault && (
+                                <ReadingView
+                                  onProperty={changeProperty}
+                                  onPropertyHistory={changePropertyHistory}
+                                  onPropertiesSource={openPropertiesSource}
+                                  previews={previews}
+                                  onNavigate={(source, target) =>
+                                    void app.openWiki(source, target)
+                                  }
+                                  onTask={(node, snapshot) =>
+                                    setTaskCommand((previous) => ({
+                                      id: (previous?.id ?? 0) + 1,
+                                      vaultId: app.vault!.id,
+                                      path: tab.path,
+                                      node,
+                                      snapshot,
+                                    }))
+                                  }
+                                  theme={theme}
+                                  vaultId={app.vault.id}
+                                  path={tab.path}
+                                  content={tab.content}
+                                  navigation={
+                                    app.navigation?.path === tab.path
+                                      ? app.navigation
+                                      : null
+                                  }
+                                  onWiki={(target) =>
+                                    void app.openWiki(tab.path, target)
+                                  }
+                                  onError={app.setError}
+                                />
+                              )}
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </Suspense>
+                </div>
+              </>
+            ) : (
+              <Welcome app={app} onHelp={() => setHelp(true)} />
+            )}
+            <footer className="status-bar">
+              <div>
+                {app.busy && <span>{t("Выполняется операция\u2026")}</span>}
+                {app.notice && (
+                  <button
+                    className="status-notice"
+                    data-tooltip={t(app.notice)}
+                    onClick={() => app.setNotice("")}
+                  >
+                    {t(app.notice)}
+                  </button>
+                )}
               </div>
-            </>
-          ) : (
-            <Welcome app={app} onHelp={() => setHelp(true)} />
-          )}
-          <footer className="status-bar">
-            <div>
-              {app.busy && <span>{t("Выполняется операция\u2026")}</span>}
-              {app.notice && (
-                <button
-                  className="status-notice"
-                  data-tooltip={t(app.notice)}
-                  onClick={() => app.setNotice("")}
-                >
-                  {t(app.notice)}
-                </button>
-              )}
-            </div>
-            <div>
-              {app.active && (
-                <>
-                  <span>
-                    {stats.words.toLocaleString(locale)}
-                    {t(" слов")}
-                  </span>
-                  <span>
-                    {stats.chars.toLocaleString(locale)}
-                    {t(" символов")}
-                  </span>
-                </>
-              )}
-            </div>
-          </footer>
+              <div>
+                {app.active && (
+                  <>
+                    <span>
+                      {stats.words.toLocaleString(locale)}
+                      {t(" слов")}
+                    </span>
+                    <span>
+                      {stats.chars.toLocaleString(locale)}
+                      {t(" символов")}
+                    </span>
+                  </>
+                )}
+              </div>
+            </footer>
+          </div>
         </main>
 
         {right && (

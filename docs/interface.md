@@ -37,3 +37,9 @@ Local images, PDF, audio and video have dedicated views. PDF supports text selec
 Ordinary Markdown and attachments stay portable. Aether respects supported Obsidian attachment-folder/link preferences and reads aliases, templates and shared property types. It does not implement Obsidian's plugin runtime, Canvas, Bases, sync or every Markdown extension. Complex YAML and unsupported table structures may require Source; there is no dedicated visual math/diagram editor. Compatibility means preserving usable files, not reproducing every Obsidian screen.
 
 Original notes are saved explicitly. Recovery drafts, rename journals and local trash support recovery but do not replace backups.
+
+## Graph view
+
+Open **Graph view** from the left ribbon or command palette. The graph opens as a separate workspace tab; switching to a note keeps the graph and its controls available. Ctrl+W closes the active graph tab. Drag the canvas to pan, scroll to zoom around the pointer, and drag nodes to rearrange them. Click a node or focus it and press Enter to open its note. Hovering highlights its neighbors; more connected notes have larger nodes. The canvas also supports arrow keys and +/−.
+
+Graph settings offer text/path filtering, orphan visibility, local depth (1–5), labels, node size, link thickness and center/repel/link forces. The graph uses saved indexed note links and the shared resolver, including aliases. It does not include unsaved links, missing targets, attachments or tag nodes. Closing the graph returns to the existing editor without replacing its buffer. Settings currently last for the open graph view.

@@ -622,3 +622,20 @@ it("does not save or trash a folder when confirmation is cancelled", async () =>
   expect(api.save).not.toHaveBeenCalled();
   expect(api.trashDirectory).not.toHaveBeenCalled();
 });
+
+it("creates a note directly inside the requested folder without asking", async () => {
+  const question = vi.fn<Ask>();
+  const { result } = renderHook(() => useWorkspace(question));
+  await waitFor(() => expect(result.current.busy).toBe(false));
+  vi.mocked(api.list).mockResolvedValue([]);
+  vi.mocked(api.create).mockResolvedValue({
+    ...note,
+    path: "Проект/Новая заметка.md",
+    content: "",
+  });
+  await act(async () => result.current.createQuick("Проект"));
+  expect(api.list).toHaveBeenCalledWith(vault.id, "Проект");
+  expect(api.create).toHaveBeenCalledWith(vault.id, "Проект/Новая заметка.md");
+  expect(question).not.toHaveBeenCalled();
+  expect(result.current.active?.path).toBe("Проект/Новая заметка.md");
+});

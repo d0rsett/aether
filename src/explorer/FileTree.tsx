@@ -150,7 +150,7 @@ function TreeEntry({
         <EntryNameEditor entry={entry} {...props} />
       ) : (
         <button
-          className={`tree-item ${props.active === entry.path ? "selected" : ""} ${over && canDrop ? "drop-target" : ""} ${props.dragged === entry.path ? "is-dragging" : ""}`}
+          className={`tree-item ${(props.editPath ?? props.active) === entry.path ? "selected" : ""} ${over && canDrop ? "drop-target" : ""} ${props.dragged === entry.path ? "is-dragging" : ""}`}
           draggable={!entry.isDirectory && !!props.onDrag}
           aria-label={
             !entry.isDirectory

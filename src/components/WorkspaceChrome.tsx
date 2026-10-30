@@ -1,5 +1,6 @@
 import { t, useLocale } from "../i18n";
 import {
+  Waypoints,
   BookOpen,
   Check,
   ChevronDown,
@@ -22,7 +23,11 @@ export type Mode = "source" | "live" | "reading";
 type Controller = ReturnType<typeof useWorkspace>;
 export function WorkspaceTabs({
   app,
+  graph,
+  onActivateNote,
 }: {
+  graph?: { active: boolean; onActivate: () => void; onClose: () => void };
+  onActivateNote?: () => void;
   app: Pick<
     Controller,
     | "workspace"
@@ -82,7 +87,7 @@ export function WorkspaceTabs({
       typeof ResizeObserver !== "undefined" ? new ResizeObserver(reveal) : null;
     observer?.observe(tabs);
     return () => observer?.disconnect();
-  }, [app.workspace.active, app.workspace.tabs.length]);
+  }, [app.workspace.active, app.workspace.tabs.length, graph?.active]);
   return (
     <div className="workspace-tabs">
       <div
@@ -93,7 +98,7 @@ export function WorkspaceTabs({
       >
         {app.workspace.tabs.map((tab) => (
           <div
-            className={`tab ${app.workspace.active === tab.path ? "active" : ""}`}
+            className={`tab ${!graph?.active && app.workspace.active === tab.path ? "active" : ""}`}
             key={tab.path}
             onContextMenu={(event) =>
               context.show(event, t("Действия вкладки"), [
@@ -103,7 +108,10 @@ export function WorkspaceTabs({
                       ? t("Перейти к изображению")
                       : t("Перейти к заметке"),
                   disabled: app.busy,
-                  run: () => app.dispatch({ type: "activate", path: tab.path }),
+                  run: () => {
+                    onActivateNote?.();
+                    app.dispatch({ type: "activate", path: tab.path });
+                  },
                 },
                 {
                   label: t("Переименовать"),
@@ -131,9 +139,14 @@ export function WorkspaceTabs({
           >
             <button
               role="tab"
-              aria-selected={app.workspace.active === tab.path}
+              aria-selected={
+                !graph?.active && app.workspace.active === tab.path
+              }
               disabled={app.busy}
-              onClick={() => app.dispatch({ type: "activate", path: tab.path })}
+              onClick={() => {
+                onActivateNote?.();
+                app.dispatch({ type: "activate", path: tab.path });
+              }}
               data-tooltip={tab.path}
             >
               {tab.kind === "image" ? (
@@ -159,6 +172,25 @@ export function WorkspaceTabs({
             </button>
           </div>
         ))}
+        {graph && (
+          <div className={"tab " + (graph.active ? "active" : "")}>
+            <button
+              role="tab"
+              aria-selected={graph.active}
+              onClick={graph.onActivate}
+            >
+              <Waypoints size={14} />
+              <span className="tab-name">{t("Граф связей")}</span>
+            </button>
+            <button
+              className="tab-close"
+              aria-label={t("Закрыть граф")}
+              onClick={graph.onClose}
+            >
+              <X size={13} />
+            </button>
+          </div>
+        )}
       </div>
       {app.vault && app.workspace.tabs.length > 0 && (
         <button

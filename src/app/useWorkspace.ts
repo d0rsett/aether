@@ -380,16 +380,16 @@ export function useWorkspace(
       else dispatch({ type: "open", note: await api.read(current.id, path) });
       setTitleFocus((previous) => ({ path, id: (previous?.id ?? 0) + 1 }));
     });
-  const createQuick = () =>
+  const createQuick = (parent = "") =>
     task(async () => {
       const current = ref.current.vault;
       if (!current) return;
-      const entries = await api.list(current.id, "");
+      const entries = await api.list(current.id, parent);
       const used = new Set(entries.map((entry) => entry.name.toLowerCase()));
       for (let index = 0; index < 10000; index++) {
         const name = t`Новая заметка${index ? ` ${index}` : ""}.md`;
         if (used.has(name.toLowerCase())) continue;
-        const path = name;
+        const path = (parent ? `${parent}/` : "") + name;
         try {
           const note = await api.create(current.id, path);
           dispatch({ type: "open", note });

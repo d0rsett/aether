@@ -2616,25 +2616,52 @@ async function formatAction(page: Page, label: string) {
     .click();
 }
 async function create(page: Page, path: string, directory = false) {
-  await page
-    .getByRole("button", {
-      name: directory ? "Новая папка" : "Новая заметка",
-      exact: true,
-    })
-    .click();
-  if (directory) {
-    const name = page.getByRole("textbox", { name: "Имя папки" });
-    await name.fill(path);
-    await name.press("Enter");
-    await expect(
-      page.locator(`.tree-item[data-tooltip="${path}"]`),
-    ).toBeVisible();
-    return;
+  await expect(
+    page
+      .locator(".sidebar-toolbar")
+      .getByRole("button", { name: "Новая заметка", exact: true }),
+  ).toBeEnabled();
+  const slash = path.lastIndexOf("/");
+  const parent = slash < 0 ? "" : path.slice(0, slash);
+  if (parent && !directory) {
+    await page
+      .locator('.tree-item[data-tooltip="' + parent + '"]')
+      .click({ button: "right" });
+    await page
+      .getByRole("menuitem", { name: "Новая заметка", exact: true })
+      .click();
+  } else {
+    await page
+      .locator(".sidebar-toolbar")
+      .getByRole("button", {
+        name: directory ? "Новая папка" : "Новая заметка",
+        exact: true,
+      })
+      .click();
   }
-  const dialog = page.locator("dialog[open]");
-  await dialog.getByLabel("Имя и путь").fill(path);
-  await dialog.getByRole("button", { name: "Создать", exact: true }).click();
-  await expect(dialog).toHaveCount(0);
+  const name = page.getByRole("textbox", {
+    name: directory ? "Имя папки" : "Название заметки",
+    exact: true,
+  });
+  if (!directory) await expect(name).toHaveValue(/^Новая заметка/);
+  await name.fill(
+    directory ? path : path.slice(slash + 1).replace(/\.md$/, ""),
+  );
+  await name.press("Enter");
+  if (parent && !directory) {
+    const folder = page.locator('.tree-item[data-tooltip="' + parent + '"]');
+    if ((await folder.getAttribute("aria-expanded")) === "false")
+      await folder.click();
+  }
+  await expect(
+    page.locator('.tree-item[data-tooltip="' + path + '"]'),
+  ).toBeVisible();
+  await expect(page.locator("dialog[open]")).toHaveCount(0);
+  await expect(
+    page
+      .locator(".sidebar-toolbar")
+      .getByRole("button", { name: "Новая заметка", exact: true }),
+  ).toBeEnabled();
 }
 
 test("native MVP: real files, Unicode, conflicts, trash, tabs, close guard and restart recovery", async () => {
@@ -2863,7 +2890,15 @@ test("native MVP: real files, Unicode, conflicts, trash, tabs, close guard and r
           }
         })
         .toBe(true);
-      await create(page, "../outside.md");
+      await noteAction(page, "Сохранить копию");
+      await page
+        .locator("dialog[open]")
+        .getByLabel("Имя и путь")
+        .fill("../outside.md");
+      await page
+        .locator("dialog[open]")
+        .getByRole("button", { name: "Создать", exact: true })
+        .click();
       await expect(page.getByRole("alert")).toBeVisible();
       await expect(access(join(run, "outside.md"))).rejects.toThrow();
     });
@@ -4104,13 +4139,14 @@ test("styled context menus: editor clipboard, inactive files, folders and tabs",
     await page
       .getByRole("menuitem", { name: "Новая заметка", exact: true })
       .click();
-    await expect(page.locator("dialog[open] input")).toHaveValue(
-      "Проект/Без названия.md",
-    );
-    await page
-      .locator("dialog[open]")
-      .getByRole("button", { name: "Отмена", exact: true })
-      .click();
+    await expect(
+      page.getByRole("textbox", { name: "Название заметки" }),
+    ).toHaveValue("Новая заметка");
+    await expect(page.locator("dialog[open]")).toHaveCount(0);
+    expect(
+      await readFile(join(vault, "Проект", "Новая заметка.md"), "utf8"),
+    ).toBe("");
+    await page.getByRole("tab", { name: "Начало", exact: true }).click();
     await editor.press("Control+a");
     await editor.click({ button: "right" });
     await expect(
@@ -4776,6 +4812,8 @@ test("instant folders and inline tree file renaming without path dialogs", async
       .getByRole("button", { name: "Новая папка", exact: true })
       .click();
     await expect(folderName).toHaveValue("Новая папка 1");
+    await expect(page.locator(".tree-item.selected")).toHaveCount(0);
+    await expect(page.locator(".tree-item.is-editing")).toHaveCount(1);
     await folderName.fill("Новая папка");
     await folderName.press("Enter");
     await expect(page.locator(".banner.error")).toContainText("существует");
@@ -4784,6 +4822,22 @@ test("instant folders and inline tree file renaming without path dialogs", async
     expect(await readdir(join(vault, "Новая папка"))).toEqual([]);
     expect(await readdir(join(vault, "Новая папка 1"))).toEqual([]);
     await expect(page.locator("dialog[open]")).toHaveCount(0);
+    await page
+      .locator(".sidebar-toolbar")
+      .getByRole("button", { name: "Новая заметка", exact: true })
+      .click();
+    await expect(
+      page.getByRole("textbox", { name: "Название заметки" }),
+    ).toHaveValue("Новая заметка");
+    await expect(page.locator("dialog[open]")).toHaveCount(0);
+    await file("Родитель").click({ button: "right" });
+    await page
+      .getByRole("menuitem", { name: "Новая заметка", exact: true })
+      .click();
+    await expect(page.locator("dialog[open]")).toHaveCount(0);
+    await expect
+      .poll(() => readFile(join(vault, "Родитель", "Новая заметка.md"), "utf8"))
+      .toBe("");
   } finally {
     await stop(app);
   }
@@ -4906,6 +4960,132 @@ test("folder context rename and trash preserve contents and refresh nested tabs"
     expect(await readFile(join(trash, holder, "Архив", "image.png"))).toEqual(
       Buffer.from([1, 2, 3, 4]),
     );
+  } finally {
+    await stop(app);
+  }
+});
+
+test("graph view: navigation, filters, dragging and preserved draft", async () => {
+  const run = await mkdtemp(join(root, ".build-cache/native-graph-"));
+  const vault = join(run, "Native-MVP"),
+    data = join(run, "data");
+  await mkdir(vault);
+  await mkdir(data);
+  await writeFile(join(vault, "Alpha.md"), "# Alpha\n[[Beta]]\n");
+  await writeFile(join(vault, "Beta.md"), "# Beta\n[[Gamma]]\n");
+  await writeFile(join(vault, "Gamma.md"), "# Gamma\n");
+  await writeFile(join(vault, "Orphan.md"), "# Orphan\n");
+  await writeFile(
+    join(data, "settings.json"),
+    JSON.stringify({ lastVault: vault }),
+  );
+  let app: RunningApp | undefined;
+  try {
+    app = await launch(data, join(run, "profile"), false);
+    const page = app.page;
+    await page.getByRole("button", { name: "Alpha", exact: true }).click();
+    const editor = page.getByRole("textbox", { name: "Markdown-редактор" });
+    await editor.press("Control+End");
+    await editor.pressSequentially("Draft");
+    await page
+      .getByRole("button", { name: "Граф связей", exact: true })
+      .click();
+    const graph = page.getByRole("region", {
+      name: "Граф связей",
+      exact: true,
+    });
+    await expect(graph.locator(".graph-node")).toHaveCount(4);
+    const graphTab = page.getByRole("tab", {
+      name: "Граф связей",
+      exact: true,
+    });
+    await expect(graphTab).toHaveCount(1);
+    await expect(graphTab).toHaveAttribute("aria-selected", "true");
+    await page.getByRole("tab", { name: "Alpha", exact: true }).click();
+    await expect(graph).toBeHidden();
+    await expect(editor).toContainText("Draft");
+    await graphTab.click();
+    await expect(graph).toBeVisible();
+    await page
+      .getByRole("button", { name: "Граф связей", exact: true })
+      .click();
+    await expect(graphTab).toHaveCount(1);
+
+    await graph.getByLabel("Локальный граф", { exact: true }).check();
+    await expect(graph.locator(".graph-node")).toHaveCount(2);
+    await graph.getByLabel("Глубина", { exact: true }).fill("2");
+    await expect(graph.locator(".graph-node")).toHaveCount(3);
+    await graph.getByLabel("Локальный граф", { exact: true }).uncheck();
+    await graph.getByLabel("Заметки без связей", { exact: true }).uncheck();
+    await expect(graph.locator(".graph-node")).toHaveCount(3);
+    const canvas = graph.getByLabel("Полотно графа", { exact: true });
+    await canvas.focus();
+    await canvas.press("+");
+    await expect(canvas.locator(":scope > g")).toHaveAttribute(
+      "transform",
+      /scale\(1.2\)/,
+    );
+    const box = await canvas.boundingBox();
+    if (!box) throw new Error("Graph canvas missing");
+    await page.mouse.move(box.x + 40, box.y + 60);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 100, box.y + 100, { steps: 5 });
+    await page.mouse.up();
+    await expect(canvas.locator(":scope > g")).not.toHaveAttribute(
+      "transform",
+      /translate\(0,0\)/,
+    );
+    const beta = graph.getByRole("button", { name: "Beta.md", exact: true });
+    const nodeBox = await beta.locator("circle").boundingBox();
+    if (!nodeBox) throw new Error("Graph node missing");
+    await page.mouse.move(
+      nodeBox.x + nodeBox.width / 2,
+      nodeBox.y + nodeBox.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(nodeBox.x + 90, nodeBox.y + 70, { steps: 5 });
+    await page.mouse.up();
+    await expect(graph).toBeVisible();
+    await page.screenshot({ path: join(run, "graph.png") });
+    await graph.getByText("Силы", { exact: true }).click();
+    await page.screenshot({ path: join(run, "graph-settings-dark.png") });
+    await page
+      .getByRole("button", { name: "Переключить тему", exact: true })
+      .click();
+    await page.setViewportSize({ width: 850, height: 650 });
+    await page.screenshot({
+      path: join(run, "graph-settings-light-narrow.png"),
+    });
+    await graph.getByLabel("Поиск заметок", { exact: true }).fill("Beta");
+    await expect(graph.locator(".graph-node")).toHaveCount(1);
+    await graph
+      .getByRole("button", { name: "Очистить поиск", exact: true })
+      .click();
+    await expect(graph.locator(".graph-node")).toHaveCount(3);
+    await graph
+      .getByRole("button", { name: "Скрыть настройки графа", exact: true })
+      .click();
+    await expect(
+      graph.getByRole("complementary", {
+        name: "Настройки графа",
+        exact: true,
+      }),
+    ).toHaveCount(0);
+
+    await graph
+      .getByRole("button", { name: "Закрыть граф", exact: true })
+      .click();
+    await expect(editor).toContainText("Draft");
+    expect(await readFile(join(vault, "Alpha.md"), "utf8")).not.toContain(
+      "Draft",
+    );
+    await page
+      .getByRole("button", { name: "Граф связей", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Beta.md", exact: true })
+      .press("Enter");
+    await expect(editor).toContainText("# Beta");
   } finally {
     await stop(app);
   }
