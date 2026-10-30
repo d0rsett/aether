@@ -1533,8 +1533,8 @@ test("live attachments: source paths stay above all cards while typing and selec
     await writeFile(join(vault, "Media", name), "test attachment");
   await writeFile(join(vault, "Other.md"), "Other note");
   const examples = [
-    ["![[Media/Report.pdf|Отчёт]]", "Отчёт"],
-    ["![Звук](Media/Sound.wav)", "Звук"],
+    ["![[Media/Report.pdf|Отчёт]]", "Report.pdf"],
+    ["![Звук](Media/Sound.wav)", "Sound.wav"],
     ["![[Media/Data.csv]]", "Media/Data.csv"],
     ["![[Media/Archive.zip]]", "Media/Archive.zip"],
     ["![[Other]]", "Other"],
@@ -1570,8 +1570,8 @@ test("live attachments: source paths stay above all cards while typing and selec
       );
     }
     const report = page
-      .locator(".live-block-preview .attachment-card")
-      .filter({ hasText: "Отчёт" });
+      .locator(".live-block-preview .local-media.media-pdf")
+      .filter({ hasText: "Report.pdf" });
     await report.evaluate((button) =>
       button.setAttribute("data-edit-check", "persistent"),
     );
@@ -1585,7 +1585,9 @@ test("live attachments: source paths stay above all cards while typing and selec
         page.locator('[data-edit-check="persistent"]'),
       ).toBeVisible();
     }
-    await expect(report).toHaveText("Отчёт дополнение");
+    await expect(editor).toContainText(
+      "![[Media/Report.pdf|Отчёт дополнение]]",
+    );
     await editor.press("Control+a");
     await expect(
       page.locator(".live-block-preview[data-source-visible]"),
@@ -1996,7 +1998,9 @@ test("Obsidian vault: paste/drop attachments, preserve config and CRLF, preview 
         .filter({ hasText: "Фото из хранилища" }),
     ).toBeVisible();
     await expect(
-      reading.locator(".attachment-card").filter({ hasText: "Report.pdf" }),
+      reading
+        .locator(".local-media.media-pdf")
+        .filter({ hasText: "Report.pdf" }),
     ).toBeVisible();
     await reading.evaluate((element) => {
       element.scrollTop = element.scrollHeight;
@@ -2720,9 +2724,11 @@ test("native MVP: real files, Unicode, conflicts, trash, tabs, close guard and r
         .fill("know");
       await page.locator(".search-filters > summary").click();
       await page.getByRole("textbox", { name: "Фильтр тега" }).fill("работа");
-      await page.getByRole("textbox", { name: "Имя свойства" }).fill("status");
       await page
-        .getByRole("textbox", { name: "Значение свойства" })
+        .getByRole("textbox", { name: "Имя свойства", exact: true })
+        .fill("status");
+      await page
+        .getByRole("textbox", { name: "Значение свойства", exact: true })
         .fill("draft");
       await expect(page.locator(".search-hit")).toHaveCount(1);
       await expect(page.locator(".search-hit")).toContainText("Начало.md");
@@ -2733,8 +2739,12 @@ test("native MVP: real files, Unicode, conflicts, trash, tabs, close guard and r
         "utf8",
       );
       await page.getByRole("textbox", { name: "Фильтр тега" }).fill("");
-      await page.getByRole("textbox", { name: "Имя свойства" }).fill("");
-      await page.getByRole("textbox", { name: "Значение свойства" }).fill("");
+      await page
+        .getByRole("textbox", { name: "Имя свойства", exact: true })
+        .fill("");
+      await page
+        .getByRole("textbox", { name: "Значение свойства", exact: true })
+        .fill("");
       await page
         .getByRole("textbox", { name: "Поиск по содержимому" })
         .fill("внешнийпоиск");
@@ -2751,9 +2761,10 @@ test("native MVP: real files, Unicode, conflicts, trash, tabs, close guard and r
     await test.step("create a folder and Unicode note, rename without overwriting", async () => {
       await create(page, "Создано", true);
       await create(page, "Создано/Юникод.md");
-      await page
-        .getByRole("textbox", { name: "Markdown-редактор" })
-        .fill("# Юникод\n\nМой текст.");
+      const editor = page.getByRole("textbox", { name: "Markdown-редактор" });
+      await editor.press("Control+a");
+      await editor.press("Backspace");
+      await editor.fill("# Юникод\n\nМой текст.");
       await page
         .getByRole("button", { name: "Сохранить", exact: true })
         .click();
@@ -2784,9 +2795,11 @@ test("native MVP: real files, Unicode, conflicts, trash, tabs, close guard and r
         "Внешняя версия",
         "utf8",
       );
-      await page
-        .getByRole("textbox", { name: "Markdown-редактор" })
-        .fill("Версия редактора");
+      const editor = page.getByRole("textbox", { name: "Markdown-редактор" });
+      await editor.press("Control+a");
+      await editor.press("Backspace");
+      await editor.pressSequentially("Версия редактора");
+      await expect(editor.locator(".cm-line")).toHaveText("Версия редактора");
       await page
         .getByRole("button", { name: "Сохранить", exact: true })
         .click();
@@ -2857,9 +2870,12 @@ test("native MVP: real files, Unicode, conflicts, trash, tabs, close guard and r
 
     await test.step("cancel close with unsaved text, then close and restore the draft and theme", async () => {
       await page.getByRole("tab", { name: "Начало", exact: true }).click();
-      await page
-        .getByRole("textbox", { name: "Markdown-редактор" })
-        .fill("Несохранённый черновик после перезапуска.");
+      const editor = page.getByRole("textbox", { name: "Markdown-редактор" });
+      await editor.press("Control+a");
+      await editor.press("Backspace");
+      await editor.pressSequentially(
+        "Несохранённый черновик после перезапуска.",
+      );
       await page
         .getByRole("button", { name: "Переключить тему", exact: true })
         .click();
@@ -2927,9 +2943,10 @@ test("native MVP: real files, Unicode, conflicts, trash, tabs, close guard and r
         "Сведения индекса недоступны",
       );
       await create(page, "Кеш не мешает.md");
-      await page
-        .getByRole("textbox", { name: "Markdown-редактор" })
-        .fill("Файл остаётся источником истины.");
+      const editor = page.getByRole("textbox", { name: "Markdown-редактор" });
+      await editor.press("Control+a");
+      await editor.press("Backspace");
+      await editor.pressSequentially("Файл остаётся источником истины.");
       await page
         .getByRole("button", { name: "Сохранить", exact: true })
         .click();
@@ -3542,7 +3559,7 @@ test("vault menu and workspace refinements: switching, drafts, registry guard an
     const page = app.page;
     await expect(
       page.getByRole("group", { name: "Боковые панели" }).getByRole("button"),
-    ).toHaveCount(2);
+    ).toHaveCount(3);
     await expect(
       page.getByRole("img", { name: "Логотип Aether" }),
     ).toBeVisible();
@@ -3653,7 +3670,7 @@ test("vault menu and workspace refinements: switching, drafts, registry guard an
         notice: await app.page.locator(".status-bar").innerText(),
         text: await app.page
           .getByRole("textbox", { name: "Markdown-редактор" })
-          .innerText(),
+          .allTextContents(),
       };
       await test.info().attach("vault-switch-runtime", {
         body: JSON.stringify(state),
@@ -4109,17 +4126,15 @@ test("styled context menus: editor clipboard, inactive files, folders and tabs",
     await page
       .getByRole("menuitem", { name: "Вырезать", exact: false })
       .click();
-    await expect(editor).toHaveText("");
+    await expect(editor.locator(".cm-line")).toHaveText("");
     await editor.click({ button: "right" });
-    await page
-      .getByRole("menuitem", { name: "Вставить", exact: false })
-      .click();
+    await page.getByRole("menuitem", { name: /^Вставить\s+Ctrl V$/ }).click();
     await expect(editor).toContainText("Дополнение");
     await editor.click({ button: "right" });
     await page
       .getByRole("menuitem", { name: "Отменить", exact: false })
       .click();
-    await expect(editor).toHaveText("");
+    await expect(editor.locator(".cm-line")).toHaveText("");
     await editor.click({ button: "right" });
     await page
       .getByRole("menuitem", { name: "Повторить", exact: false })
@@ -4342,7 +4357,9 @@ test("instant new note and inline rename without dialog or input chrome", async 
     await page
       .getByRole("tab", { name: "Новая заметка 1", exact: true })
       .click();
+    await editor.locator(".cm-line").click();
     await editor.pressSequentially("Текст черновика");
+    await expect(editor.locator(".cm-line")).toContainText("Текст черновика");
     await title.fill("Идея");
     await title.press("Enter");
     await expect(
