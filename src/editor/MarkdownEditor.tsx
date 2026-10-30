@@ -3,6 +3,7 @@ import { editorPhrases } from "../i18n/editor";
 import { useEffect, useRef } from "react";
 import { toggleTask } from "./tasks";
 import { noteFolding } from "./folding";
+import { noteSearch } from "./searchPanel";
 import { noteLinkHover } from "./linkHover";
 import { insertTemplate } from "./templates";
 import type { PropertyCommand } from "./properties";
@@ -212,6 +213,7 @@ export function MarkdownEditor({
           rectangularSelection(),
           markdown({ extensions: [Strikethrough, TaskList] }),
           noteFolding,
+          noteSearch,
           indentOnInput(),
           bracketMatching(),
           closeBrackets(),

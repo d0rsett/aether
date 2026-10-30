@@ -15,6 +15,7 @@ export function editorPhrases(locale: Locale): Record<string, string> {
         Replace: "Заменить",
         next: "Далее",
         previous: "Назад",
+        all: "Выделить всё",
         "match case": "Учитывать регистр",
         regexp: "Регулярное выражение",
         "by word": "Слова целиком",
