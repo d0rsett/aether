@@ -22,14 +22,6 @@ import { applyProperty } from "../src/editor/propertyInput";
 
 afterEach(cleanup);
 it("keeps repeated footnote widgets visible alongside Markdown link decorations", async () => {
-  Object.defineProperty(Range.prototype, "getClientRects", {
-    configurable: true,
-    value: () => [],
-  });
-  Object.defineProperty(Range.prototype, "getBoundingClientRect", {
-    configurable: true,
-    value: () => new DOMRect(),
-  });
   const content =
     "# Title\n\nRef[^one] and again[^one].\n\n[^one]: Definition\n";
   const first = content.indexOf("[^one]"),

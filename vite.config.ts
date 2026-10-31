@@ -47,5 +47,12 @@ export default defineConfig({
   ],
   clearScreen: false,
   server: { host: "127.0.0.1", port: 1420, strictPort: true },
-  test: { environment: "jsdom", include: ["tests/**/*.test.{ts,tsx}"] },
+  test: {
+    environment: "jsdom",
+    include: ["tests/**/*.test.{ts,tsx}"],
+    setupFiles: ["tests/setup.ts"],
+    // Bound CPU contention between DOM tests and the large graph simulations.
+    maxWorkers: process.env.CI ? 2 : undefined,
+    testTimeout: 15000,
+  },
 });

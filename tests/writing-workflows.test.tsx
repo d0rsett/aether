@@ -24,7 +24,7 @@ it("folds heading sections and nested list items without hiding the next peer", 
     doc: source,
     extensions: [markdown(), noteFolding],
   });
-  ensureSyntaxTree(state, source.length, 100);
+  expect(ensureSyntaxTree(state, source.length, 5000)).not.toBeNull();
   expect(foldable(state, 0, 7)).toEqual({
     from: 7,
     to: source.indexOf("# Next") - 1,

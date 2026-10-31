@@ -156,7 +156,7 @@ it("keeps a 10000-note simulation finite", () => {
     true,
   );
   engine.dispose();
-}, 15000);
+}, 60000);
 
 it("distributes children with consistent clearance around densely connected hubs", () => {
   const incoming = Array.from({ length: 123 }, (_, i) => ({
