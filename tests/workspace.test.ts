@@ -79,3 +79,30 @@ describe("workspace safety", () => {
     expect(state).toEqual(initialWorkspace);
   });
 });
+
+it("opens background notes without activating or replacing existing drafts", async () => {
+  const { workspaceReducer, initialWorkspace } =
+    await import("../src/workspace/model");
+  let state = workspaceReducer(initialWorkspace, {
+    type: "open",
+    note: { path: "A.md", content: "saved", revision: "one" },
+  });
+  state = workspaceReducer(state, {
+    type: "edit",
+    path: "A.md",
+    content: "draft",
+  });
+  state = workspaceReducer(state, {
+    type: "open",
+    note: { path: "B.md", content: "B", revision: "two" },
+    background: true,
+  });
+  expect(state.active).toBe("A.md");
+  state = workspaceReducer(state, {
+    type: "open",
+    note: { path: "A.md", content: "stale", revision: "old" },
+    background: true,
+  });
+  expect(state.tabs[0].content).toBe("draft");
+  expect(state.tabs).toHaveLength(2);
+});

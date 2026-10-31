@@ -5090,3 +5090,188 @@ test("graph view: navigation, filters, dragging and preserved draft", async () =
     await stop(app);
   }
 });
+
+test("graph persistence: layout, context navigation, refresh and restart", async () => {
+  const run = await mkdtemp(join(root, ".build-cache/native-graph-state-"));
+  const vault = join(run, "Native-MVP"),
+    data = join(run, "data"),
+    profile = join(run, "profile");
+  await mkdir(vault);
+  await mkdir(data);
+  await writeFile(join(vault, "A.md"), "# A\n[[B]]\n");
+  await writeFile(join(vault, "B.md"), "# B\n[[C]]\n");
+  await writeFile(join(vault, "C.md"), "# C\n");
+  await writeFile(
+    join(data, "settings.json"),
+    JSON.stringify({ lastVault: vault }),
+  );
+  let app: RunningApp | undefined;
+  try {
+    app = await launch(data, profile, false);
+    let page = app.page;
+    await page.getByRole("button", { name: "A", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Граф связей", exact: true })
+      .click();
+    let graph = page.getByRole("region", { name: "Граф связей", exact: true });
+    await expect(graph.locator(".graph-node")).toHaveCount(3);
+    const b = graph.getByRole("button", { name: "B.md", exact: true });
+    const box = await b.locator("circle").boundingBox();
+    if (!box) throw new Error("Node missing");
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 80, box.y + 60, { steps: 5 });
+    await page.mouse.up();
+    const pinned = await b.getAttribute("transform");
+    await writeFile(join(vault, "C.md"), "# C changed\n[[A]]\n");
+    await expect(graph.locator(".graph-header > span")).toHaveText("3 · 3");
+    await expect(b).toHaveAttribute("transform", pinned!);
+    await b.click({ button: "right" });
+    await page
+      .getByRole("menuitem", { name: "Открыть в новой вкладке", exact: true })
+      .click();
+    await expect(
+      page.getByRole("tab", { name: "B", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("tab", { name: "Граф связей", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await b.click({ button: "right" });
+    await page
+      .getByRole("menuitem", {
+        name: "Локальный граф этой заметки",
+        exact: true,
+      })
+      .click();
+    await expect(graph.locator(".graph-local-root")).toHaveText("B.md");
+    await graph.getByLabel("Размер узлов", { exact: true }).fill("1.6");
+    const canvas = graph.getByLabel("Полотно графа", { exact: true });
+    await canvas.focus();
+    await canvas.press("+");
+    const camera = await canvas.locator(":scope > g").getAttribute("transform");
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          Object.keys(localStorage)
+            .filter((k) => k.startsWith("aether.graph.v1:"))
+            .map((k) => JSON.parse(localStorage.getItem(k) ?? "{}").size)
+            .includes(1.6),
+        ),
+      )
+      .toBe(true);
+    await closeNative(
+      app,
+      page.getByRole("button", { name: "Закрыть окно", exact: true }),
+    );
+    app = await launch(data, profile, false);
+    page = app.page;
+    graph = page.getByRole("region", { name: "Граф связей", exact: true });
+    await expect(graph).toBeVisible();
+    await expect(
+      page.getByRole("tab", { name: "Граф связей", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(
+      graph.getByLabel("Локальный граф", { exact: true }),
+    ).toBeChecked();
+    await expect(graph.getByLabel("Размер узлов", { exact: true })).toHaveValue(
+      "1.6",
+    );
+    await expect(graph.locator(".graph-local-root")).toHaveText("B.md");
+    await expect(
+      graph.getByLabel("Полотно графа", { exact: true }).locator(":scope > g"),
+    ).toHaveAttribute("transform", camera!);
+    await expect(
+      graph.getByRole("button", { name: "B.md", exact: true }),
+    ).toHaveAttribute("transform", pinned!);
+    await graph
+      .getByRole("button", { name: "B.md", exact: true })
+      .click({ button: "right" });
+    await page
+      .getByRole("menuitem", { name: "Открыть заметку", exact: true })
+      .click();
+    await expect(graph).toBeHidden();
+    await expect(
+      page.getByRole("tab", { name: "B", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(await readFile(join(vault, "A.md"), "utf8")).toBe("# A\n[[B]]\n");
+  } finally {
+    await stop(app);
+  }
+});
+
+test("graph large vault: 3000 connected notes remain navigable", async () => {
+  test.setTimeout(180000);
+  const run = await mkdtemp(join(root, ".build-cache/native-graph-large-"));
+  const vault = join(run, "Native-MVP"),
+    data = join(run, "data");
+  await mkdir(vault);
+  await mkdir(data);
+  for (let start = 0; start < 3000; start += 100)
+    await Promise.all(
+      Array.from({ length: 100 }, (_, j) => {
+        const i = start + j;
+        return writeFile(
+          join(vault, `N${i}.md`),
+          `# N${i}\n[[N${(i + 1) % 3000}]]\n`,
+        );
+      }),
+    );
+  await writeFile(
+    join(data, "settings.json"),
+    JSON.stringify({ lastVault: vault }),
+  );
+  let app: RunningApp | undefined;
+  try {
+    app = await launch(data, join(run, "profile"), false);
+    const page = app.page;
+    await page
+      .getByRole("button", { name: "Граф связей", exact: true })
+      .click();
+    const graph = page.getByRole("region", {
+      name: "Граф связей",
+      exact: true,
+    });
+    await expect(graph.locator(".graph-header > span")).toHaveText(
+      "3000 · 3000",
+      { timeout: 120000 },
+    );
+    await graph.getByLabel("Поиск заметок", { exact: true }).fill("N2999.md");
+    // A filtered node may be outside the camera, so fit the result explicitly.
+    await graph
+      .getByRole("button", { name: "Вписать граф", exact: true })
+      .click();
+    await expect(
+      graph.getByRole("button", { name: "N2999.md", exact: true }),
+    ).toBeVisible();
+    await graph
+      .getByRole("button", { name: "Очистить поиск", exact: true })
+      .click();
+    const sample = await page.evaluate(async () => {
+      const intervals: number[] = [];
+      let last = performance.now();
+      for (let i = 0; i < 30; i++)
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame((time) => {
+            intervals.push(time - last);
+            last = time;
+            resolve();
+          }),
+        );
+      return {
+        mean: intervals.reduce((a, b) => a + b, 0) / intervals.length,
+        max: Math.max(...intervals),
+      };
+    });
+    await writeFile(join(run, "timing.json"), JSON.stringify(sample));
+    console.log("3000-note native graph frame intervals", sample);
+    await page.screenshot({ path: join(run, "large-graph.png") });
+    await graph
+      .getByRole("button", { name: "Закрыть граф", exact: true })
+      .click();
+    await expect(
+      page.getByRole("tab", { name: "Граф связей", exact: true }),
+    ).toHaveCount(0);
+  } finally {
+    await stop(app);
+  }
+});

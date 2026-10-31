@@ -68,6 +68,17 @@ pub struct Inspection {
     pub outgoing: Vec<Outgoing>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct GraphNode {
+    pub path: String,
+    pub title: String,
+}
+#[derive(Debug, Serialize)]
+pub struct GraphSnapshot {
+    pub nodes: Vec<GraphNode>,
+    pub edges: Vec<(String, String)>,
+}
+
 pub struct Index {
     path: PathBuf,
     version: AtomicU64,
@@ -395,6 +406,25 @@ impl Index {
         Ok(suggestions)
     }
 
+    pub fn graph(&self) -> Result<GraphSnapshot> {
+        let mut db = self.connection()?;
+        let transaction = db.transaction()?;
+        let nodes = transaction
+            .prepare("SELECT path,title FROM notes ORDER BY path")?
+            .query_map([], |row| {
+                Ok(GraphNode {
+                    path: row.get(0)?,
+                    title: row.get(1)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        let edges = transaction.prepare("SELECT min(l.source,l.resolved_path),max(l.source,l.resolved_path) FROM links l JOIN notes target ON target.path=l.resolved_path WHERE l.source<>l.resolved_path GROUP BY 1,2 ORDER BY 1,2")?
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        transaction.commit()?;
+        Ok(GraphSnapshot { nodes, edges })
+    }
+
     pub fn inspect(&self, path: &str) -> Result<Inspection> {
         let db = self.connection()?;
         let json: Option<String> = db
@@ -704,6 +734,39 @@ mod tests {
         index.update(&vault, "Цель.md")?;
         assert_eq!(index.inspect("Цель.md")?.backlinks.len(), 1);
         assert!(!index.update(&vault, "Цель.md")?);
+        Ok(())
+    }
+    #[test]
+    fn graph_includes_all_links_and_deduplicates_resolved_aliases() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let root = temp.path().join("vault");
+        std::fs::create_dir(&root)?;
+        let vault = Vault::open(&root)?;
+        let mut source = String::from("[[Alias]] [[Target]] [[Main]] [[Missing]] ");
+        vault.create_note("Target.md", "---\naliases: [Alias]\n---\n[[Main]]")?;
+        for number in 0..120 {
+            let path = format!("N{number}.md");
+            vault.create_note(&path, "")?;
+            source.push_str(&format!("[[N{number}]] "));
+        }
+        vault.create_note("Main.md", &source)?;
+        vault.create_note("Orphan.md", "")?;
+        let index = Index::open(&temp.path().join("index.sqlite"))?;
+        index.scan(&vault, &AtomicBool::new(false), &|| {})?;
+        let graph = index.graph()?;
+        assert_eq!(graph.nodes.len(), 123);
+        assert_eq!(graph.edges.len(), 121);
+        assert!(graph
+            .edges
+            .contains(&("Main.md".into(), "Target.md".into())));
+        assert!(!graph
+            .edges
+            .iter()
+            .any(|(a, b)| a == b || a == "Missing.md" || b == "Missing.md"));
+        let target = vault.read_note("Target.md")?;
+        vault.trash_note("Target.md", &target.revision)?;
+        index.update(&vault, "Target.md")?;
+        assert_eq!(index.graph()?.edges.len(), 120);
         Ok(())
     }
 }

@@ -1,3 +1,4 @@
+import { readGraphTab, writeGraphTab } from "../workspace/graphStorage";
 import { KnowledgeGraph } from "../components/KnowledgeGraph";
 import { t, useLocale, setLocale } from "../i18n";
 import { Welcome } from "../components/Welcome";
@@ -142,6 +143,9 @@ export function App() {
   }, [left]);
   const [graph, setGraph] = useState(false);
   const [graphTab, setGraphTab] = useState(false);
+  const [graphSessionVault, setGraphSessionVault] = useState<string | null>(
+    null,
+  );
   const closeGraph = () => {
     setGraph(false);
     setGraphTab(false);
@@ -149,10 +153,34 @@ export function App() {
   useEffect(() => {
     setGraph(false);
     setGraphTab(false);
+    setGraphSessionVault(null);
   }, [app.vault?.id]);
   useEffect(() => {
     setGraph(false);
   }, [app.workspace.active]);
+  useEffect(() => {
+    const id = app.vault?.id;
+    if (!id || app.busy || graphSessionVault === id) return;
+    const saved = readGraphTab(id);
+    setGraphTab(saved.open);
+    setGraph(saved.active);
+    setGraphSessionVault(id);
+  }, [app.vault?.id, app.busy, graphSessionVault]);
+  useEffect(() => {
+    if (!app.vault || graphSessionVault !== app.vault.id || app.busy) return;
+    try {
+      writeGraphTab(app.vault.id, graphTab, graph);
+    } catch {
+      app.setError(t("Не удалось сохранить состояние вкладки графа."));
+    }
+  }, [
+    app.vault?.id,
+    app.busy,
+    graphSessionVault,
+    graphTab,
+    graph,
+    app.setError,
+  ]);
   useEffect(() => {
     if (!graph) return;
     const onKey = (event: KeyboardEvent) => {
@@ -1000,6 +1028,11 @@ export function App() {
                 key={app.vault.id}
                 vaultId={app.vault.id}
                 revision={knowledge.status?.revision ?? 0}
+                indexRunning={!knowledge.status || knowledge.status.running}
+                visible={graph}
+                onOpenBackground={(path) => {
+                  void app.open(path, true);
+                }}
                 active={app.active?.path}
                 onClose={closeGraph}
                 onOpen={(path) => {

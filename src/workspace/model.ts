@@ -9,7 +9,7 @@ export interface Workspace {
   active: string | null;
 }
 export type Action =
-  | { type: "open"; note: Note }
+  | { type: "open"; note: Note; background?: boolean }
   | { type: "openImage"; path: string }
   | { type: "relocateImage"; path: string; destination: string }
   | { type: "activate"; path: string }
@@ -64,7 +64,7 @@ export function workspaceReducer(state: Workspace, action: Action): Workspace {
               ...state.tabs,
               { ...action.note, savedContent: action.note.content },
             ],
-        active: action.note.path,
+        active: action.background ? state.active : action.note.path,
       };
     case "activate":
       return { ...state, active: action.path };

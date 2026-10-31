@@ -1,4 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Search,
   RotateCcw,
@@ -10,10 +19,14 @@ import {
   Plus,
   Minus,
 } from "lucide-react";
+import { useContextMenu } from "./ContextMenu";
+import { readGraphView, writeGraphView } from "../workspace/graphStorage";
 import { api, errorMessage } from "../services/api";
 import { t, useLocale } from "../i18n";
 import {
   defaultForces,
+  mergeGraphNodes,
+  graphLabels,
   filterGraph,
   stepLayout,
   type GraphNode,
@@ -27,32 +40,46 @@ export function KnowledgeGraph({
   active,
   onOpen,
   onClose,
+  onOpenBackground,
+  visible: isVisible = true,
+  indexRunning = false,
 }: {
   vaultId: string;
   revision: number;
   active?: string;
   onOpen: (path: string) => void;
   onClose: () => void;
+  onOpenBackground?: (path: string) => void;
+  visible?: boolean;
+  indexRunning?: boolean;
 }) {
   useLocale();
+  const [initial] = useState(() => readGraphView(vaultId));
+  const [persistenceError, setPersistenceError] = useState("");
+  const context = useContextMenu(setPersistenceError);
+  const nodesRef = useRef<GraphNode[]>([]);
+  const loaded = useRef(false);
+  const animate = useRef(false);
   const [data, setData] = useState<{
     nodes: GraphNode[];
     edges: GraphEdge[];
   } | null>(null);
   const [error, setError] = useState("");
-  const [query, setQuery] = useState("");
-  const [local, setLocal] = useState(false);
-  const [depth, setDepth] = useState(1);
-  const [orphans, setOrphans] = useState(true);
-  const [labels, setLabels] = useState(true);
-  const [size, setSize] = useState(1);
-  const [thickness, setThickness] = useState(1);
-  const [forces, setForces] = useState(defaultForces);
-  const [settings, setSettings] = useState(true);
-  const [camera, setCamera] = useState({ x: 0, y: 0, zoom: 1 });
+  const [query, setQuery] = useState(initial.query);
+  const [local, setLocal] = useState(initial.local);
+  const [depth, setDepth] = useState(initial.depth);
+  const [orphans, setOrphans] = useState(initial.orphans);
+  const [labels, setLabels] = useState(initial.labels);
+  const [size, setSize] = useState(initial.size);
+  const [thickness, setThickness] = useState(initial.thickness);
+  const [forces, setForces] = useState(initial.forces);
+  const [settings, setSettings] = useState(initial.settings);
+  const [camera, setCamera] = useState(initial.camera);
+  const [root, setRoot] = useState(initial.root);
   const [hover, setHover] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
   const [, redraw] = useState(0);
+  const canvas = useRef<HTMLCanvasElement>(null);
   const svg = useRef<SVGSVGElement>(null);
   const drag = useRef<{
     id: number;
@@ -74,83 +101,138 @@ export function KnowledgeGraph({
     frames.current = 240;
   };
   useEffect(() => {
+    if (indexRunning) return;
     let cancelled = false;
     setError("");
-    setData(null);
-    void (async () => {
-      const hits: { path: string; title: string }[] = [];
-      let more = true;
-      while (more) {
-        const page = await api.search(vaultId, {
-          text: "",
-          path: "",
-          tag: "",
-          property: "",
-          value: "",
-          offset: hits.length,
-        });
+    void api
+      .graph(vaultId)
+      .then((snapshot) => {
         if (cancelled) return;
-        hits.push(...page.hits);
-        more = page.hasMore && page.hits.length > 0;
-      }
-      const paths = new Set(hits.map((n) => n.path));
-      const edges = new Map<string, [string, string]>();
-      // Bound concurrent IPC work while retaining the shared alias/link resolver.
-      let cursor = 0;
-      await Promise.all(
-        Array.from({ length: Math.min(4, hits.length) }, async () => {
-          while (cursor < hits.length && !cancelled) {
-            const note = hits[cursor++];
-            const inspection = await api.inspect(vaultId, note.path);
-            for (const link of inspection.outgoing) {
-              const target = link.resolution.path;
-              if (
-                link.resolution.status !== "resolved" ||
-                !target ||
-                !paths.has(target) ||
-                target === note.path
-              )
-                continue;
-              const pair: [string, string] =
-                note.path < target ? [note.path, target] : [target, note.path];
-              edges.set(JSON.stringify(pair), pair);
-            }
-          }
-        }),
-      );
-      if (cancelled) return;
-      const nodes = hits.map((n, i) => ({
-        ...n,
-        x: 220 * Math.cos(i * 2.39996) * Math.sqrt((i + 1) / hits.length),
-        y: 220 * Math.sin(i * 2.39996) * Math.sqrt((i + 1) / hits.length),
-        vx: 0,
-        vy: 0,
-      }));
-      setData({ nodes, edges: [...edges.values()] });
-    })().catch((e) => {
-      if (!cancelled) setError(errorMessage(e));
-    });
+        const nodes = mergeGraphNodes(
+          snapshot.nodes,
+          nodesRef.current,
+          snapshot.edges,
+          initial.positions,
+        );
+        const first = !loaded.current;
+        nodesRef.current = nodes;
+        animate.current = first && !initial.positions.length;
+        loaded.current = true;
+        setData({ nodes, edges: snapshot.edges });
+      })
+      .catch((e) => {
+        if (!cancelled) setError(errorMessage(e));
+      });
     return () => {
       cancelled = true;
     };
-  }, [vaultId, revision, retry]);
+  }, [vaultId, revision, retry, initial, indexRunning]);
+  const stateRef = useRef({
+    query,
+    local,
+    root,
+    depth,
+    orphans,
+    labels,
+    size,
+    thickness,
+    forces,
+    settings,
+    camera,
+  });
+  stateRef.current = {
+    query,
+    local,
+    root,
+    depth,
+    orphans,
+    labels,
+    size,
+    thickness,
+    forces,
+    settings,
+    camera,
+  };
+  const dirty = useRef(false);
+  useEffect(() => {
+    dirty.current = true;
+  }, [
+    query,
+    local,
+    root,
+    depth,
+    orphans,
+    labels,
+    size,
+    thickness,
+    forces,
+    settings,
+    camera,
+    data,
+  ]);
+  useEffect(() => {
+    const save = () => {
+      if (!loaded.current || !dirty.current) return;
+      try {
+        writeGraphView(vaultId, {
+          ...stateRef.current,
+          positions: nodesRef.current.map((n) => [
+            n.path,
+            n.x,
+            n.y,
+            n.pinned === true,
+          ]),
+        });
+        dirty.current = false;
+        setPersistenceError("");
+      } catch {
+        setPersistenceError(
+          t(
+            "Не удалось сохранить настройки графа. Освободите место в локальном хранилище.",
+          ),
+        );
+      }
+    };
+    const timer = window.setInterval(save, 1000);
+    const leave = () => save();
+    window.addEventListener("pagehide", leave);
+    window.addEventListener("beforeunload", leave);
+    document.addEventListener("visibilitychange", leave);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("pagehide", leave);
+      window.removeEventListener("beforeunload", leave);
+      document.removeEventListener("visibilitychange", leave);
+      save();
+    };
+  }, [vaultId]);
   const visible = useMemo(
     () =>
       filterGraph(
         data?.nodes ?? [],
         data?.edges ?? [],
         query,
-        local ? active : undefined,
+        local ? (root ?? active) : undefined,
         depth,
         orphans,
       ),
-    [data, query, local, active, depth, orphans],
+    [data, query, local, root, active, depth, orphans],
   );
+  const lastForces = useRef(forces);
   useEffect(() => {
-    wake();
-    let frame = 0;
-    const tick = () => {
-      if (frames.current > 0 || drag.current?.path) {
+    if (!isVisible) return;
+    if (animate.current || lastForces.current !== forces) wake();
+    animate.current = false;
+    lastForces.current = forces;
+    let frame = 0,
+      last = 0;
+    const tick = (time: number) => {
+      if (
+        (frames.current > 0 || drag.current?.path) &&
+        time - last >= (visible.nodes.length > 1500 ? 32 : 16)
+      ) {
+        last = time;
+        dirty.current = true;
         stepLayout(visible.nodes, visible.edges, forces, drag.current?.path);
         frames.current--;
         redraw((n) => n + 1);
@@ -159,16 +241,141 @@ export function KnowledgeGraph({
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [visible, forces]);
+  }, [visible, forces, isVisible]);
   const positions = new Map(visible.nodes.map((n) => [n.path, n]));
-  const degree = new Map<string, number>();
+  const degree = useMemo(() => {
+    const result = new Map<string, number>();
+    for (const [a, b] of visible.edges) {
+      result.set(a, (result.get(a) ?? 0) + 1);
+      result.set(b, (result.get(b) ?? 0) + 1);
+    }
+    return result;
+  }, [visible]);
   const highlighted = new Set(hover ? [hover] : []);
   for (const [a, b] of visible.edges) {
-    degree.set(a, (degree.get(a) ?? 0) + 1);
-    degree.set(b, (degree.get(b) ?? 0) + 1);
     if (a === hover) highlighted.add(b);
     if (b === hover) highlighted.add(a);
   }
+  const shownLabels = graphLabels(visible.nodes, camera.zoom, hover);
+  const inView = (n: GraphNode) =>
+    Math.abs(n.x * camera.zoom + camera.x) < 600 &&
+    Math.abs(n.y * camera.zoom + camera.y) < 400;
+  const rendered = visible.nodes.filter(inView);
+  const canvasMode = visible.nodes.length > 1500;
+  const focusNode = useCallback((node: GraphNode) => {
+    setHover(node.path);
+    setCamera((c) => ({ ...c, x: -node.x * c.zoom, y: -node.y * c.zoom }));
+  }, []);
+  const hit = (x: number, y: number) => {
+    const wx = (x - camera.x) / camera.zoom,
+      wy = (y - camera.y) / camera.zoom;
+    let best: GraphNode | undefined,
+      distance = Infinity;
+    for (const n of rendered) {
+      const d = Math.hypot(n.x - wx, n.y - wy),
+        r =
+          (4 + Math.min(9, Math.sqrt(degree.get(n.path) ?? 0) * 1.5)) * size +
+          4 / camera.zoom;
+      if (d < r && d < distance) {
+        best = n;
+        distance = d;
+      }
+    }
+    return best;
+  };
+  const showNodeMenu = (event: ReactMouseEvent<Element>, n: GraphNode) =>
+    context.show(event, t("Действия с заметкой"), [
+      { label: t("Открыть заметку"), run: () => onOpen(n.path) },
+      {
+        label: t("Открыть в новой вкладке"),
+        run: () => onOpenBackground?.(n.path),
+        disabled: !onOpenBackground,
+      },
+      {
+        label: t("Локальный граф этой заметки"),
+        run: () => {
+          setRoot(n.path);
+          setLocal(true);
+          setQuery("");
+        },
+      },
+      {
+        label: t("Открыть в проводнике"),
+        run: () => api.reveal(vaultId, n.path),
+      },
+      {
+        label: t("Освободить узел"),
+        disabled: !n.pinned,
+        run: () => {
+          n.pinned = false;
+          wake();
+        },
+      },
+    ]);
+  useLayoutEffect(() => {
+    if (!canvasMode || !isVisible || !canvas.current) return;
+    const element = canvas.current,
+      rect = element.getBoundingClientRect(),
+      ratio = Math.min(2, window.devicePixelRatio || 1);
+    const width = Math.round(rect.width * ratio),
+      height = Math.round(rect.height * ratio);
+    if (element.width !== width || element.height !== height) {
+      element.width = width;
+      element.height = height;
+    }
+    const ctx = element.getContext("2d");
+    if (!ctx) return;
+    const theme = getComputedStyle(document.documentElement),
+      color = (name: string) => theme.getPropertyValue(name).trim();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    const scale = Math.min(rect.width / 1000, rect.height / 700) * ratio;
+    ctx.setTransform(
+      scale * camera.zoom,
+      0,
+      0,
+      scale * camera.zoom,
+      width / 2 + camera.x * scale,
+      height / 2 + camera.y * scale,
+    );
+    ctx.lineWidth = thickness;
+    for (const [a, b] of visible.edges) {
+      const x = positions.get(a),
+        y = positions.get(b);
+      if (!x || !y) continue;
+      const connected = a === hover || b === hover;
+      ctx.globalAlpha = hover ? (connected ? 0.95 : 0.08) : 0.45;
+      ctx.strokeStyle = color(connected ? "--accent" : "--subtle");
+      ctx.beginPath();
+      ctx.moveTo(x.x, x.y);
+      ctx.lineTo(y.x, y.y);
+      ctx.stroke();
+    }
+    for (const n of rendered) {
+      ctx.globalAlpha = hover && !highlighted.has(n.path) ? 0.12 : 1;
+      ctx.fillStyle = color(
+        n.path === active || n.path === hover ? "--accent" : "--muted",
+      );
+      ctx.beginPath();
+      ctx.arc(
+        n.x,
+        n.y,
+        (4 + Math.min(9, Math.sqrt(degree.get(n.path) ?? 0) * 1.5)) * size,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+      if (labels && shownLabels.has(n.path)) {
+        ctx.fillStyle = color("--text");
+        ctx.font = '11px "Segoe UI", sans-serif';
+        ctx.textAlign = "center";
+        ctx.globalAlpha *=
+          n.path === hover ? 1 : Math.min(1, camera.zoom * 0.7);
+        ctx.fillText(n.title, n.x, n.y + 20 * size);
+      }
+    }
+    ctx.globalAlpha = 1;
+  });
   const point = (x: number, y: number) => {
     const matrix = svg.current?.getScreenCTM();
     if (!matrix) return { x: 0, y: 0 };
@@ -195,13 +402,15 @@ export function KnowledgeGraph({
     return () => node.removeEventListener("wheel", wheel);
   }, []);
   const fit = () => {
-    const extent = Math.max(
+    const extent = visible.nodes.reduce(
+      (extent, n) => Math.max(extent, Math.abs(n.x), Math.abs(n.y)),
       160,
-      ...visible.nodes.map((n) => Math.max(Math.abs(n.x), Math.abs(n.y))),
     );
     setCamera({ x: 0, y: 0, zoom: Math.min(2, 280 / extent) });
   };
   const resetSettings = () => {
+    setLocal(false);
+    setRoot(null);
     setForces(defaultForces);
     setSize(1);
     setThickness(1);
@@ -238,6 +447,9 @@ export function KnowledgeGraph({
         </div>
       </header>
       <div className="graph-stage">
+        {canvasMode && (
+          <canvas ref={canvas} className="graph-canvas" aria-hidden="true" />
+        )}
         <svg
           ref={svg}
           viewBox="-500 -350 1000 700"
@@ -273,14 +485,24 @@ export function KnowledgeGraph({
               }));
             }
           }}
+          onContextMenu={(event) => {
+            const path =
+              event.target instanceof Element
+                ? event.target.closest("[data-node]")?.getAttribute("data-node")
+                : null;
+            const p = point(event.clientX, event.clientY);
+            const n = path ? positions.get(path) : hit(p.x, p.y);
+            if (n) showNodeMenu(event, n);
+          }}
           onPointerDown={(e) => {
             if (e.button !== 0) return;
             const p = point(e.clientX, e.clientY);
-            const target =
+            let target =
               e.target instanceof Element
                 ? (e.target.closest("[data-node]")?.getAttribute("data-node") ??
                   undefined)
                 : undefined;
+            if (!target && canvasMode) target = hit(p.x, p.y)?.path;
             drag.current = {
               id: e.pointerId,
               path: target,
@@ -292,7 +514,13 @@ export function KnowledgeGraph({
           }}
           onPointerMove={(e) => {
             const d = drag.current;
-            if (!d || d.id !== e.pointerId) return;
+            if (!d || d.id !== e.pointerId) {
+              if (canvasMode) {
+                const p = point(e.clientX, e.clientY);
+                setHover(hit(p.x, p.y)?.path ?? null);
+              }
+              return;
+            }
             const p = point(e.clientX, e.clientY),
               dx = p.x - d.x,
               dy = p.y - d.y;
@@ -303,6 +531,9 @@ export function KnowledgeGraph({
               if (n) {
                 n.x += dx / camera.zoom;
                 n.y += dy / camera.zoom;
+                n.pinned = true;
+                dirty.current = true;
+                redraw((v) => v + 1);
                 wake();
               }
             } else setCamera((c) => ({ ...c, x: c.x + dx, y: c.y + dy }));
@@ -315,6 +546,7 @@ export function KnowledgeGraph({
             if (e.currentTarget.hasPointerCapture(e.pointerId))
               e.currentTarget.releasePointerCapture(e.pointerId);
             if (d?.path && !d.moved) onOpen(d.path);
+            redraw((v) => v + 1);
             wake();
           }}
           onPointerCancel={() => {
@@ -327,72 +559,93 @@ export function KnowledgeGraph({
           <g
             transform={`translate(${camera.x},${camera.y}) scale(${camera.zoom})`}
           >
-            {visible.edges.map(([a, b]) => {
-              const x = positions.get(a),
-                y = positions.get(b);
-              if (!x || !y) return null;
-              return (
-                <line
-                  key={JSON.stringify([a, b])}
-                  className={
-                    hover && (a === hover || b === hover)
-                      ? "is-highlighted"
-                      : hover
-                        ? "is-dimmed"
-                        : ""
-                  }
-                  strokeWidth={thickness}
-                  x1={x.x}
-                  y1={x.y}
-                  x2={y.x}
-                  y2={y.y}
-                />
-              );
-            })}
-            {visible.nodes.map((n) => (
-              <g
-                key={n.path}
-                data-node={n.path}
-                role="button"
-                tabIndex={0}
-                aria-label={n.path}
-                className={`graph-node ${n.path === active ? "is-active" : ""} ${hover && !highlighted.has(n.path) ? "is-dimmed" : ""}`}
-                transform={`translate(${n.x},${n.y})`}
-                onPointerEnter={() => {
-                  if (!drag.current) setHover(n.path);
-                }}
-                onPointerLeave={() => setHover(null)}
-                onFocus={() => setHover(n.path)}
-                onBlur={() => setHover(null)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onOpen(n.path);
-                  }
-                }}
-              >
-                <title>{n.path}</title>
-                <circle
-                  r={
-                    (4 +
-                      Math.min(9, Math.sqrt(degree.get(n.path) ?? 0) * 1.5)) *
-                    size
-                  }
-                />
-                {labels && (
-                  <text
-                    y={20 * size}
-                    textAnchor="middle"
-                    style={{
-                      opacity:
-                        hover === n.path ? 1 : Math.min(1, camera.zoom * 0.7),
-                    }}
-                  >
-                    {n.title}
-                  </text>
-                )}
-              </g>
-            ))}
+            {!canvasMode &&
+              visible.edges.map(([a, b]) => {
+                const x = positions.get(a),
+                  y = positions.get(b);
+                if (
+                  !x ||
+                  !y ||
+                  (!inView(x) &&
+                    !inView(y) &&
+                    (Math.min(x.x, y.x) * camera.zoom + camera.x > 600 ||
+                      Math.max(x.x, y.x) * camera.zoom + camera.x < -600 ||
+                      Math.min(x.y, y.y) * camera.zoom + camera.y > 400 ||
+                      Math.max(x.y, y.y) * camera.zoom + camera.y < -400))
+                )
+                  return null;
+                return (
+                  <line
+                    key={JSON.stringify([a, b])}
+                    className={
+                      hover && (a === hover || b === hover)
+                        ? "is-highlighted"
+                        : hover
+                          ? "is-dimmed"
+                          : ""
+                    }
+                    strokeWidth={thickness}
+                    x1={x.x}
+                    y1={x.y}
+                    x2={y.x}
+                    y2={y.y}
+                  />
+                );
+              })}
+            {canvasMode ? (
+              <GraphAccessibleNodes
+                nodes={visible.nodes}
+                onOpen={onOpen}
+                onFocusNode={focusNode}
+              />
+            ) : (
+              rendered.map((n) => (
+                <g
+                  key={n.path}
+                  data-node={n.path}
+                  data-pinned={n.pinned ? "true" : undefined}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={n.path}
+                  className={`graph-node ${n.path === active ? "is-active" : ""} ${hover && !highlighted.has(n.path) ? "is-dimmed" : ""}`}
+                  transform={`translate(${n.x},${n.y})`}
+                  onPointerEnter={() => {
+                    if (!drag.current) setHover(n.path);
+                  }}
+                  onPointerLeave={() => setHover(null)}
+                  onContextMenu={(event) => showNodeMenu(event, n)}
+                  onFocus={() => setHover(n.path)}
+                  onBlur={() => setHover(null)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onOpen(n.path);
+                    }
+                  }}
+                >
+                  <title>{n.path}</title>
+                  <circle
+                    r={
+                      (4 +
+                        Math.min(9, Math.sqrt(degree.get(n.path) ?? 0) * 1.5)) *
+                      size
+                    }
+                  />
+                  {labels && shownLabels.has(n.path) && (
+                    <text
+                      y={20 * size}
+                      textAnchor="middle"
+                      style={{
+                        opacity:
+                          hover === n.path ? 1 : Math.min(1, camera.zoom * 0.7),
+                      }}
+                    >
+                      {n.title}
+                    </text>
+                  )}
+                </g>
+              ))
+            )}
           </g>
         </svg>
         {(error || !data || !visible.nodes.length) && (
@@ -462,10 +715,18 @@ export function KnowledgeGraph({
                 <input
                   type="checkbox"
                   checked={local}
-                  disabled={!active}
-                  onChange={(e) => setLocal(e.target.checked)}
+                  disabled={!active && !root}
+                  onChange={(e) => {
+                    setLocal(e.target.checked);
+                    if (e.target.checked && !root) setRoot(active ?? null);
+                  }}
                 />
               </label>
+              {local && (
+                <p className="graph-local-root" title={root ?? active}>
+                  {root ?? active}
+                </p>
+              )}
               {local && (
                 <label>
                   {t("Глубина")}
@@ -615,7 +876,44 @@ export function KnowledgeGraph({
           {t("Перетаскивайте полотно и узлы · Колесо — масштаб")}
         </p>
       </div>
-      <footer className="graph-footer">{t("Связи сохранённых заметок")}</footer>
+      {context.menu}
+      <footer
+        className="graph-footer"
+        role={persistenceError ? "alert" : undefined}
+      >
+        {persistenceError || t("Связи сохранённых заметок")}
+      </footer>
     </section>
   );
 }
+
+const GraphAccessibleNodes = memo(function GraphAccessibleNodes({
+  nodes,
+  onOpen,
+  onFocusNode,
+}: {
+  nodes: GraphNode[];
+  onOpen: (path: string) => void;
+  onFocusNode: (node: GraphNode) => void;
+}) {
+  return (
+    <>
+      {nodes.map((n) => (
+        <g
+          key={n.path}
+          data-node={n.path}
+          role="button"
+          aria-label={n.path}
+          tabIndex={0}
+          onFocus={() => onFocusNode(n)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onOpen(n.path);
+            }
+          }}
+        />
+      ))}
+    </>
+  );
+});

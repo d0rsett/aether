@@ -130,6 +130,11 @@ export interface Inspection {
   })[];
 }
 export const api = {
+  graph: (vaultId: string) =>
+    invoke<{
+      nodes: { path: string; title: string }[];
+      edges: [string, string][];
+    }>("graph_snapshot", { vaultId }),
   propertyTypes: (vaultId: string) =>
     invoke<Record<string, string>>("property_types", { vaultId }),
   templateFolder: (vaultId: string) =>

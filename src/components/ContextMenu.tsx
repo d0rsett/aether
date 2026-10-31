@@ -31,7 +31,7 @@ export function useContextMenu(onError?: (message: string) => void) {
     y: number;
     label: string;
     actions: ContextAction[];
-    origin: HTMLElement | null;
+    origin: HTMLElement | SVGElement | null;
   } | null>(null);
   const panel = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: 0, top: 0 });
@@ -40,18 +40,22 @@ export function useContextMenu(onError?: (message: string) => void) {
     setMenu(null);
   };
   const show = (
-    event: MouseEvent<HTMLElement>,
+    event: MouseEvent<Element>,
     label: string,
     actions: ContextAction[],
   ) => {
     event.preventDefault();
     event.stopPropagation();
     const rect = event.currentTarget.getBoundingClientRect();
-    const origin = event.currentTarget.matches(
-      "button, input, textarea, [tabindex]",
-    )
-      ? event.currentTarget
-      : (document.activeElement as HTMLElement | null);
+    const origin =
+      (event.currentTarget instanceof HTMLElement ||
+        event.currentTarget instanceof SVGElement) &&
+      event.currentTarget.matches("button, input, textarea, [tabindex]")
+        ? event.currentTarget
+        : document.activeElement instanceof HTMLElement ||
+            document.activeElement instanceof SVGElement
+          ? document.activeElement
+          : null;
     document.dispatchEvent(new CustomEvent("aether:menu-open", { detail: id }));
     setMenu({
       x: event.clientX || rect.left + 12,

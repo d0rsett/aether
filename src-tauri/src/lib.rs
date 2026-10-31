@@ -1,7 +1,7 @@
 use aether_core::attachment_import::{self, Imported, Upload};
 use aether_core::files::Note;
 use aether_core::indexing::{
-    Index, IndexStatus, Inspection, LinkSuggestion, SearchPage, SearchQuery,
+    GraphSnapshot, Index, IndexStatus, Inspection, LinkSuggestion, SearchPage, SearchQuery,
 };
 use aether_core::links::Resolution;
 use aether_core::navigation::{self, Location};
@@ -225,6 +225,10 @@ async fn link_suggestions(
         index.link_suggestions(&text)
     })
     .await
+}
+#[tauri::command]
+async fn graph_snapshot(state: State<'_, AppState>, vault_id: String) -> Result<GraphSnapshot> {
+    with_index(state.inner().clone(), vault_id, |index| index.graph()).await
 }
 #[tauri::command]
 async fn inspect_note(
@@ -1066,6 +1070,7 @@ pub fn run() {
             search_notes,
             link_suggestions,
             inspect_note,
+            graph_snapshot,
             resolve_link,
             index_status
         ])

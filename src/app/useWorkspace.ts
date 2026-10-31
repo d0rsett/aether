@@ -254,12 +254,12 @@ export function useWorkspace(
         throw new Error(t("Введите имя папки без пути."));
       return api.createVault(options.name.trim(), options.parent.trim());
     });
-  const open = (path: string) =>
+  const open = (path: string, background = false) =>
     task(async () => {
       const current = ref.current;
       if (!current.vault) return;
       if (current.workspace.tabs.some((t) => t.path === path)) {
-        dispatch({ type: "activate", path });
+        if (!background) dispatch({ type: "activate", path });
         return;
       }
       if (imageExtension(path)) {
@@ -267,7 +267,7 @@ export function useWorkspace(
         return;
       }
       const note = await api.read(current.vault.id, path);
-      dispatch({ type: "open", note });
+      dispatch({ type: "open", note, background });
     });
   const save = () =>
     task(async () => {
