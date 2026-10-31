@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Titlebar } from "../src/components/Titlebar";
 
 const native = vi.hoisted(() => ({
+  macOS: false,
   maximized: false,
   resize: null as (() => void) | null,
   minimize: vi.fn(),
@@ -12,6 +13,13 @@ const native = vi.hoisted(() => ({
   toggleMaximize: vi.fn(),
   isMaximized: vi.fn(),
   onResized: vi.fn(),
+}));
+vi.mock("../src/services/platform", () => ({
+  platform: {
+    get macOS() {
+      return native.macOS;
+    },
+  },
 }));
 vi.mock("../src/services/api", () => ({
   desktop: true,
@@ -25,6 +33,7 @@ const props = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  native.macOS = false;
   native.maximized = false;
   native.resize = null;
   native.minimize.mockResolvedValue(undefined);
@@ -38,7 +47,9 @@ beforeEach(() => {
     return vi.fn();
   });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+});
 
 it("uses a close request, preserving the workspace unsaved-change guard", async () => {
   render(<Titlebar {...props} />);
@@ -71,4 +82,16 @@ it("reports native window command failures without crashing", async () => {
   await waitFor(() =>
     expect(props.onError).toHaveBeenCalledWith("Window command denied"),
   );
+});
+
+it("leaves macOS window controls to AppKit and reserves space before the brand", () => {
+  native.macOS = true;
+  const { container } = render(
+    <Titlebar {...props} leading={<span>Aether</span>} />,
+  );
+  expect(screen.queryByRole("group", { name: "Управление окном" })).toBeNull();
+  expect(
+    container.querySelector(".titlebar-macos .titlebar-leading")?.textContent,
+  ).toBe("Aether");
+  expect(native.onResized).not.toHaveBeenCalled();
 });

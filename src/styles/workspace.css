@@ -1385,3 +1385,14 @@
     max-width: 260px;
   }
 }
+
+/* Native traffic lights occupy x=16..68 in the overlay title bar.
+   AppKit supplies the actual rounded window mask, including fullscreen changes. */
+.app-header.titlebar-macos .titlebar-leading {
+  padding-left: 96px;
+  min-width: 132px;
+}
+.titlebar-macos .panel-toggles {
+  margin-right: 8px;
+  border-right: 0;
+}

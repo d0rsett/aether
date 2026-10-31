@@ -21,6 +21,10 @@ pdfAssets.push({
 });
 
 export default defineConfig({
+  define: {
+    "import.meta.env.AETHER_MACOS":
+      (process.env.TAURI_ENV_PLATFORM ?? process.platform) === "darwin",
+  },
   plugins: [
     react(),
     {
