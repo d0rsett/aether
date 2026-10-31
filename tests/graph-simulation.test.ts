@@ -235,3 +235,38 @@ it("keeps a connected vault round and fills its interior after settling", () => 
   ).toBeLessThan(0.5);
   engine.dispose();
 }, 15000);
+
+it("moves dense hub neighbors promptly without disturbing a disconnected group", () => {
+  const nodes: GraphNode[] = Array.from({ length: 13 }, (_, i) => ({
+    path: "D" + i,
+    title: "Dense " + i,
+    x: i === 12 ? -1000 : Math.cos(i) * 140,
+    y: i === 12 ? -1000 : Math.sin(i) * 140,
+    vx: 0,
+    vy: 0,
+  }));
+  const edges: GraphEdge[] = [];
+  for (let a = 0; a < 12; a++)
+    for (let b = a + 1; b < 12; b++) edges.push([nodes[a].path, nodes[b].path]);
+  const engine = new GraphSimulation(nodes, edges, {
+    ...defaultForces,
+    center: 0,
+    repel: 0,
+  });
+  engine.reheat();
+  for (let i = 0; i < 400; i++) engine.tick();
+  const before = nodes.slice(1, 12).reduce((sum, n) => sum + n.x, 0) / 11;
+  const isolated = { x: nodes[12].x, y: nodes[12].y };
+  engine.beginDrag("D0");
+  engine.moveDrag(nodes[0].x + 300, nodes[0].y);
+  for (let i = 0; i < 25; i++) engine.tick();
+  expect(
+    nodes.slice(1, 12).reduce((sum, n) => sum + n.x, 0) / 11 - before,
+  ).toBeGreaterThan(70);
+  expect(nodes[12].x).toBeCloseTo(isolated.x, 3);
+  expect(nodes[12].y).toBeCloseTo(isolated.y, 3);
+  engine.endDrag();
+  for (let i = 0; i < 400; i++) engine.tick();
+  expect(engine.running).toBe(false);
+  engine.dispose();
+});

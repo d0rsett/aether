@@ -1,0 +1,9 @@
+{
+  "fixture": true,
+  "labelFade": {
+    "start": 1.4,
+    "end": 2
+  },
+  "samples": 500,
+  "offline": true
+}

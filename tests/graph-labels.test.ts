@@ -3,6 +3,7 @@ import {
   layoutGraphLabels,
   graphLabelOpacity,
   GRAPH_LABEL_MIN_SCALE,
+  GRAPH_LABEL_FULL_SCALE,
 } from "../src/graph/labels";
 import type { GraphNode } from "../src/graph/model";
 const node = (path: string, x = 0, y = 0, title = path): GraphNode => ({
@@ -29,13 +30,17 @@ it("shows no captions below one threshold and a caption for EVERY note above it"
     nodes,
     new Map(),
     1,
-    GRAPH_LABEL_MIN_SCALE,
+    GRAPH_LABEL_MIN_SCALE + 0.001,
     measure,
   );
   expect(above.size).toBe(nodes.length);
   expect(nodes.every((n) => above.has(n.path))).toBe(true);
   expect(graphLabelOpacity(GRAPH_LABEL_MIN_SCALE - 0.001)).toBe(0);
-  expect(graphLabelOpacity(GRAPH_LABEL_MIN_SCALE)).toBe(1);
+  expect(graphLabelOpacity(GRAPH_LABEL_MIN_SCALE)).toBe(0);
+  expect(
+    graphLabelOpacity((GRAPH_LABEL_MIN_SCALE + GRAPH_LABEL_FULL_SCALE) / 2),
+  ).toBeCloseTo(0.5);
+  expect(graphLabelOpacity(GRAPH_LABEL_FULL_SCALE)).toBe(1);
 });
 it("wraps all captions below their own node and keeps text a constant projected size", () => {
   const nodes = [

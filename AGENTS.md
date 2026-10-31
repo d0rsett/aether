@@ -164,7 +164,7 @@ This example illustrates structure. Use only claims and checks that apply to the
 
 ## Local Data and Privacy
 
-- Keep personal and test vaults under `vaults/` out of Git. This directory contains local testing material and must not be published to GitHub.
+- Keep personal and test vaults under `test-local-vaults/` out of Git. This directory contains local testing material and must not be published to GitHub.
 - Exclude generated builds, executables, installers, caches, runtime databases, local application state, and machine-specific settings from commits.
 - Never include credentials, tokens, private keys, or personal files in repository changes or commit descriptions.
 - Confirm that ignore rules cover local data. Ignore rules do not protect files already tracked by Git; inspect tracked and staged paths as well.
@@ -181,3 +181,7 @@ This example illustrates structure. Use only claims and checks that apply to the
 - Avoid tests that merely repeat the implementation and unrelated checks without a reason.
 - Do not terminate the user's running application to replace a locked build. Keep the session intact and report the available updated build's location.
 - Summarize completed work, relevant verification results, and material limitations. Claim a commit or push only after that action succeeds.
+
+## Shared demonstration vault
+
+`vault/` is a versioned synthetic English demonstration vault. It is an explicit exception to the local-vault exclusion above. Keep its 500 Markdown notes and small original sample attachments portable; exclude application state and personal content. Existing personal and experimental vaults live under ignored `test-local-vaults/`.

@@ -102,9 +102,18 @@ export function graphLabelBounds(
 }
 
 // One global threshold in projected pixels per graph unit, shared by both renderers.
-export const GRAPH_LABEL_MIN_SCALE = 2;
-export function graphLabelOpacity(scale: number): 0 | 1 {
-  return scale >= GRAPH_LABEL_MIN_SCALE ? 1 : 0;
+export const GRAPH_LABEL_MIN_SCALE = 1.2;
+export const GRAPH_LABEL_FULL_SCALE = 2;
+export function graphLabelOpacity(scale: number): number {
+  const progress = Math.max(
+    0,
+    Math.min(
+      1,
+      (scale - GRAPH_LABEL_MIN_SCALE) /
+        (GRAPH_LABEL_FULL_SCALE - GRAPH_LABEL_MIN_SCALE),
+    ),
+  );
+  return progress * progress * (3 - 2 * progress);
 }
 export function graphLabelFont(scale: number): string {
   return GRAPH_LABEL_FONT.replace("11px", `${11 / scale}px`);

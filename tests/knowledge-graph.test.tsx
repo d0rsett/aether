@@ -7,6 +7,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { GraphSimulation } from "../src/graph/simulation";
 import { KnowledgeGraph } from "../src/components/KnowledgeGraph";
 import {
   defaultGraphView,
@@ -165,11 +166,15 @@ it("does not persist a pin on drag and releases temporary locks when the pointer
     setPointerCapture: { value: vi.fn() },
     hasPointerCapture: { value: () => false },
   });
+  const reheat = vi.spyOn(GraphSimulation.prototype, "reheat");
   fireEvent.pointerDown(node, { button: 0, clientX: 120, clientY: 60 });
   fireEvent.pointerMove(svg, { clientX: 300, clientY: 120 });
   expect(node.getAttribute("data-pinned")).toBeNull();
   expect(node.getAttribute("transform")).toBe("translate(300,120)");
+  fireEvent.pointerMove(svg, { clientX: 310, clientY: 125 });
   fireEvent.pointerCancel(svg);
+  expect(reheat).toHaveBeenCalledTimes(1);
+  reheat.mockRestore();
   for (let i = 1; i <= 400 && frames.size; i++)
     await act(async () => {
       const pending = [...frames.values()];
@@ -181,14 +186,14 @@ it("does not persist a pin on drag and releases temporary locks when the pointer
   expect(node.getAttribute("transform")).not.toBe("translate(300,120)");
 });
 
-it("switches ALL SVG captions on at the threshold and NONE before it, including hover", async () => {
+it("fades SVG captions in with zoom and keeps them hidden below the threshold", async () => {
   mocks.graph.mockResolvedValue({
     nodes: ["A.md", "B.md", "C.md"].map((path) => ({ path, title: path })),
     edges: [],
   });
   writeGraphView(props.vaultId, {
     ...defaultGraphView(),
-    camera: { x: 0, y: 0, zoom: 1.9 },
+    camera: { x: 0, y: 0, zoom: 1.1 },
     positions: [
       ["A.md", -60, 0, false],
       ["B.md", 0, 0, false],
@@ -203,6 +208,11 @@ it("switches ALL SVG captions on at the threshold and NONE before it, including 
   expect(container.querySelectorAll(".graph-node text")).toHaveLength(0);
   fireEvent.click(screen.getByRole("button", { name: "Приблизить" }));
   expect(container.querySelectorAll(".graph-node text")).toHaveLength(3);
+  const opacity = Number(
+    container.querySelector<SVGTextElement>(".graph-node text")?.style.opacity,
+  );
+  expect(opacity).toBeGreaterThan(0);
+  expect(opacity).toBeLessThan(1);
   for (let i = 0; i < 6; i++)
     fireEvent.click(screen.getByRole("button", { name: "Приблизить" }));
   expect(container.querySelectorAll(".graph-node text")).toHaveLength(3);
@@ -242,4 +252,13 @@ it("does not reselect hovered labels as nodes pass under the pointer during whee
   } finally {
     clock.mockRestore();
   }
+});
+
+it("does not focus the canvas when restoring a graph at startup", async () => {
+  document.body.focus();
+  render(<KnowledgeGraph {...props} />);
+  await screen.findByRole("button", { name: "A.md" });
+  expect(document.activeElement).not.toBe(
+    screen.getByLabelText("Полотно графа"),
+  );
 });

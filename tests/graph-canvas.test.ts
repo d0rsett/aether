@@ -107,7 +107,7 @@ it("shows zero Canvas captions before the threshold and wrapped captions after i
     visible: { nodes: [node], edges: [] },
     positions: new Map([["A", node]]),
     degree: new Map(),
-    camera: { x: 0, y: 0, zoom: 1.999 },
+    camera: { x: 0, y: 0, zoom: 1.199 },
     active: null,
     hover: null,
     labels: true,
@@ -117,7 +117,7 @@ it("shows zero Canvas captions before the threshold and wrapped captions after i
   };
   paintGraph(canvas, state);
   expect(fillText).not.toHaveBeenCalled();
-  state.camera.zoom = 2.001;
+  state.camera.zoom = 1.201;
   paintGraph(canvas, state);
   const first = structuredClone(fillText.mock.calls);
   expect(first.length).toBeGreaterThan(1);

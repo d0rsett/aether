@@ -4,7 +4,7 @@
 
 ## Set up
 
-Install the [development requirements](README.md#run-and-build), then run `npm ci` and `npm run tauri -- dev`. Use disposable vaults. Keep personal content outside the source tree or under ignored `vaults/`.
+Install the [development requirements](README.md#run-and-build), then run `npm ci` and `npm run tauri -- dev`. Use disposable vaults. Keep personal content outside the source tree or under ignored `test-local-vaults/`.
 
 Read [architecture](docs/architecture.md) and repository working instructions before substantial changes. Keep vault/path/index rules in `aether-core`, desktop wiring in `src-tauri/src`, typed IPC in `src/services/api.ts`, workspace state in `src/app` and `src/workspace`, editor extensions in `src/editor`, and reading rendering in `src/reading`.
 
@@ -54,3 +54,7 @@ Remove-Item Env:AETHER_CARGO_PROXY
 ```
 
 This mode uses offline Cargo. It does not replace the Windows SDK/MSVC prerequisites.
+
+The versioned `vault/` folder is a synthetic English demo with 500 notes and original sample attachments. Open that folder directly in Aether. Keep application state and personal material out of it.
+
+The versioned `vault/` folder is a synthetic English demo with 500 notes and original sample attachments. Open that folder directly in Aether. Keep application state and personal material out of it.

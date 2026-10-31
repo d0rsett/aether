@@ -10,25 +10,12 @@
   background: var(--base);
   color: var(--text);
 }
-.graph-header {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 8px 14px;
-  min-height: 42px;
-}
-.graph-header strong {
-  font-size: 13px;
-  font-weight: 500;
-}
-.graph-header > span {
-  color: var(--muted);
-  font-size: 11px;
-}
 .graph-header-actions {
-  margin-left: auto;
+  position: absolute;
+  top: 8px;
+  right: 14px;
+  z-index: 2;
   display: flex;
-  gap: 4px;
 }
 .graph-stage {
   position: relative;
@@ -50,11 +37,11 @@
 }
 .graph-stage line {
   stroke: var(--subtle);
-  opacity: 0.45;
+  opacity: 0.3;
 }
 .graph-stage line.is-highlighted {
   stroke: var(--accent);
-  opacity: 0.95;
+  opacity: 0.8;
 }
 .graph-stage .is-dimmed {
   opacity: 0.12;
@@ -92,7 +79,7 @@
 }
 .graph-settings {
   position: absolute;
-  top: 12px;
+  top: 44px;
   right: 12px;
   width: 304px;
   max-width: calc(100% - 24px);
@@ -273,7 +260,7 @@
   border-radius: 7px;
   padding: 3px;
 }
-.graph-hint {
+.graph-counts {
   position: absolute;
   bottom: 14px;
   left: 16px;
@@ -283,11 +270,17 @@
   pointer-events: none;
   margin: 0;
 }
-.graph-footer {
-  padding: 5px 14px;
-  color: var(--muted);
+.graph-persistence-error {
+  position: absolute;
+  bottom: 44px;
+  left: 16px;
+  max-width: calc(100% - 32px);
+  padding: 6px 10px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 7px;
   font-size: 11px;
-  border-top: 1px solid var(--border);
 }
 .graph-message {
   position: absolute;
@@ -301,11 +294,7 @@
   margin-top: 12px;
   color: var(--accent);
 }
-@media (max-width: 620px) {
-  .graph-hint {
-    display: none;
-  }
-}
+
 .graph-workspace-content {
   display: contents;
 }

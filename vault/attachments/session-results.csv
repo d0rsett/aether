@@ -1,0 +1,5 @@
+session,task,seconds,completed
+S01,Find linked note,18,true
+S02,Open attachment,12,true
+S03,Follow heading,24,true
+S04,Explore graph,43,false

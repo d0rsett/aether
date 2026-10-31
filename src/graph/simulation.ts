@@ -6,6 +6,7 @@ import {
   forceX,
   forceY,
   type Simulation,
+  type ForceLink,
   type SimulationLinkDatum,
 } from "d3-force";
 import {
@@ -24,6 +25,8 @@ export class GraphSimulation {
   private readonly degree = new Map<string, number>();
   private readonly links: { source: string; target: string }[];
   private dragging: GraphNode | undefined;
+  private linkForce:
+    ForceLink<GraphNode, SimulationLinkDatum<GraphNode>> | undefined;
   private disposed = false;
 
   constructor(
@@ -57,28 +60,30 @@ export class GraphSimulation {
       typeof node === "object" ? node.path : String(node);
     const linkDegree = (link: SimulationLinkDatum<GraphNode>) =>
       Math.max(degree(pathOf(link.source)), degree(pathOf(link.target)));
-    this.simulation
-      .force(
-        "links",
-        forceLink<GraphNode, SimulationLinkDatum<GraphNode>>(
-          this.links.map((link) => ({ ...link })),
-        )
-          .id((node) => node.path)
-          // A high-degree hub needs a larger neighbourhood to fit its notes.
-          .distance(
-            (link) =>
-              forces.distance *
-              Math.min(3, Math.max(1, Math.sqrt(linkDegree(link)) / 3)),
-          )
-          .strength(
-            (link) =>
-              forces.strength /
-              Math.min(
+    this.linkForce = forceLink<GraphNode, SimulationLinkDatum<GraphNode>>(
+      this.links.map((link) => ({ ...link })),
+    )
+      .id((node) => node.path)
+      // A high-degree hub needs a larger neighbourhood to fit its notes.
+      .distance(
+        (link) =>
+          forces.distance *
+          Math.min(3, Math.max(1, Math.sqrt(linkDegree(link)) / 3)),
+      )
+      .strength(
+        (link) =>
+          forces.strength /
+          (this.dragging &&
+          (pathOf(link.source) === this.dragging.path ||
+            pathOf(link.target) === this.dragging.path)
+            ? 1
+            : Math.min(
                 degree(pathOf(link.source)),
                 degree(pathOf(link.target)),
-              ),
-          ),
-      )
+              )),
+      );
+    this.simulation
+      .force("links", this.linkForce)
       .force(
         "charge",
         forceManyBody<GraphNode>()
@@ -134,8 +139,12 @@ export class GraphSimulation {
     if (!this.dragging) return;
     this.dragging.fx = this.dragging.x;
     this.dragging.fy = this.dragging.y;
+    // Keep neighbors responsive without restarting a full layout on touch.
+    // Recompute cached strengths only at drag boundaries. Incident links
+    // respond directly even when both ends belong to dense communities.
+    if (this.linkForce) this.linkForce.strength(this.linkForce.strength());
     this.simulation.alphaTarget(0.2);
-    this.reheat();
+    this.reheat(0.2);
   }
   moveDrag(x: number, y: number): void {
     if (!this.dragging) return;
@@ -148,6 +157,7 @@ export class GraphSimulation {
       this.dragging.fx = this.dragging.pinned ? this.dragging.x : null;
       this.dragging.fy = this.dragging.pinned ? this.dragging.y : null;
       this.dragging = undefined;
+      if (this.linkForce) this.linkForce.strength(this.linkForce.strength());
     }
     this.simulation.alphaTarget(0);
   }

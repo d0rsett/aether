@@ -12,7 +12,6 @@ import {
   Search,
   RotateCcw,
   ChevronRight,
-  Waypoints,
   Settings2,
   X,
   Maximize,
@@ -50,7 +49,6 @@ export function KnowledgeGraph({
   revision,
   active,
   onOpen,
-  onClose,
   onOpenBackground,
   visible: isVisible = true,
   indexRunning = false,
@@ -116,7 +114,15 @@ export function KnowledgeGraph({
   }, []);
   useEffect(() => {
     const opener = document.activeElement;
-    svg.current?.focus();
+    // Restoring the workspace at startup has no initiating control. Let
+    // keyboard navigation enter the graph naturally instead of outlining
+    // the whole canvas or moving focus into a restored background tab.
+    if (
+      isVisible &&
+      opener !== document.body &&
+      opener !== document.documentElement
+    )
+      svg.current?.focus({ preventScroll: true });
     return () => {
       if (opener instanceof HTMLElement && opener.isConnected)
         opener.focus({ preventScroll: true });
@@ -126,7 +132,8 @@ export function KnowledgeGraph({
   const needsLayout = useRef(false);
   const scheduleLayout = useRef<(() => void) | null>(null);
   const wake = () => {
-    simulationRef.current?.reheat();
+    // Interaction methods set their own energy; scheduling must not reheat
+    // the entire graph on every pointer event or after releasing a node.
     scheduleLayout.current?.();
   };
   useEffect(() => {
@@ -273,7 +280,7 @@ export function KnowledgeGraph({
       ),
     [data, query, local, root, active, depth, orphans],
   );
-  const canvasMode = visible.nodes.length > 800;
+  const canvasMode = visible.nodes.length > 300;
   const isVisibleRef = useRef(isVisible);
   isVisibleRef.current = isVisible;
   const canvasStateRef = useRef({
@@ -305,15 +312,18 @@ export function KnowledgeGraph({
     if (a === hover) highlighted.add(b);
     if (b === hover) highlighted.add(a);
   }
-  const shownLabels =
-    canvasMode || !labels
-      ? new Map<string, GraphLabel>()
-      : layoutGraphLabels(
-          visible.nodes,
-          degree,
-          size,
-          viewportScale * camera.zoom,
-        );
+  const shownLabels = useMemo(
+    () =>
+      canvasMode || !labels
+        ? new Map<string, GraphLabel>()
+        : layoutGraphLabels(
+            visible.nodes,
+            degree,
+            size,
+            viewportScale * camera.zoom,
+          ),
+    [canvasMode, labels, visible, degree, size, viewportScale, camera.zoom],
+  );
   const inView = (n: GraphNode) =>
     Math.abs(n.x * camera.zoom + camera.x) < 600 &&
     Math.abs(n.y * camera.zoom + camera.y) < 400;
@@ -550,12 +560,7 @@ export function KnowledgeGraph({
   };
   return (
     <section className="knowledge-graph" aria-label={t("Граф связей")}>
-      <header className="graph-header">
-        <Waypoints size={16} />
-        <strong>{t(local ? "Локальный граф" : "Граф связей")}</strong>
-        <span>
-          {visible.nodes.length} · {visible.edges.length}
-        </span>
+      <div className="graph-stage">
         <div className="graph-header-actions">
           <button
             className="icon-button"
@@ -565,16 +570,7 @@ export function KnowledgeGraph({
           >
             <Settings2 size={17} />
           </button>
-          <button
-            className="icon-button"
-            aria-label={t("Закрыть граф")}
-            onClick={onClose}
-          >
-            <X size={17} />
-          </button>
         </div>
-      </header>
-      <div className="graph-stage">
         {canvasMode && (
           <canvas ref={canvas} className="graph-canvas" aria-hidden="true" />
         )}
@@ -1033,17 +1029,16 @@ export function KnowledgeGraph({
             <Maximize size={16} />
           </button>
         </div>
-        <p className="graph-hint">
-          {t("Перетаскивайте полотно и узлы · Колесо — масштаб")}
+        <p className="graph-counts">
+          {visible.nodes.length} · {visible.edges.length}
         </p>
+        {persistenceError && (
+          <div className="graph-persistence-error" role="alert">
+            {persistenceError}
+          </div>
+        )}
       </div>
       {context.menu}
-      <footer
-        className="graph-footer"
-        role={persistenceError ? "alert" : undefined}
-      >
-        {persistenceError || t("Связи сохранённых заметок")}
-      </footer>
     </section>
   );
 }

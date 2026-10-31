@@ -68,7 +68,22 @@ export function paintGraph(
     if (b === hover) highlighted.add(a);
   }
   const shownLabels = labels
-      ? layoutGraphLabels(visible.nodes, degree, size, scale / ratio)
+      ? layoutGraphLabels(
+          // Captions are at most 120 × 42 CSS pixels; include a margin for
+          // labels whose node is just outside the viewport.
+          visible.nodes.filter((n) => {
+            const margin = 160 / (scale / ratio) + 60 * size;
+            return (
+              n.x >= left - margin &&
+              n.x <= right + margin &&
+              n.y >= top - margin &&
+              n.y <= bottom + margin
+            );
+          }),
+          degree,
+          size,
+          scale / ratio,
+        )
       : new Map<string, GraphLabel>(),
     normalEdges = new Path2D(),
     dimEdges = new Path2D(),
@@ -99,11 +114,11 @@ export function paintGraph(
     ctx.globalAlpha = 0.08;
     ctx.strokeStyle = color("--subtle");
     ctx.stroke(dimEdges);
-    ctx.globalAlpha = 0.95;
+    ctx.globalAlpha = 0.8;
     ctx.strokeStyle = color("--accent");
     ctx.stroke(highlightedEdges);
   } else {
-    ctx.globalAlpha = 0.45;
+    ctx.globalAlpha = 0.3;
     ctx.strokeStyle = color("--subtle");
     ctx.stroke(normalEdges);
   }
@@ -131,6 +146,7 @@ export function paintGraph(
   ctx.fillStyle = color("--accent");
   ctx.fill(highlightedNodes);
   if (shownLabels.size) {
+    const labelOpacity = graphLabelOpacity(scale / ratio);
     ctx.fillStyle = color("--text");
     ctx.font = graphLabelFont(scale / ratio);
     ctx.strokeStyle = color("--base");
@@ -151,8 +167,7 @@ export function paintGraph(
       )
         continue;
       ctx.globalAlpha =
-        graphLabelOpacity(scale / ratio) *
-        (hover && !highlighted.has(n.path) ? 0.12 : 1);
+        labelOpacity * (hover && !highlighted.has(n.path) ? 0.12 : 1);
       label.lines.forEach((line: string, index: number) => {
         const x = n.x + label.x,
           y =

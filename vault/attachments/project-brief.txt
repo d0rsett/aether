@@ -1,0 +1,4 @@
+FICTIONAL DEMO MATERIAL
+Project: Atlas knowledge workspace
+Goal: Find and reconnect ideas without losing writing context.
+Scope: Local notes, links, properties and attachments.
