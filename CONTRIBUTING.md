@@ -56,5 +56,3 @@ Remove-Item Env:AETHER_CARGO_PROXY
 This mode uses offline Cargo. It does not replace the Windows SDK/MSVC prerequisites.
 
 The versioned `vault/` folder is a synthetic English demo with 500 notes and original sample attachments. Open that folder directly in Aether. Keep application state and personal material out of it.
-
-The versioned `vault/` folder is a synthetic English demo with 500 notes and original sample attachments. Open that folder directly in Aether. Keep application state and personal material out of it.
