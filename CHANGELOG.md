@@ -2,6 +2,21 @@
 
 [Русский](CHANGELOG.ru.md) · [README](README.md)
 
+## 0.3.0 — 2026-11-01
+
+### Graph and navigation
+
+- Explore connected notes in graph tabs, with search, filters, communities and saved graph settings.
+- Improve node dragging, layout, zoom-dependent labels and graph interaction.
+- Fix immediate note creation and preserve graph tabs during workspace restoration.
+- Add native macOS window controls and rounded window corners.
+- Include a portable synthetic demonstration vault with 500 English Markdown notes and sample attachments.
+
+### Downloads
+
+- Add release builds for Windows x64 and universal macOS (Apple Silicon and Intel).
+- Builds are unsigned; macOS releases are provided for testing and are not notarized.
+
 ## 0.2.0 — 2026-10-30
 
 ### Writing and connected notes
