@@ -1,3 +1,4 @@
+import { communityPositions } from "./communities";
 export type GraphNode = {
   path: string;
   title: string;
@@ -6,6 +7,9 @@ export type GraphNode = {
   vx: number;
   vy: number;
   pinned?: boolean;
+  fx?: number | null;
+  fy?: number | null;
+  index?: number;
 };
 export type GraphEdge = [string, string];
 export type Forces = {
@@ -20,6 +24,47 @@ export const defaultForces: Forces = {
   strength: 0.5,
   distance: 100,
 };
+export function graphNodeRadius(
+  path: string,
+  degree: Map<string, number>,
+  size: number,
+): number {
+  // Keep ordinary notes small; connectivity should distinguish hubs rather
+  // than inflate every child in a dense vault.
+  return (
+    (2.8 +
+      Math.min(12, Math.max(0, Math.sqrt(degree.get(path) ?? 0) - 1) * 1.6)) *
+    size
+  );
+}
+export function fitGraphCamera(
+  nodes: GraphNode[],
+  viewportWidth = 1000,
+  viewportHeight = 700,
+  padding = 80,
+): { x: number; y: number; zoom: number } {
+  if (!nodes.length) return { x: 0, y: 0, zoom: 1 };
+  const bounds = nodes.reduce(
+    (extent, node) => ({
+      minX: Math.min(extent.minX, node.x),
+      maxX: Math.max(extent.maxX, node.x),
+      minY: Math.min(extent.minY, node.y),
+      maxY: Math.max(extent.maxY, node.y),
+    }),
+    { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity },
+  );
+  const width = Math.max(1, bounds.maxX - bounds.minX),
+    height = Math.max(1, bounds.maxY - bounds.minY),
+    centerX = (bounds.minX + bounds.maxX) / 2,
+    centerY = (bounds.minY + bounds.maxY) / 2,
+    availableWidth = Math.max(1, viewportWidth - padding * 2),
+    availableHeight = Math.max(1, viewportHeight - padding * 2),
+    zoom = Math.max(
+      0.02,
+      Math.min(2, availableWidth / width, availableHeight / height),
+    );
+  return { x: -centerX * zoom, y: -centerY * zoom, zoom };
+}
 export function filterGraph(
   nodes: GraphNode[],
   edges: GraphEdge[],
@@ -61,67 +106,11 @@ export function filterGraph(
     edges: edges.filter(([a, b]) => paths.has(a) && paths.has(b)),
   };
 }
-export function stepLayout(
-  nodes: GraphNode[],
+export function initialGraphLayout(
+  nodes: Pick<GraphNode, "path" | "title">[],
   edges: GraphEdge[],
-  forces: Forces,
-  pinned?: string,
-) {
-  const byPath = new Map(nodes.map((n) => [n.path, n]));
-  // Aggregate nearby nodes in fixed-size cells instead of comparing every pair.
-  const cells = new Map<string, { x: number; y: number; count: number }>();
-  for (const n of nodes) {
-    const key = Math.floor(n.x / 100) + ":" + Math.floor(n.y / 100);
-    const cell = cells.get(key) ?? { x: 0, y: 0, count: 0 };
-    cell.x += n.x;
-    cell.y += n.y;
-    cell.count++;
-    cells.set(key, cell);
-  }
-  for (const n of nodes) {
-    const cx = Math.floor(n.x / 100),
-      cy = Math.floor(n.y / 100);
-    for (let dx = -2; dx <= 2; dx++)
-      for (let dy = -2; dy <= 2; dy++) {
-        const cell = cells.get(cx + dx + ":" + (cy + dy));
-        if (!cell) continue;
-        const own = dx === 0 && dy === 0,
-          count = cell.count - (own ? 1 : 0);
-        if (count <= 0) continue;
-        const x = n.x - (cell.x - (own ? n.x : 0)) / count || 0.01,
-          y = n.y - (cell.y - (own ? n.y : 0)) / count || 0.01;
-        const force = Math.min(
-          1,
-          (120 * forces.repel * count) / Math.max(100, x * x + y * y),
-        );
-        n.vx += x * force;
-        n.vy += y * force;
-      }
-  }
-  for (const [a, b] of edges) {
-    const x = byPath.get(a),
-      y = byPath.get(b);
-    if (!x || !y) continue;
-    const dx = y.x - x.x,
-      dy = y.y - x.y,
-      d = Math.max(1, Math.hypot(dx, dy));
-    const pull = ((d - forces.distance) / d) * forces.strength * 0.025;
-    x.vx += dx * pull;
-    x.vy += dy * pull;
-    y.vx -= dx * pull;
-    y.vy -= dy * pull;
-  }
-  for (const n of nodes) {
-    if (n.path === pinned || n.pinned) {
-      n.vx = 0;
-      n.vy = 0;
-      continue;
-    }
-    n.vx = (n.vx - n.x * forces.center * 0.0006) * 0.75;
-    n.vy = (n.vy - n.y * forces.center * 0.0006) * 0.75;
-    n.x += Math.max(-12, Math.min(12, n.vx));
-    n.y += Math.max(-12, Math.min(12, n.vy));
-  }
+): Map<string, { x: number; y: number }> {
+  return communityPositions(nodes, edges);
 }
 
 export function mergeGraphNodes(
@@ -134,47 +123,45 @@ export function mergeGraphNodes(
   const stored = new Map(
     saved.map(([path, x, y, pinned]) => [path, { x, y, pinned }]),
   );
-  const result = incoming.map((n, i) => {
-    const existing = old.get(n.path) ?? stored.get(n.path);
-    return {
-      ...n,
-      x: existing?.x ?? Math.cos(i * 2.39996) * Math.sqrt(i + 1) * 24,
-      y: existing?.y ?? Math.sin(i * 2.39996) * Math.sqrt(i + 1) * 24,
-      vx: 0,
-      vy: 0,
-      pinned: existing?.pinned ?? false,
-    };
-  });
-  const byPath = new Map(result.map((n) => [n.path, n]));
+  const fresh = incoming.filter(
+    (node) => !old.has(node.path) && !stored.has(node.path),
+  );
+  const layout = fresh.length ? initialGraphLayout(incoming, edges) : null;
+  const anchors = new Map<string, { x: number; y: number }>();
   for (const [a, b] of edges) {
-    const fresh =
-      !old.has(a) && !stored.has(a)
-        ? byPath.get(a)
-        : !old.has(b) && !stored.has(b)
-          ? byPath.get(b)
-          : undefined;
-    const anchor = fresh?.path === a ? old.get(b) : old.get(a);
-    if (fresh && anchor) {
-      fresh.x = anchor.x + 32;
-      fresh.y = anchor.y + 24;
-    }
+    const knownA = old.get(a) ?? stored.get(a);
+    const knownB = old.get(b) ?? stored.get(b);
+    if (knownA && !knownB && !anchors.has(b)) anchors.set(b, knownA);
+    if (knownB && !knownA && !anchors.has(a)) anchors.set(a, knownB);
   }
-  return result;
-}
-export function graphLabels(
-  nodes: GraphNode[],
-  zoom: number,
-  hovered: string | null,
-): Set<string> {
-  const cells = new Set<string>(),
-    result = new Set<string>();
-  for (const n of nodes) {
-    const cell =
-      Math.floor((n.x * zoom) / 100) + ":" + Math.floor((n.y * zoom) / 24);
-    if (n.path === hovered || (zoom >= 0.45 && !cells.has(cell))) {
-      result.add(n.path);
-      cells.add(cell);
-    }
+  const slots = new Map<string, number>();
+  const occupied = new Set<string>();
+  for (const node of incoming) {
+    const known = old.get(node.path) ?? stored.get(node.path);
+    if (known) occupied.add(`${known.x}:${known.y}`);
   }
+  const result = incoming.map((node) => {
+    const existing = old.get(node.path) ?? stored.get(node.path);
+    let { x, y } = existing ?? layout?.get(node.path) ?? { x: 0, y: 0 };
+    if (!existing) {
+      const anchor = anchors.get(node.path);
+      if (anchor) {
+        const key = `${anchor.x}:${anchor.y}`;
+        const slot = slots.get(key) ?? 0;
+        slots.set(key, slot + 1);
+        const angle = Math.atan2(24, 32) + slot * 2.399963229728653;
+        const radius = 40 + 20 * Math.sqrt(slot);
+        x = anchor.x + Math.cos(angle) * radius;
+        y = anchor.y + Math.sin(angle) * radius;
+      }
+      // Keep partial restores and newly indexed orphan notes independently selectable.
+      while (occupied.has(`${x}:${y}`)) {
+        x += 24;
+        y += 32;
+      }
+      occupied.add(`${x}:${y}`);
+    }
+    return { ...node, x, y, vx: 0, vy: 0, pinned: existing?.pinned ?? false };
+  });
   return result;
 }

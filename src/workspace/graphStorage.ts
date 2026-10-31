@@ -54,7 +54,7 @@ export function readGraphView(id: string): GraphViewState {
     initial.camera = {
       x: number(camera.x, 0, -1e7, 1e7),
       y: number(camera.y, 0, -1e7, 1e7),
-      zoom: number(camera.zoom, 1, 0.15, 5),
+      zoom: number(camera.zoom, 1, 0.02, 5),
     };
     initial.forces = {
       center: number(forces.center, 0.5, 0, 2),

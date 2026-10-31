@@ -26,13 +26,24 @@ import { t, useLocale } from "../i18n";
 import {
   defaultForces,
   mergeGraphNodes,
-  graphLabels,
+  graphNodeRadius,
+  fitGraphCamera,
+  initialGraphLayout,
   filterGraph,
-  stepLayout,
   type GraphNode,
   type GraphEdge,
 } from "../graph/model";
 import "../styles/graph.css";
+import {
+  layoutGraphLabels,
+  graphLabelBounds,
+  graphLabelOpacity,
+  GRAPH_LABEL_LINE_HEIGHT,
+  type GraphLabel,
+} from "../graph/labels";
+import { layoutEdges } from "../graph/communities";
+import { GraphSimulation } from "../graph/simulation";
+import { paintGraph } from "../graph/canvas";
 
 export function KnowledgeGraph({
   vaultId,
@@ -59,7 +70,6 @@ export function KnowledgeGraph({
   const context = useContextMenu(setPersistenceError);
   const nodesRef = useRef<GraphNode[]>([]);
   const loaded = useRef(false);
-  const animate = useRef(false);
   const [data, setData] = useState<{
     nodes: GraphNode[];
     edges: GraphEdge[];
@@ -80,7 +90,9 @@ export function KnowledgeGraph({
   const [retry, setRetry] = useState(0);
   const [, redraw] = useState(0);
   const canvas = useRef<HTMLCanvasElement>(null);
+  const [viewportScale, setViewportScale] = useState(1);
   const svg = useRef<SVGSVGElement>(null);
+  const zoomingUntil = useRef(0);
   const drag = useRef<{
     id: number;
     path?: string;
@@ -88,6 +100,20 @@ export function KnowledgeGraph({
     y: number;
     moved: boolean;
   } | null>(null);
+  useLayoutEffect(() => {
+    const element = svg.current;
+    if (!element) return;
+    const measure = () => {
+      const rect = element.getBoundingClientRect();
+      if (rect.width && rect.height)
+        setViewportScale(Math.min(rect.width / 1000, rect.height / 700));
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
   useEffect(() => {
     const opener = document.activeElement;
     svg.current?.focus();
@@ -96,9 +122,12 @@ export function KnowledgeGraph({
         opener.focus({ preventScroll: true });
     };
   }, []);
-  const frames = useRef(0);
+  const simulationRef = useRef<GraphSimulation | null>(null);
+  const needsLayout = useRef(false);
+  const scheduleLayout = useRef<(() => void) | null>(null);
   const wake = () => {
-    frames.current = 240;
+    simulationRef.current?.reheat();
+    scheduleLayout.current?.();
   };
   useEffect(() => {
     if (indexRunning) return;
@@ -106,19 +135,45 @@ export function KnowledgeGraph({
     setError("");
     void api
       .graph(vaultId)
-      .then((snapshot) => {
+      .then(async (snapshot) => {
         if (cancelled) return;
+        const edges = layoutEdges(snapshot.nodes, snapshot.edges);
         const nodes = mergeGraphNodes(
           snapshot.nodes,
           nodesRef.current,
-          snapshot.edges,
+          edges,
           initial.positions,
         );
         const first = !loaded.current;
+        if (first && !initial.positions.length) {
+          const warmup = new GraphSimulation(
+            nodes,
+            edges,
+            initial.forces,
+            initial.size,
+          );
+          try {
+            warmup.reheat(1);
+            for (let i = 0; i < 80; i++) {
+              if (cancelled) return;
+              warmup.tick();
+              if (i % 2 === 1 && i < 79)
+                await new Promise<void>((resolve) =>
+                  window.setTimeout(resolve, 0),
+                );
+            }
+          } finally {
+            warmup.dispose();
+          }
+        }
+
+        if (cancelled) return;
+        needsLayout.current = !first || !initial.positions.length;
         nodesRef.current = nodes;
-        animate.current = first && !initial.positions.length;
+        if (first && !initial.positions.length && !initial.local)
+          setCamera(fitGraphCamera(nodes));
         loaded.current = true;
-        setData({ nodes, edges: snapshot.edges });
+        setData({ nodes, edges });
       })
       .catch((e) => {
         if (!cancelled) setError(errorMessage(e));
@@ -218,31 +273,25 @@ export function KnowledgeGraph({
       ),
     [data, query, local, root, active, depth, orphans],
   );
-  const lastForces = useRef(forces);
-  useEffect(() => {
-    if (!isVisible) return;
-    if (animate.current || lastForces.current !== forces) wake();
-    animate.current = false;
-    lastForces.current = forces;
-    let frame = 0,
-      last = 0;
-    const tick = (time: number) => {
-      if (
-        (frames.current > 0 || drag.current?.path) &&
-        time - last >= (visible.nodes.length > 1500 ? 32 : 16)
-      ) {
-        last = time;
-        dirty.current = true;
-        stepLayout(visible.nodes, visible.edges, forces, drag.current?.path);
-        frames.current--;
-        redraw((n) => n + 1);
-      }
-      frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [visible, forces, isVisible]);
-  const positions = new Map(visible.nodes.map((n) => [n.path, n]));
+  const canvasMode = visible.nodes.length > 800;
+  const isVisibleRef = useRef(isVisible);
+  isVisibleRef.current = isVisible;
+  const canvasStateRef = useRef({
+    visible,
+    positions: new Map<string, GraphNode>(),
+    degree: new Map<string, number>(),
+    camera,
+    active: active ?? null,
+    hover,
+    labels,
+    size,
+    thickness,
+    canvasMode,
+  });
+  const positions = useMemo(
+    () => new Map(visible.nodes.map((n) => [n.path, n])),
+    [visible],
+  );
   const degree = useMemo(() => {
     const result = new Map<string, number>();
     for (const [a, b] of visible.edges) {
@@ -256,12 +305,121 @@ export function KnowledgeGraph({
     if (a === hover) highlighted.add(b);
     if (b === hover) highlighted.add(a);
   }
-  const shownLabels = graphLabels(visible.nodes, camera.zoom, hover);
+  const shownLabels =
+    canvasMode || !labels
+      ? new Map<string, GraphLabel>()
+      : layoutGraphLabels(
+          visible.nodes,
+          degree,
+          size,
+          viewportScale * camera.zoom,
+        );
   const inView = (n: GraphNode) =>
     Math.abs(n.x * camera.zoom + camera.x) < 600 &&
     Math.abs(n.y * camera.zoom + camera.y) < 400;
-  const rendered = visible.nodes.filter(inView);
-  const canvasMode = visible.nodes.length > 1500;
+  const rendered = visible.nodes.filter((node) => {
+    if (inView(node)) return true;
+    const label = shownLabels.get(node.path);
+    if (!label) return false;
+    const box = graphLabelBounds(node, label);
+    return (
+      box.right * camera.zoom + camera.x >= -500 &&
+      box.left * camera.zoom + camera.x <= 500 &&
+      box.bottom * camera.zoom + camera.y >= -350 &&
+      box.top * camera.zoom + camera.y <= 350
+    );
+  });
+  const radius = (path: string) => graphNodeRadius(path, degree, size);
+  canvasStateRef.current = {
+    visible,
+    positions,
+    degree,
+    camera,
+    active: active ?? null,
+    hover,
+    labels,
+    size,
+    thickness,
+    canvasMode,
+  };
+  const drawCanvas = useCallback(() => {
+    if (
+      !canvasStateRef.current.canvasMode ||
+      !isVisibleRef.current ||
+      !canvas.current
+    )
+      return;
+    paintGraph(canvas.current, canvasStateRef.current);
+  }, []);
+  useEffect(() => {
+    const engine = new GraphSimulation(
+      visible.nodes,
+      visible.edges,
+      stateRef.current.forces,
+      stateRef.current.size,
+    );
+    simulationRef.current = engine;
+    if (needsLayout.current) {
+      engine.reheat();
+      needsLayout.current = false;
+    }
+    return () => {
+      engine.dispose();
+      simulationRef.current = null;
+      drag.current = null;
+    };
+  }, [visible]);
+  const lastParameters = useRef({ forces, size });
+  useEffect(() => {
+    const engine = simulationRef.current;
+    if (!engine) return;
+    engine.configure(forces, size);
+    if (
+      lastParameters.current.forces !== forces ||
+      lastParameters.current.size !== size
+    )
+      engine.reheat();
+    lastParameters.current = { forces, size };
+    if (!isVisible) return;
+    let frame = 0,
+      last = 0;
+    const tick = (time: number) => {
+      if (time - last >= (canvasMode ? 32 : 16)) {
+        last = time;
+        engine.tick();
+        dirty.current = true;
+        if (canvasMode) drawCanvas();
+        else redraw((n) => n + 1);
+      }
+      frame = engine.running ? requestAnimationFrame(tick) : 0;
+    };
+    scheduleLayout.current = () => {
+      if (!frame && engine.running) frame = requestAnimationFrame(tick);
+    };
+    scheduleLayout.current();
+    return () => {
+      scheduleLayout.current = null;
+      cancelAnimationFrame(frame);
+      // Hiding a graph or changing its filters must release temporary drag locks.
+      engine.endDrag();
+      drag.current = null;
+    };
+  }, [visible, forces, size, isVisible, canvasMode, drawCanvas]);
+  useLayoutEffect(() => {
+    const element = canvas.current;
+    if (!canvasMode || !isVisible || !element) return;
+    const resize = new ResizeObserver(drawCanvas);
+    resize.observe(element);
+    const theme = new MutationObserver(drawCanvas);
+    theme.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme", "class", "style"],
+    });
+    return () => {
+      resize.disconnect();
+      theme.disconnect();
+    };
+  }, [canvasMode, isVisible, drawCanvas]);
   const focusNode = useCallback((node: GraphNode) => {
     setHover(node.path);
     setCamera((c) => ({ ...c, x: -node.x * c.zoom, y: -node.y * c.zoom }));
@@ -271,11 +429,9 @@ export function KnowledgeGraph({
       wy = (y - camera.y) / camera.zoom;
     let best: GraphNode | undefined,
       distance = Infinity;
-    for (const n of rendered) {
+    for (const n of visible.nodes) {
       const d = Math.hypot(n.x - wx, n.y - wy),
-        r =
-          (4 + Math.min(9, Math.sqrt(degree.get(n.path) ?? 0) * 1.5)) * size +
-          4 / camera.zoom;
+        r = radius(n.path) + 4 / camera.zoom;
       if (d < r && d < distance) {
         best = n;
         distance = d;
@@ -304,77 +460,17 @@ export function KnowledgeGraph({
         run: () => api.reveal(vaultId, n.path),
       },
       {
-        label: t("Освободить узел"),
-        disabled: !n.pinned,
+        label: t(n.pinned ? "Освободить узел" : "Закрепить узел"),
         run: () => {
-          n.pinned = false;
+          simulationRef.current?.setPinned(n.path, !n.pinned);
+          dirty.current = true;
+          redraw((value) => value + 1);
           wake();
         },
       },
     ]);
   useLayoutEffect(() => {
-    if (!canvasMode || !isVisible || !canvas.current) return;
-    const element = canvas.current,
-      rect = element.getBoundingClientRect(),
-      ratio = Math.min(2, window.devicePixelRatio || 1);
-    const width = Math.round(rect.width * ratio),
-      height = Math.round(rect.height * ratio);
-    if (element.width !== width || element.height !== height) {
-      element.width = width;
-      element.height = height;
-    }
-    const ctx = element.getContext("2d");
-    if (!ctx) return;
-    const theme = getComputedStyle(document.documentElement),
-      color = (name: string) => theme.getPropertyValue(name).trim();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, width, height);
-    const scale = Math.min(rect.width / 1000, rect.height / 700) * ratio;
-    ctx.setTransform(
-      scale * camera.zoom,
-      0,
-      0,
-      scale * camera.zoom,
-      width / 2 + camera.x * scale,
-      height / 2 + camera.y * scale,
-    );
-    ctx.lineWidth = thickness;
-    for (const [a, b] of visible.edges) {
-      const x = positions.get(a),
-        y = positions.get(b);
-      if (!x || !y) continue;
-      const connected = a === hover || b === hover;
-      ctx.globalAlpha = hover ? (connected ? 0.95 : 0.08) : 0.45;
-      ctx.strokeStyle = color(connected ? "--accent" : "--subtle");
-      ctx.beginPath();
-      ctx.moveTo(x.x, x.y);
-      ctx.lineTo(y.x, y.y);
-      ctx.stroke();
-    }
-    for (const n of rendered) {
-      ctx.globalAlpha = hover && !highlighted.has(n.path) ? 0.12 : 1;
-      ctx.fillStyle = color(
-        n.path === active || n.path === hover ? "--accent" : "--muted",
-      );
-      ctx.beginPath();
-      ctx.arc(
-        n.x,
-        n.y,
-        (4 + Math.min(9, Math.sqrt(degree.get(n.path) ?? 0) * 1.5)) * size,
-        0,
-        Math.PI * 2,
-      );
-      ctx.fill();
-      if (labels && shownLabels.has(n.path)) {
-        ctx.fillStyle = color("--text");
-        ctx.font = '11px "Segoe UI", sans-serif';
-        ctx.textAlign = "center";
-        ctx.globalAlpha *=
-          n.path === hover ? 1 : Math.min(1, camera.zoom * 0.7);
-        ctx.fillText(n.title, n.x, n.y + 20 * size);
-      }
-    }
-    ctx.globalAlpha = 1;
+    drawCanvas();
   });
   const point = (x: number, y: number) => {
     const matrix = svg.current?.getScreenCTM();
@@ -383,7 +479,7 @@ export function KnowledgeGraph({
   };
   const zoomAt = (factor: number, x = 0, y = 0) =>
     setCamera((c) => {
-      const zoom = Math.max(0.15, Math.min(5, c.zoom * factor));
+      const zoom = Math.max(0.02, Math.min(5, c.zoom * factor));
       return {
         x: x - ((x - c.x) * zoom) / c.zoom,
         y: y - ((y - c.y) * zoom) / c.zoom,
@@ -395,6 +491,8 @@ export function KnowledgeGraph({
     if (!node) return;
     const wheel = (event: WheelEvent) => {
       event.preventDefault();
+      zoomingUntil.current = performance.now() + 180;
+      setHover(null);
       const p = point(event.clientX, event.clientY);
       zoomAt(Math.exp(-event.deltaY * 0.0015), p.x, p.y);
     };
@@ -402,13 +500,43 @@ export function KnowledgeGraph({
     return () => node.removeEventListener("wheel", wheel);
   }, []);
   const fit = () => {
-    const extent = visible.nodes.reduce(
-      (extent, n) => Math.max(extent, Math.abs(n.x), Math.abs(n.y)),
-      160,
-    );
-    setCamera({ x: 0, y: 0, zoom: Math.min(2, 280 / extent) });
+    if (visible.nodes.length) setCamera(fitGraphCamera(visible.nodes));
+  };
+  const focusedLocalPath = useRef<string | null>(null);
+  useEffect(() => {
+    const focusPath = local ? (root ?? active) : null;
+    if (!focusPath) {
+      focusedLocalPath.current = null;
+      return;
+    }
+    if (focusedLocalPath.current === focusPath) return;
+    const node = nodesRef.current.find((n) => n.path === focusPath);
+    if (!node) return;
+    focusedLocalPath.current = focusPath;
+    setCamera((c) => ({ ...c, x: -node.x * c.zoom, y: -node.y * c.zoom }));
+  }, [local, root, active, data]);
+  const rebuildLayout = () => {
+    if (!data) return;
+    const layout = initialGraphLayout(data.nodes, data.edges),
+      nodes = data.nodes.map((node) => {
+        const position = layout.get(node.path);
+        return {
+          ...node,
+          x: position?.x ?? node.x,
+          y: position?.y ?? node.y,
+          vx: 0,
+          vy: 0,
+          pinned: false,
+        };
+      });
+    needsLayout.current = true;
+    nodesRef.current = nodes;
+    setData({ nodes, edges: data.edges });
+    dirty.current = true;
+    setCamera(fitGraphCamera(nodes));
   };
   const resetSettings = () => {
+    focusedLocalPath.current = null;
     setLocal(false);
     setRoot(null);
     setForces(defaultForces);
@@ -418,7 +546,7 @@ export function KnowledgeGraph({
     setOrphans(true);
     setQuery("");
     setDepth(1);
-    setCamera({ x: 0, y: 0, zoom: 1 });
+    rebuildLayout();
   };
   return (
     <section className="knowledge-graph" aria-label={t("Граф связей")}>
@@ -515,9 +643,18 @@ export function KnowledgeGraph({
           onPointerMove={(e) => {
             const d = drag.current;
             if (!d || d.id !== e.pointerId) {
+              if (performance.now() < zoomingUntil.current) return;
               if (canvasMode) {
                 const p = point(e.clientX, e.clientY);
                 setHover(hit(p.x, p.y)?.path ?? null);
+              } else {
+                setHover(
+                  e.target instanceof Element
+                    ? (e.target
+                        .closest("[data-node]")
+                        ?.getAttribute("data-node") ?? null)
+                    : null,
+                );
               }
               return;
             }
@@ -525,15 +662,18 @@ export function KnowledgeGraph({
               dx = p.x - d.x,
               dy = p.y - d.y;
             if (!d.moved && Math.hypot(dx, dy) < 3) return;
+            if (!d.moved && d.path) simulationRef.current?.beginDrag(d.path);
             d.moved = true;
             if (d.path) {
               const n = positions.get(d.path);
               if (n) {
-                n.x += dx / camera.zoom;
-                n.y += dy / camera.zoom;
-                n.pinned = true;
+                simulationRef.current?.moveDrag(
+                  n.x + dx / camera.zoom,
+                  n.y + dy / camera.zoom,
+                );
                 dirty.current = true;
-                redraw((v) => v + 1);
+                if (canvasMode) drawCanvas();
+                else redraw((v) => v + 1);
                 wake();
               }
             } else setCamera((c) => ({ ...c, x: c.x + dx, y: c.y + dy }));
@@ -542,17 +682,22 @@ export function KnowledgeGraph({
           }}
           onPointerUp={(e) => {
             const d = drag.current;
+            simulationRef.current?.endDrag();
             drag.current = null;
             if (e.currentTarget.hasPointerCapture(e.pointerId))
               e.currentTarget.releasePointerCapture(e.pointerId);
             if (d?.path && !d.moved) onOpen(d.path);
-            redraw((v) => v + 1);
-            wake();
+            if (canvasMode) drawCanvas();
+            else redraw((v) => v + 1);
+            if (d?.path && d.moved) wake();
           }}
           onPointerCancel={() => {
+            simulationRef.current?.endDrag();
             drag.current = null;
+            wake();
           }}
           onLostPointerCapture={() => {
+            simulationRef.current?.endDrag();
             drag.current = null;
           }}
         >
@@ -584,7 +729,8 @@ export function KnowledgeGraph({
                           ? "is-dimmed"
                           : ""
                     }
-                    strokeWidth={thickness}
+                    strokeWidth={0.7 * thickness}
+                    vectorEffect="non-scaling-stroke"
                     x1={x.x}
                     y1={x.y}
                     x2={y.x}
@@ -610,7 +756,11 @@ export function KnowledgeGraph({
                   className={`graph-node ${n.path === active ? "is-active" : ""} ${hover && !highlighted.has(n.path) ? "is-dimmed" : ""}`}
                   transform={`translate(${n.x},${n.y})`}
                   onPointerEnter={() => {
-                    if (!drag.current) setHover(n.path);
+                    if (
+                      !drag.current &&
+                      performance.now() >= zoomingUntil.current
+                    )
+                      setHover(n.path);
                   }}
                   onPointerLeave={() => setHover(null)}
                   onContextMenu={(event) => showNodeMenu(event, n)}
@@ -623,24 +773,35 @@ export function KnowledgeGraph({
                     }
                   }}
                 >
-                  <title>{n.path}</title>
-                  <circle
-                    r={
-                      (4 +
-                        Math.min(9, Math.sqrt(degree.get(n.path) ?? 0) * 1.5)) *
-                      size
-                    }
-                  />
+                  {shownLabels.has(n.path) && <title>{n.path}</title>}
+                  <circle r={radius(n.path)} />
                   {labels && shownLabels.has(n.path) && (
                     <text
-                      y={20 * size}
+                      x={shownLabels.get(n.path)?.x}
+                      y={shownLabels.get(n.path)?.y}
                       textAnchor="middle"
                       style={{
-                        opacity:
-                          hover === n.path ? 1 : Math.min(1, camera.zoom * 0.7),
+                        opacity: graphLabelOpacity(viewportScale * camera.zoom),
+                        fontSize: `${11 / (viewportScale * camera.zoom)}px`,
+                        strokeWidth: 3 / (viewportScale * camera.zoom),
                       }}
                     >
-                      {n.title}
+                      {shownLabels
+                        .get(n.path)
+                        ?.lines.map((line: string, index: number) => (
+                          <tspan
+                            key={index}
+                            x={shownLabels.get(n.path)?.x}
+                            dy={
+                              index
+                                ? GRAPH_LABEL_LINE_HEIGHT /
+                                  (viewportScale * camera.zoom)
+                                : 0
+                            }
+                          >
+                            {line}
+                          </tspan>
+                        ))}
                     </text>
                   )}
                 </g>
@@ -665,8 +826,8 @@ export function KnowledgeGraph({
               <span>{t("Настройки графа")}</span>
               <button
                 className="icon-button"
-                aria-label={t("Сбросить настройки")}
-                data-tooltip={t("Сбросить настройки")}
+                aria-label={t("Сбросить настройки и раскладку")}
+                data-tooltip={t("Сбросить настройки и раскладку")}
                 onClick={resetSettings}
               >
                 <RotateCcw size={15} />

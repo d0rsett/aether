@@ -1,6 +1,7 @@
 // Russian source messages are stable translation keys; note content is never translated.
 export const english: Record<string, string> = {
   "Открыть в новой вкладке": "Open in new tab",
+  "Закрепить узел": "Pin node",
   "Освободить узел": "Unpin node",
   "Локальный граф этой заметки": "Local graph of this note",
   "Не удалось сохранить состояние вкладки графа.":
@@ -24,7 +25,7 @@ export const english: Record<string, string> = {
   Отталкивание: "Repel force",
   "Притяжение связей": "Link force",
   "Длина связей": "Link distance",
-  "Сбросить настройки": "Restore default settings",
+  "Сбросить настройки и раскладку": "Restore default settings and layout",
   "Вписать граф": "Fit graph",
   "Перетаскивайте полотно и узлы · Колесо — масштаб":
     "Drag canvas and nodes · Scroll to zoom",
