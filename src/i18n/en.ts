@@ -1,5 +1,45 @@
 // Russian source messages are stable translation keys; note content is never translated.
 export const english: Record<string, string> = {
+  "Размер шрифта": "Font size",
+  "Размер текста заметок в пикселях.": "Note text size in pixels.",
+  "Межстрочный интервал": "Line height",
+  "Расстояние между строками текста.": "Spacing between lines of text.",
+  "Ширина текста": "Text width",
+  "Максимальная ширина текста заметки в пикселях.":
+    "Maximum note text width in pixels.",
+  "Пример текста": "Text preview",
+  "Хорошая заметка начинается с одной мысли. Запишите её, добавьте детали и свяжите с тем, что уже знаете.":
+    "A good note starts with one thought. Write it down, add details and connect it with what you already know.",
+  "Сбросить параметры текста": "Reset text preferences",
+  "Поиск команд": "Search commands",
+  "Не назначено": "Unassigned",
+  "Команды не найдены": "No commands found",
+  "Сочетания показаны для справки. Редактирование пока недоступно.":
+    "Shortcuts are shown for reference. Editing is not available yet.",
+  "Не удалось сохранить параметры текста. Изменения действуют до закрытия приложения.":
+    "Unable to save text preferences. Changes apply until the application closes.",
+
+  Настройки: "Settings",
+  "Настройки · Ctrl+,": "Settings · Ctrl+,",
+  "Разделы настроек": "Settings sections",
+  Общие: "General",
+  Оформление: "Appearance",
+  Редактор: "Editor",
+  "Язык интерфейса": "Interface language",
+  "Язык меню, команд и диалогов приложения.":
+    "Language of application menus, commands and dialogs.",
+  Тема: "Theme",
+  "Цветовая схема рабочего пространства.": "Workspace color scheme.",
+  Тёмная: "Dark",
+  Светлая: "Light",
+  "Показывать номера строк рядом с текстом.":
+    "Show line numbers beside the text.",
+  "Переносить длинные строки по ширине редактора.":
+    "Wrap long lines to fit the editor.",
+  "Показывать инструменты форматирования над заметкой.":
+    "Show formatting tools above the note.",
+  "Изменения применяются сразу.": "Changes apply immediately.",
+
   "Открыть в новой вкладке": "Open in new tab",
   "Закрепить узел": "Pin node",
   "Освободить узел": "Unpin node",

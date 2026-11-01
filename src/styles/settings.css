@@ -1,0 +1,252 @@
+.settings-window {
+  position: fixed;
+  width: 920px;
+  height: 580px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  overflow: hidden;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 28px 90px #0006;
+}
+.settings-window::backdrop {
+  background: #080c0b99;
+  backdrop-filter: blur(4px);
+}
+.settings-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 1;
+}
+.settings-nav-title {
+  margin: 2px 12px 26px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.settings-layout {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+.settings-nav {
+  padding: 30px 14px;
+  overflow-y: auto;
+  background: var(--base);
+  border-right: 1px solid var(--border);
+}
+.settings-nav button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 4px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.settings-nav button:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+.settings-nav button[aria-current] {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.settings-content {
+  min-width: 0;
+  padding: 38px 40px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.settings-content h3 {
+  margin: 0 32px 24px 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--border);
+}
+.settings-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+}
+.settings-description {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.settings-row select {
+  flex-shrink: 0;
+  max-width: 45%;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--base);
+  color: var(--text);
+  font: inherit;
+}
+.settings-row input[role="switch"] {
+  appearance: none;
+  flex-shrink: 0;
+  width: 34px;
+  height: 20px;
+  min-height: 0;
+  padding: 2px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--base);
+  cursor: pointer;
+}
+.settings-row input[role="switch"]::before {
+  content: "";
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: transform 120ms;
+}
+.settings-row input[role="switch"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.settings-row input[role="switch"]:checked::before {
+  transform: translateX(14px);
+  background: var(--accent-text);
+}
+.settings-hint {
+  margin: 24px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+@media (max-width: 600px) {
+  .settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .settings-nav {
+    display: flex;
+    gap: 4px;
+    padding: 48px 10px 10px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .settings-nav button {
+    justify-content: center;
+    padding: 8px 6px;
+    font-size: 12px;
+  }
+  .settings-content {
+    padding: 24px;
+  }
+  .settings-row {
+    gap: 12px;
+  }
+}
+
+@media (max-width: 600px) {
+  .settings-nav-title {
+    display: none;
+  }
+}
+
+.settings-range {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+  width: 180px;
+  max-width: 45%;
+}
+.settings-range input[type="range"] {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+.settings-range output {
+  min-width: 36px;
+  text-align: right;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.settings-text-preview {
+  margin: 20px 0 12px;
+  padding: 16px;
+  background: var(--base);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+.settings-reset {
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+.settings-command-search {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text);
+  background: var(--base);
+  font: inherit;
+}
+.settings-command {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.settings-command kbd {
+  flex-shrink: 0;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--base);
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.settings-unassigned {
+  color: var(--muted);
+  font-size: 11px;
+}
+@media (max-width: 600px) {
+  .settings-nav {
+    flex-wrap: wrap;
+  }
+  .settings-nav button {
+    width: auto;
+    flex: 1 1 40%;
+  }
+}

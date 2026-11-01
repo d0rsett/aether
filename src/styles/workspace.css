@@ -706,10 +706,10 @@
   border-radius: 4px;
 }
 .app-shell .cm-content {
-  max-width: 788px;
+  max-width: var(--note-text-width, 788px);
   min-width: 0;
   margin: 0 !important;
-  flex: 1 1 788px;
+  flex: 1 1 var(--note-text-width, 788px);
   padding: 24px 0 80px !important;
 }
 .cm-scroller {
@@ -719,6 +719,8 @@
   scrollbar-gutter: stable both-edges;
 }
 .app-shell .cm-scroller {
+  font-size: var(--note-font-size, 15px);
+  line-height: var(--note-line-height, 1.85);
   justify-content: center;
   padding: 0 36px;
 }
@@ -743,8 +745,8 @@
     -apple-system,
     BlinkMacSystemFont,
     sans-serif;
-  font-size: 15px;
-  line-height: 1.85;
+  font-size: var(--note-font-size, 15px);
+  line-height: var(--note-line-height, 1.85);
 }
 .live-heading {
   font-family:
@@ -786,8 +788,10 @@
 .live-block-preview[data-source-visible] .reading-image img {
   margin-top: 6px;
 }
-.reading-document {
-  max-width: 860px;
+.app-shell .reading-document {
+  font-size: var(--note-font-size, 15px);
+  line-height: var(--note-line-height, 1.85);
+  max-width: calc(var(--note-text-width, 788px) + 88px);
   padding: 30px 44px 100px;
 }
 .inspector {
@@ -1395,4 +1399,10 @@
 .titlebar-macos .panel-toggles {
   margin-right: 8px;
   border-right: 0;
+}
+
+.app-shell .cm-gutters {
+  line-height: calc(
+    var(--note-font-size, 15px) * var(--note-line-height, 1.85)
+  );
 }

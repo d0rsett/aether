@@ -1,3 +1,4 @@
+import type { Typography } from "../workspace/typography";
 import { t, useLocale } from "../i18n";
 import { editorPhrases } from "../i18n/editor";
 import { useEffect, useRef } from "react";
@@ -74,6 +75,7 @@ const highlight = HighlightStyle.define([
   { tag: [tags.keyword, tags.bool, tags.number], color: "var(--muted)" },
 ]);
 interface Props {
+  typography?: Typography;
   templateCommand?: {
     id: number;
     text: string;
@@ -138,6 +140,7 @@ export function MarkdownEditor({
   visible = true,
   theme = "dark",
   onError,
+  typography,
   showLineNumbers = false,
   lineWrapping = true,
   onFormatsChange,
@@ -512,6 +515,9 @@ export function MarkdownEditor({
       ),
     });
   }, [lineWrapping]);
+  useEffect(() => {
+    editor.current?.requestMeasure();
+  }, [typography]);
   useEffect(() => {
     if (visible && editor.current)
       callbacks.current.onFormatsChange?.(activeFormats(editor.current.state));

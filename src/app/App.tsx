@@ -1,3 +1,9 @@
+import {
+  readTypography,
+  typographyKey,
+  type Typography,
+} from "../workspace/typography";
+import { SettingsDialog } from "../components/SettingsDialog";
 import { readGraphTab, writeGraphTab } from "../workspace/graphStorage";
 import { KnowledgeGraph } from "../components/KnowledgeGraph";
 import { t, useLocale, setLocale } from "../i18n";
@@ -16,7 +22,7 @@ import {
   FolderPlus,
   Info,
   LoaderCircle,
-  Languages,
+  Settings,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
@@ -44,7 +50,7 @@ import {
   type Mode,
 } from "../components/WorkspaceChrome";
 import { Popover } from "../components/Popover";
-import { MoreHorizontal, Moon, Sun } from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
 import { BrandMark } from "../components/BrandMark";
 import { useVaultCreation } from "../components/CreateVaultDialog";
 import { VaultSwitcher } from "../components/VaultSwitcher";
@@ -94,6 +100,20 @@ export function App() {
     setDragged(null);
     setRootDrop(false);
   }, [app.vault?.id]);
+  const [typography, setTypography] = useState(readTypography);
+  const changeTypography = (next: Typography) => {
+    setTypography(next);
+    try {
+      localStorage.setItem(typographyKey, JSON.stringify(next));
+    } catch {
+      app.setError(
+        t(
+          "Не удалось сохранить параметры текста. Изменения действуют до закрытия приложения.",
+        ),
+      );
+    }
+  };
+  const [settings, setSettings] = useState(false);
   const [theme, setTheme] = useState(initialTheme);
   const [left, setLeft] = useState(() => readFlag("left", true));
   const [leftView, setLeftView] = useState<"explorer" | "search">("explorer");
@@ -328,6 +348,10 @@ export function App() {
         : event.code === "Backslash"
           ? "\\"
           : event.key.toLowerCase();
+      if (event.code === "Comma" || key === ",") {
+        event.preventDefault();
+        setSettings(true);
+      }
       if (key === "f" && event.shiftKey) {
         event.preventDefault();
         setLeft(true);
@@ -372,6 +396,12 @@ export function App() {
       );
   };
   const commands = [
+    {
+      title: t("Настройки"),
+      shortcut: "Ctrl ,",
+      enabled: true,
+      action: () => setSettings(true),
+    },
     {
       title: t("Граф связей"),
       shortcut: "",
@@ -654,6 +684,9 @@ export function App() {
       ref={shellRef}
       style={
         {
+          "--note-font-size": `${typography.fontSize}px`,
+          "--note-line-height": typography.lineHeight,
+          "--note-text-width": `${typography.textWidth}px`,
           "--left-pane-width": `${leftWidth}px`,
           "--right-pane-width": `${rightWidth}px`,
           "--visible-right-width": right ? `${rightWidth}px` : "0px",
@@ -671,6 +704,27 @@ export function App() {
           event.preventDefault();
       }}
     >
+      {settings && (
+        <SettingsDialog
+          typography={typography}
+          setTypography={changeTypography}
+          commands={commands.map(({ title, shortcut }) => ({
+            title,
+            shortcut,
+          }))}
+          theme={theme}
+          setTheme={setTheme}
+          locale={locale}
+          setLanguage={changeLanguage}
+          formatting={formatting}
+          setFormatting={setFormatting}
+          lineNumbers={lineNumbers}
+          setLineNumbers={setLineNumbers}
+          lineWrapping={lineWrapping}
+          setLineWrapping={setLineWrapping}
+          onClose={() => setSettings(false)}
+        />
+      )}
       <Titlebar
         leading={
           <div className="chrome-brand" data-tauri-drag-region>
@@ -690,20 +744,6 @@ export function App() {
           role="group"
           aria-label={t("Боковые панели")}
         >
-          <button
-            className="icon-button"
-            aria-label={
-              locale === "en"
-                ? "Interface language: English"
-                : "Язык интерфейса: Русский"
-            }
-            data-tooltip={
-              locale === "en" ? "Switch to Russian" : "Switch to English"
-            }
-            onClick={() => changeLanguage(locale === "en" ? "ru" : "en")}
-          >
-            <Languages size={17} />
-          </button>
           <button
             className="icon-button"
             aria-label={t("Переключить левую панель")}
@@ -783,11 +823,11 @@ export function App() {
             </button>
             <button
               className="rail-button"
-              aria-label={t("Переключить тему")}
-              data-tooltip={t("Переключить тему")}
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              aria-label={t("Настройки")}
+              data-tooltip={t("Настройки · Ctrl+,")}
+              onClick={() => setSettings(true)}
             >
-              {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+              <Settings size={18} />
             </button>
             <button
               className="rail-button"
@@ -1095,17 +1135,7 @@ export function App() {
 
             {app.active || app.activeImage ? (
               <>
-                <NoteHeader
-                  app={app}
-                  mode={mode}
-                  setMode={setMode}
-                  formatting={formatting}
-                  setFormatting={setFormatting}
-                  lineNumbers={lineNumbers}
-                  setLineNumbers={setLineNumbers}
-                  lineWrapping={lineWrapping}
-                  setLineWrapping={setLineWrapping}
-                />
+                <NoteHeader app={app} mode={mode} setMode={setMode} />
                 {app.active && formatting && mode !== "reading" && (
                   <FormattingToolbar
                     onTemplates={() => setTemplates(true)}
@@ -1210,6 +1240,7 @@ export function App() {
                                       : { path: tab.path, formats },
                                   );
                                 }}
+                                typography={typography}
                                 showLineNumbers={lineNumbers}
                                 lineWrapping={lineWrapping}
                                 visible={

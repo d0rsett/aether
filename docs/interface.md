@@ -51,3 +51,9 @@ D3 Force handles link attraction, repulsion and size-aware collisions. Dragging 
 The initial layout fills a disc with evenly spaced seeds. Louvain connectivity chooses local hubs; D3 then balances every link, repulsion, minimum node clearance and a soft circular boundary. Repeated and reciprocal links share one visual edge. Saved positions and explicit pins remain intact; reset rebuilds the layout. With labels enabled, no captions appear below a shared threshold of two screen pixels per graph unit; at or above it every visible note has a caption below its node. Text stays 11 screen pixels high and wraps to at most three lines in both SVG and Canvas. There is no per-caption collision filtering or hover exception. Further zoom spreads nodes apart without enlarging the text. Dense graphs and manually pinned positions can still produce crossing lines or overlapping captions.
 
 Ordinary notes stay smaller than highly connected hubs. Collision spacing reserves extra clearance between neighbours, and high-degree hubs use longer link distances to accommodate their notes. Explicitly pinned positions can override that spacing.
+
+## Settings
+
+Open Settings from the gear at the bottom of the ribbon, the command palette, or Ctrl+, (Cmd+, on macOS). The modal groups language under General, theme under Appearance, and line numbers, line wrapping and formatting-toolbar visibility under Editor. Changes apply immediately and retain existing preference keys. Escape closes the window and returns focus to the previous control.
+
+Editor settings also provide font size (12–24 px), line height (1.2–2.4), text width (480–1100 px), a text sample and a reset action. Preferences apply to Source, Live Preview and Reading and persist for the profile. Keyboard shortcuts lists commands with a search by title or shortcut; assignments are read-only.

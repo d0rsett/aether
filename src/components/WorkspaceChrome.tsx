@@ -211,22 +211,10 @@ export function NoteHeader({
   app,
   mode,
   setMode,
-  formatting,
-  setFormatting,
-  lineNumbers,
-  setLineNumbers,
-  lineWrapping,
-  setLineWrapping,
 }: {
   app: Controller;
   mode: Mode;
   setMode: (mode: Mode) => void;
-  formatting: boolean;
-  setFormatting: (value: boolean) => void;
-  lineNumbers: boolean;
-  setLineNumbers: (value: boolean) => void;
-  lineWrapping: boolean;
-  setLineWrapping: (value: boolean) => void;
 }) {
   useLocale();
   if (!app.active) return null;
@@ -326,28 +314,6 @@ export function NoteHeader({
                 : t("Отменить переименование")}
             </button>
           )}
-          <hr />
-          <button
-            aria-pressed={formatting}
-            onClick={() => setFormatting(!formatting)}
-          >
-            <span>{t("Панель форматирования")}</span>
-            {formatting && <Check size={13} />}
-          </button>
-          <button
-            aria-pressed={lineNumbers}
-            onClick={() => setLineNumbers(!lineNumbers)}
-          >
-            <span>{t("Номера строк")}</span>
-            {lineNumbers && <Check size={13} />}
-          </button>
-          <button
-            aria-pressed={lineWrapping}
-            onClick={() => setLineWrapping(!lineWrapping)}
-          >
-            <span>{t("Перенос строк")}</span>
-            {lineWrapping && <Check size={13} />}
-          </button>
           <hr />
           <button className="danger-action" onClick={() => void app.remove()}>
             {t(" Переместить в корзину ")}
