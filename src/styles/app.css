@@ -2677,3 +2677,119 @@ section.note-hover {
   background: var(--hover);
   color: var(--text);
 }
+
+/* A list item is one editing surface, including its remove action. */
+.property-chip:focus-within {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+  background: var(--selected);
+}
+.inline-property-value .property-chip input:focus,
+.inline-property-value .property-chip input:focus-visible {
+  outline: none;
+  box-shadow: none;
+  background: transparent;
+}
+.inline-property-value input[type="date"] {
+  color-scheme: dark;
+}
+:root[data-theme="light"] .inline-property-value input[type="date"] {
+  color-scheme: light;
+}
+.inline-property-value input[type="date"]::-webkit-calendar-picker-indicator {
+  display: none;
+}
+
+/* Measure the actual glyphs rather than estimating proportional text in ch. */
+.property-chip {
+  min-width: 0;
+}
+.property-chip-field {
+  position: relative;
+  display: inline-grid;
+  min-width: 0;
+}
+.property-chip-measure,
+.inline-property-value .property-chip-field input {
+  grid-area: 1 / 1;
+  padding: 2px 4px;
+  border: 1px solid transparent;
+  font: inherit;
+  letter-spacing: inherit;
+}
+.property-chip-measure {
+  /* Leave room for the input caret and fractional glyph rounding. */
+  padding-right: 12px;
+  visibility: hidden;
+  white-space: pre;
+  min-width: 2ch;
+}
+.inline-property-value .property-chip-field input {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+}
+.property-chip button {
+  flex: 0 0 18px;
+}
+
+/* Style both checked and unchecked boxes; accent-color alone misses the latter. */
+input[type="checkbox"]:not([role="switch"]) {
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid var(--muted);
+  border-radius: 4px;
+  background: var(--base);
+  color: var(--accent-text);
+  vertical-align: middle;
+  cursor: pointer;
+}
+input[type="checkbox"]:not([role="switch"]):checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+input[type="checkbox"]:not([role="switch"])::before {
+  content: "";
+  width: 8px;
+  height: 5px;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-1px) rotate(-45deg);
+  visibility: hidden;
+}
+input[type="checkbox"]:not([role="switch"]):checked::before {
+  visibility: visible;
+}
+input[type="checkbox"]:not([role="switch"]):indeterminate::before {
+  visibility: visible;
+  width: 8px;
+  height: 0;
+  border-left: 0;
+  border-bottom: 2px solid var(--accent);
+  transform: none;
+}
+input[type="checkbox"]:not([role="switch"]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+input[type="checkbox"]:not([role="switch"]):disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+@media (forced-colors: active) {
+  input[type="checkbox"]:not([role="switch"]) {
+    appearance: auto;
+  }
+  input[type="checkbox"]:not([role="switch"])::before {
+    content: none;
+  }
+}

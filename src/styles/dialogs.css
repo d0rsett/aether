@@ -1,4 +1,36 @@
-/* Shared dialog design. Image viewing only reuses native dialog behaviour. */
+/* Shared floating surfaces; native dialog focus and dismissal remain unchanged. */
+.modal,
+.settings-window {
+  --dialog-radius: 12px;
+  --dialog-padding: 28px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--text) 10%, var(--border));
+  border-radius: var(--dialog-radius);
+  box-shadow:
+    0 20px 64px #0003,
+    0 2px 8px #0002;
+}
+.modal::backdrop,
+.settings-window::backdrop {
+  background: color-mix(in srgb, var(--base) 48%, transparent);
+  backdrop-filter: blur(3px);
+}
+.modal .icon-button,
+.settings-window .icon-button {
+  border-radius: 6px;
+}
+.modal .icon-button:hover,
+.settings-window .icon-button:hover {
+  color: var(--text);
+  background: var(--hover);
+}
+.settings-window :is(input, select, button):focus-visible,
+.modal :is(input, select, button):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
 .media-tools button,
 .local-media > button {
   font: inherit;
@@ -14,19 +46,10 @@
   max-height: calc(100dvh - 64px);
   padding: 0;
   overflow: hidden;
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid color-mix(in srgb, var(--text) 12%, var(--border));
-  border-radius: 16px;
-  box-shadow: 0 24px 80px #0004;
 }
 .modal[open] {
   display: flex;
   flex-direction: column;
-}
-.modal::backdrop {
-  background: #080c0ba6;
-  backdrop-filter: blur(6px);
 }
 .modal-header {
   display: flex;
@@ -34,15 +57,14 @@
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--border);
+  padding: 24px var(--dialog-padding) 0;
 }
 .modal-header h2 {
   margin: 0;
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 600;
   line-height: 1.4;
-  letter-spacing: -0.25px;
+  letter-spacing: -0.35px;
 }
 .modal-header .icon-button {
   width: 32px;
@@ -53,7 +75,7 @@
 }
 .modal-body {
   min-height: 0;
-  padding: 24px;
+  padding: 18px var(--dialog-padding) var(--dialog-padding);
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
@@ -80,9 +102,12 @@
   font-weight: 500;
 }
 .modal input {
-  min-height: 42px;
-  padding: 11px 12px;
-  border-radius: 8px;
+  min-height: 38px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  color: var(--text);
+  background: var(--base);
+  border-radius: 6px;
   font-size: 13px;
   font-weight: 400;
   transition:
@@ -95,21 +120,20 @@
 }
 .modal .modal-actions {
   position: sticky;
-  bottom: -24px;
+  bottom: calc(-1 * var(--dialog-padding));
   z-index: 1;
   display: flex;
   justify-content: flex-end;
   flex-wrap: wrap;
-  gap: 10px;
-  margin: 24px -24px -24px;
-  padding: 16px 24px;
-  border-top: 1px solid var(--border);
-  background: color-mix(in srgb, var(--base) 40%, var(--surface));
+  gap: 8px;
+  margin: 24px calc(-1 * var(--dialog-padding)) calc(-1 * var(--dialog-padding));
+  padding: 14px var(--dialog-padding) 20px;
+  background: var(--surface);
 }
 .modal .button {
   min-height: 36px;
   padding: 8px 14px;
-  border-radius: 8px;
+  border-radius: 6px;
   font-size: 12px;
 }
 .modal .palette-search {
@@ -208,11 +232,11 @@
   .modal {
     max-height: calc(100dvh - 32px);
   }
-  .modal-header {
-    padding: 16px 20px;
+  .modal {
+    --dialog-padding: 20px;
   }
-  .modal-body {
-    padding: 20px;
+  .modal-header {
+    padding-top: 20px;
   }
   .modal .modal-actions {
     bottom: -20px;
@@ -225,4 +249,14 @@
   .lightbox-image {
     max-height: calc(100dvh - 48px);
   }
+}
+
+/* Composite search fields draw focus on their container only. */
+.modal .palette-search input:focus-visible {
+  outline: none;
+  border: 0;
+  box-shadow: none;
+}
+.modal .palette-search:focus-within {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 15%, transparent);
 }

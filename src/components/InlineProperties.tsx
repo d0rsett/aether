@@ -577,21 +577,25 @@ function PropertyList({
     >
       {items.map((item, index) => (
         <span className="property-chip" key={index}>
-          <input
-            aria-label={t`Элемент ${index + 1} свойства ${name}`}
-            value={item}
-            style={{ width: `${Math.max(3, Math.min(24, item.length + 1))}ch` }}
-            onChange={(event) =>
-              onChange(
-                items
-                  .map((value, at) =>
-                    at === index ? event.target.value : value,
-                  )
-                  .join("\n"),
-              )
-            }
-            onKeyDown={onHistory}
-          />
+          <span className="property-chip-field">
+            <span className="property-chip-measure" aria-hidden="true">
+              {item || " "}
+            </span>
+            <input
+              aria-label={t`Элемент ${index + 1} свойства ${name}`}
+              value={item}
+              onChange={(event) =>
+                onChange(
+                  items
+                    .map((value, at) =>
+                      at === index ? event.target.value : value,
+                    )
+                    .join("\n"),
+                )
+              }
+              onKeyDown={onHistory}
+            />
+          </span>
           <button
             type="button"
             aria-label={t`Удалить элемент ${index + 1} свойства ${name}`}
@@ -847,7 +851,6 @@ function PropertyRow({
         ) : (
           <input
             aria-label={t`Значение ${item.key}`}
-            list={valuesId}
             value={draft}
             type={item.type === "date" ? "date" : "text"}
             inputMode={item.type === "number" ? "decimal" : undefined}

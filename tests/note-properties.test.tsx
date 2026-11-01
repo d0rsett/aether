@@ -192,3 +192,28 @@ it("persists a text assignment for a date-looking string", async () => {
   await waitFor(() => expect(apply).toHaveBeenCalled());
   expect(api.setPropertyType).toHaveBeenCalledWith("v6", "due", "text", {});
 });
+
+it("avoids native suggestion popups on property value fields", async () => {
+  vi.spyOn(api, "propertyTypes").mockResolvedValue({
+    rating: "number",
+    due: "date",
+    title: "text",
+  });
+  render(
+    <InlineProperties
+      vaultId="suggestion-test"
+      path="sample.md"
+      content={"---\nrating: 3\ndue: 2026-11-17\ntitle: Draft\n---\nBody"}
+      onApply={vi.fn()}
+      onSource={vi.fn()}
+    />,
+  );
+  const number = await screen.findByLabelText("Значение rating");
+  expect(number.getAttribute("list")).toBeNull();
+  const date = screen.getByLabelText("Значение due");
+  await waitFor(() => expect(date.getAttribute("type")).toBe("date"));
+  expect(date.getAttribute("list")).toBeNull();
+  expect(
+    screen.getByLabelText("Значение title").getAttribute("list"),
+  ).toBeNull();
+});
