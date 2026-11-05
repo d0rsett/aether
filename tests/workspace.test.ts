@@ -7,6 +7,58 @@ import {
 
 const note = { path: "Заметки/Привет.md", content: "original", revision: "r1" };
 describe("workspace safety", () => {
+  it("reuses a clean tab for links and preserves a dirty source tab", () => {
+    const target = { ...note, path: "Target.md" };
+    const opened = workspaceReducer(initialWorkspace, { type: "open", note });
+    const action = {
+      type: "openInTab" as const,
+      previous: note.path,
+      note: target,
+    };
+    expect(
+      workspaceReducer(opened, action).tabs.map((tab) => tab.path),
+    ).toEqual([target.path]);
+    const edited = workspaceReducer(opened, {
+      type: "edit",
+      path: note.path,
+      content: "draft",
+    });
+    const linked = workspaceReducer(edited, action);
+    expect(linked.active).toBe(target.path);
+    expect(linked.tabs[0].content).toBe("draft");
+    expect(linked.tabs).toHaveLength(2);
+  });
+  it("reorders tabs while preserving active drafts and tab identity", () => {
+    let state = workspaceReducer(initialWorkspace, { type: "open", note });
+    state = workspaceReducer(state, {
+      type: "edit",
+      path: note.path,
+      content: "draft",
+    });
+    state = workspaceReducer(state, { type: "openImage", path: "photo.png" });
+    const original = state.tabs[0];
+    const reordered = workspaceReducer(state, {
+      type: "reorder",
+      path: note.path,
+      target: "photo.png",
+      after: true,
+    });
+    expect(reordered.tabs.map((tab) => tab.path)).toEqual([
+      "photo.png",
+      note.path,
+    ]);
+    expect(reordered.active).toBe("photo.png");
+    expect(reordered.tabs[1]).toBe(original);
+    expect(reordered.tabs[1].content).toBe("draft");
+    expect(
+      workspaceReducer(reordered, {
+        type: "reorder",
+        path: "missing",
+        target: note.path,
+        after: false,
+      }),
+    ).toBe(reordered);
+  });
   it("keeps image tabs read-only, unique and separate from note drafts", () => {
     let state = workspaceReducer(initialWorkspace, { type: "open", note });
     state = workspaceReducer(state, {

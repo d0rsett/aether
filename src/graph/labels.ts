@@ -137,7 +137,8 @@ export function layoutGraphLabels(
     result.set(node.path, {
       lines: prepared.lines,
       x: 0,
-      y: Math.max(18 * size, r + 4) + 12 * fontScale,
+      // Keep the caption gap constant on screen as the graph is zoomed.
+      y: r + 14 * fontScale,
       width: prepared.width * fontScale,
       height: prepared.height * fontScale,
       fontScale,

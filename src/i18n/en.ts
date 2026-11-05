@@ -1,5 +1,53 @@
 // Russian source messages are stable translation keys; note content is never translated.
 export const english: Record<string, string> = {
+  "Рабочее пространство": "Workspace",
+  "При запуске": "On startup",
+  "Что показывать после восстановления вкладок.":
+    "What to show after restoring tabs.",
+  "Последняя заметка": "Last note",
+  "Выбранная заметка": "Selected note",
+  "Недавние файлы": "Recent files",
+  "Стартовая заметка": "Startup note",
+  "Использовать открытую заметку": "Use the open note",
+  "Путь к Markdown-файлу от корня текущего хранилища.":
+    "Path to a Markdown file from the current vault root.",
+  "Не удалось открыть стартовую заметку.": "Could not open the startup note.",
+  "Не удалось сохранить настройки.": "Could not save the settings.",
+  "Открывать ссылки": "Open links",
+  "Вкладка с несохранённым текстом сохраняется.":
+    "Tabs with unsaved text are kept open.",
+  "В новой вкладке": "In a new tab",
+  "В текущей вкладке": "In the current tab",
+  "Список вкладок": "Tab list",
+  "Показывать кнопку списка, когда вкладки не помещаются.":
+    "Show a list button when the tabs overflow.",
+  "Папка вложений": "Attachment folder",
+  "Куда сохранять новые файлы.": "Where to save new files.",
+  "По умолчанию": "Default",
+  "Использовать настройки хранилища": "Use vault settings",
+  "Своя папка": "Custom folder",
+  "Путь папки вложений": "Attachment folder path",
+  "Путь от корня хранилища. Пустое поле означает корень.":
+    "Path from the vault root. Leave blank to use the root.",
+  "Формат ссылки на вложение": "Attachment link format",
+  "Формат вставки новых и существующих вложений.":
+    "Format for inserting new and existing attachments.",
+  "Markdown-ссылка": "Markdown link",
+  "Режим открытия заметок": "Default note mode",
+  "Режим для вновь открываемых заметок.": "Mode for newly opened notes.",
+  "Сочетание уже используется редактором или системой.":
+    "The editor or operating system already uses this shortcut.",
+  "Нажмите Ctrl или Cmd вместе с клавишей.":
+    "Press Ctrl or Cmd together with a key.",
+  "Нажмите сочетание": "Press shortcut",
+  "Выберите сочетание, чтобы изменить его. Команды редактора без кнопки доступны для справки.":
+    "Select a shortcut to change it. Editor commands without a button are shown for reference.",
+  "Конфликт сочетания: {0}": "Shortcut conflict: {0}",
+  "Изменить сочетание: {0}": "Change shortcut: {0}",
+  "Сбросить сочетание: {0}": "Reset shortcut: {0}",
+  "Вернуть все сочетания по умолчанию": "Restore all default shortcuts",
+  "Отменить запись сочетания": "Cancel shortcut recording",
+  Сбросить: "Reset",
   "Размер шрифта": "Font size",
   "Размер текста заметок в пикселях.": "Note text size in pixels.",
   "Межстрочный интервал": "Line height",
@@ -25,6 +73,26 @@ export const english: Record<string, string> = {
   Общие: "General",
   Оформление: "Appearance",
   "Как в системе": "Follow system",
+  "Горизонтальная прокрутка редактора": "Editor horizontal scrolling",
+  "Толщина разделителей": "Divider thickness",
+  "Линии между панелями и разделами рабочего пространства.":
+    "Lines between workspace panels and sections.",
+  "Не удалось сохранить толщину разделителей. Изменения действуют до закрытия приложения.":
+    "Could not save divider thickness. Changes apply until the app closes.",
+  "Цветовая гамма": "Color palette",
+  Графит: "Graphite",
+  Шалфей: "Sage",
+  Синий: "Blue",
+  Лаванда: "Lavender",
+  Песочный: "Sand",
+  Розовый: "Rose",
+  Бирюзовый: "Teal",
+  Терракота: "Terracotta",
+  "Плотность интерфейса": "Interface density",
+  Компактный: "Compact",
+  Свободный: "Comfortable",
+  "Не удалось сохранить плотность интерфейса. Изменения действуют до закрытия приложения.":
+    "Could not save interface density. Changes apply until the app closes.",
   "Основной цвет": "Base color",
   "Оттенки интерфейса рассчитываются автоматически.":
     "Interface shades are calculated automatically.",

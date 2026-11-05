@@ -13,6 +13,9 @@ export type Action =
   | { type: "openImage"; path: string }
   | { type: "relocateImage"; path: string; destination: string }
   | { type: "activate"; path: string }
+  | { type: "showRecent" }
+  | { type: "openInTab"; previous: string; note: Note }
+  | { type: "reorder"; path: string; target: string; after: boolean }
   | { type: "edit"; path: string; content: string }
   | { type: "saved"; path: string; content: string; revision: string }
   | { type: "replace"; path: string; note: Note }
@@ -30,6 +33,36 @@ export const titleOf = (path: string): string =>
 
 export function workspaceReducer(state: Workspace, action: Action): Workspace {
   switch (action.type) {
+    case "showRecent":
+      return { ...state, active: null };
+    case "openInTab": {
+      const previous = state.tabs.find((tab) => tab.path === action.previous);
+      if (!previous || dirty(previous) || previous.path === action.note.path)
+        return workspaceReducer(state, { type: "open", note: action.note });
+      if (state.tabs.some((tab) => tab.path === action.note.path))
+        return {
+          tabs: state.tabs.filter((tab) => tab !== previous),
+          active: action.note.path,
+        };
+      return {
+        tabs: state.tabs.map((tab) =>
+          tab === previous
+            ? { ...action.note, savedContent: action.note.content }
+            : tab,
+        ),
+        active: action.note.path,
+      };
+    }
+    case "reorder": {
+      if (action.path === action.target) return state;
+      const tab = state.tabs.find((item) => item.path === action.path);
+      if (!tab || !state.tabs.some((item) => item.path === action.target))
+        return state;
+      const tabs = state.tabs.filter((item) => item !== tab);
+      const index = tabs.findIndex((item) => item.path === action.target);
+      tabs.splice(index + Number(action.after), 0, tab);
+      return { ...state, tabs };
+    }
     case "openImage":
       return {
         tabs: state.tabs.some((tab) => tab.path === action.path)

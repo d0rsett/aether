@@ -1,5 +1,5 @@
 import { render, screen, cleanup, waitFor } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { EditorView } from "@codemirror/view";
 import { undo } from "@codemirror/commands";
 import { MarkdownEditor } from "../src/editor/MarkdownEditor";
@@ -20,7 +20,19 @@ import { api } from "../src/services/api";
 import { readProperties } from "../src/editor/properties";
 import { applyProperty } from "../src/editor/propertyInput";
 
-afterEach(cleanup);
+beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+});
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 it("keeps repeated footnote widgets visible alongside Markdown link decorations", async () => {
   const content =
     "# Title\n\nRef[^one] and again[^one].\n\n[^one]: Definition\n";

@@ -3,6 +3,7 @@ import { Facet, type Extension } from "@codemirror/state";
 import { EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import { api, errorMessage } from "../services/api";
 import { imageDragType, imageExtension } from "../services/images";
+import { readPreferences } from "../workspace/preferences";
 interface Config {
   vaultId: string;
   path: string;
@@ -60,6 +61,8 @@ class AttachmentInput {
   ) {
     const view = this.view,
       config = view.state.facet(configuration);
+    const { attachmentFolder, attachmentFormat } = readPreferences();
+    const format = attachmentFormat === "vault" ? undefined : attachmentFormat;
     if (view.state.readOnly || (!files.length && !existing)) return;
     const selected = view.state.selection.main;
     const mark = {
@@ -100,12 +103,20 @@ class AttachmentInput {
         );
         if (this.destroyed) return;
         const imported = existing
-          ? await api.attachmentLinks(config.vaultId, config.path, [existing])
+          ? await api.attachmentLinks(
+              config.vaultId,
+              config.path,
+              [existing],
+              format ? { format } : undefined,
+            )
           : await api.importAttachments(
               config.vaultId,
               config.path,
               uploads,
-              clipboard,
+              clipboard && attachmentFolder === undefined,
+              typeof attachmentFolder === "string" || format
+                ? { folder: attachmentFolder ?? undefined, format }
+                : undefined,
             );
         if (this.destroyed) return;
         // Keep edits made while files were being copied. Replace the original selection

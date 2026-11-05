@@ -15,6 +15,12 @@ import type { RequestVault } from "../components/CreateVaultDialog";
 import { dirty, initialWorkspace, workspaceReducer } from "../workspace/model";
 import { readWorkspace, writeWorkspace } from "../workspace/storage";
 import { imageExtension } from "../services/images";
+import {
+  readPreferences,
+  readRecent,
+  readStartupNote,
+  recentKey,
+} from "../workspace/preferences";
 export interface Question {
   title: string;
   description?: string;
@@ -30,6 +36,7 @@ export function useWorkspace(
 ) {
   const [vault, setVault] = useState<VaultInfo | null>(null);
   const [knownVaults, setKnownVaults] = useState<VaultInfo[]>([]);
+  const [startupOverride, setStartupOverride] = useState(false);
   const [workspace, dispatch] = useReducer(workspaceReducer, initialWorkspace);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -89,7 +96,9 @@ export function useWorkspace(
     }
     return true;
   }, []);
-  const loadVault = useCallback(async (next: VaultInfo) => {
+  const loadVault = useCallback(async (next: VaultInfo, startup = false) => {
+    const preference = startup ? readPreferences().startup : "last";
+    setStartupOverride(preference !== "last");
     dispatch({ type: "reset" });
     setVault(next);
     setFolder("");
@@ -137,6 +146,19 @@ export function useWorkspace(
       !failed.some((f) => f.startsWith(`${stored.active}:`))
     )
       dispatch({ type: "activate", path: stored.active });
+    if (startup) {
+      if (preference === "recent") dispatch({ type: "showRecent" });
+      if (preference === "note") {
+        const path = readStartupNote(next.id);
+        if (path && !imageExtension(path)) {
+          try {
+            dispatch({ type: "open", note: await api.read(next.id, path) });
+          } catch {
+            setError(t("Не удалось открыть стартовую заметку."));
+          }
+        }
+      }
+    }
     if (recovered)
       setNotice(
         t`Восстановлены несохранённые черновики: ${recovered}. Проверьте текст и сохраните его.`,
@@ -163,9 +185,26 @@ export function useWorkspace(
     void task(async () => {
       setKnownVaults(await api.vaults());
       const next = await api.restore();
-      if (next) await loadVault(next);
+      if (next) await loadVault(next, true);
     });
   }, [task, loadVault]);
+  useEffect(() => {
+    if (!vault || busy || !workspace.active) return;
+    try {
+      const path = workspace.active;
+      localStorage.setItem(
+        recentKey(vault.id),
+        JSON.stringify(
+          [path, ...readRecent(vault.id).filter((item) => item !== path)].slice(
+            0,
+            20,
+          ),
+        ),
+      );
+    } catch {
+      // Recent files are supplementary to the recoverable workspace session.
+    }
+  }, [vault, busy, workspace.active]);
   useEffect(() => {
     if (busy) return;
     const timer = window.setTimeout(persist, 700);
@@ -665,13 +704,22 @@ export function useWorkspace(
     task(async () => {
       const current = ref.current.vault;
       if (!current) return;
+      const previous = ref.current.workspace.active;
+      const reuse = readPreferences().links === "current" && previous;
       const resolution = await api.resolve(current.id, source, target);
       if (resolution.path) {
         const existing = ref.current.workspace.tabs.find(
           (tab) => tab.path === resolution.path,
         );
         const note = existing ?? (await api.read(current.id, resolution.path));
-        if (existing) dispatch({ type: "activate", path: resolution.path });
+        if (reuse)
+          dispatch({
+            type: "openInTab",
+            previous: reuse,
+            note,
+          });
+        else if (existing)
+          dispatch({ type: "activate", path: resolution.path });
         else dispatch({ type: "open", note });
         const hash = target.indexOf("#");
         if (hash >= 0) {
@@ -707,11 +755,16 @@ export function useWorkspace(
       });
       if (name === null) return;
       const note = await api.create(current.id, name.trim());
-      dispatch({ type: "open", note });
+      dispatch(
+        reuse
+          ? { type: "openInTab", previous: reuse, note }
+          : { type: "open", note },
+      );
       setRefresh((n) => n + 1);
     });
   return {
     vault,
+    startupOverride,
     knownVaults,
     switchVault,
     createVault,

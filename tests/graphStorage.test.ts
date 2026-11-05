@@ -7,6 +7,18 @@ import {
   writeGraphTab,
 } from "../src/workspace/graphStorage";
 afterEach(() => localStorage.clear());
+it("opens legacy graph tabs at the end and validates their stored position", () => {
+  localStorage.setItem(
+    "aether.graph-tab.v1:old",
+    JSON.stringify({ open: true, active: true }),
+  );
+  expect(readGraphTab("old").position).toBe(Number.MAX_SAFE_INTEGER);
+  localStorage.setItem(
+    "aether.graph-tab.v1:bad",
+    JSON.stringify({ open: true, position: "first" }),
+  );
+  expect(readGraphTab("bad").position).toBe(Number.MAX_SAFE_INTEGER);
+});
 it("restores graph state per vault without mixing positions or tab selection", () => {
   const state = defaultGraphView();
   state.query = "Проект";
@@ -15,13 +27,25 @@ it("restores graph state per vault without mixing positions or tab selection", (
   state.camera = { x: 42, y: -18, zoom: 1.7 };
   state.positions = [["A.md", 33, 44, true]];
   writeGraphView("one", state);
-  writeGraphTab("one", true, true);
+  writeGraphTab("one", true, true, 1);
   expect(readGraphView("one")).toEqual(state);
   expect(readGraphView("two")).toEqual(defaultGraphView());
-  expect(readGraphTab("one")).toEqual({ open: true, active: true });
-  expect(readGraphTab("two")).toEqual({ open: false, active: false });
+  expect(readGraphTab("one")).toEqual({
+    open: true,
+    active: true,
+    position: 1,
+  });
+  expect(readGraphTab("two")).toEqual({
+    open: false,
+    active: false,
+    position: Number.MAX_SAFE_INTEGER,
+  });
   writeGraphTab("one", false, true);
-  expect(readGraphTab("one")).toEqual({ open: false, active: false });
+  expect(readGraphTab("one")).toEqual({
+    open: false,
+    active: false,
+    position: Number.MAX_SAFE_INTEGER,
+  });
 });
 it("validates stored data and rejects malformed coordinates", () => {
   localStorage.setItem(

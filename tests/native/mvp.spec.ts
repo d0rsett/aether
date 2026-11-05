@@ -22,6 +22,173 @@ import { createHash } from "node:crypto";
 const root = resolve(import.meta.dirname, "../..");
 const executable = resolve(root, "src-tauri/target/e2e/release/aether.exe");
 
+test("workspace preferences apply to links, attachments, shortcuts and startup", async () => {
+  const run = await mkdtemp(
+    join(root, ".build-cache/native-workspace-preferences-"),
+  );
+  const vault = join(run, "Native-MVP"),
+    data = join(run, "data"),
+    profile = join(run, "profile");
+  await mkdir(vault);
+  await mkdir(data);
+  await writeFile(join(vault, "A.md"), "# A\n\n[[B]]\n");
+  await writeFile(join(vault, "B.md"), "# B\n");
+  await writeFile(
+    join(data, "settings.json"),
+    JSON.stringify({ lastVault: vault }),
+  );
+  let app: RunningApp | undefined;
+  try {
+    app = await launch(data, profile, false);
+    let page = app.page;
+    await page.getByRole("button", { name: "A", exact: true }).click();
+    const settings = () => page.getByRole("dialog", { name: "Настройки" });
+    const section = (name: string) =>
+      settings().getByRole("button", { name, exact: true }).click();
+    await page.keyboard.press("Control+,");
+    await section("Рабочее пространство");
+    await settings()
+      .getByRole("combobox", { name: /^При запуске/ })
+      .selectOption("note");
+    await settings()
+      .getByRole("textbox", { name: /^Стартовая заметка/ })
+      .fill("B.md");
+    await settings()
+      .getByRole("combobox", { name: /^Открывать ссылки/ })
+      .selectOption("current");
+    await page.screenshot({
+      path: test.info().outputPath("workspace-preferences.png"),
+    });
+    await section("Редактор");
+    await settings()
+      .getByRole("combobox", { name: /^Режим открытия заметок/ })
+      .selectOption("reading");
+    await section("Вложения");
+    await settings()
+      .getByRole("combobox", { name: /^Папка вложений/ })
+      .selectOption("custom");
+    await settings()
+      .getByRole("textbox", { name: /^Путь папки вложений/ })
+      .fill("Media");
+    await settings()
+      .getByRole("combobox", { name: /^Формат ссылки на вложение/ })
+      .selectOption("markdown");
+    await section("Горячие клавиши");
+    const save = settings().getByRole("button", {
+      name: "Изменить сочетание: Сохранить",
+      exact: true,
+    });
+    await save.click();
+    await save.press("Control+n");
+    await expect(settings().getByRole("alert")).toContainText("Новая заметка");
+    await save.press("Control+Shift+s");
+    await expect(save).toHaveText("Ctrl Shift S");
+    const bold = settings().getByRole("button", {
+      name: "Изменить сочетание: Жирный",
+      exact: true,
+    });
+    await bold.click();
+    await bold.press("Control+Shift+b");
+    await expect(bold).toHaveText("Ctrl Shift B");
+    await page.screenshot({
+      path: test.info().outputPath("editable-shortcuts.png"),
+    });
+    await page.keyboard.press("Escape");
+    await page
+      .locator(".reading-document")
+      .getByRole("link", { name: "B", exact: true })
+      .click();
+    await expect(page.getByRole("tab", { name: "A", exact: true })).toHaveCount(
+      0,
+    );
+    await expect(
+      page.getByRole("tab", { name: "B", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await setMode(page, "Исходник");
+    const editor = page.getByRole("textbox", { name: "Markdown-редактор" });
+    await editor.press("Control+Home");
+    await editor.press("End");
+    await editor.press("Shift+ArrowLeft");
+    await editor.press("Control+Shift+b");
+    await expect(editor).toContainText("**B**");
+    await editor.press("Control+z");
+    await expect(editor).not.toContainText("**B**");
+    await editor.press("Control+End");
+    await editor.evaluate((element) => {
+      const transfer = new DataTransfer();
+      transfer.items.add(
+        new File(["%PDF-1.4\nfixture"], "Fixture.pdf", {
+          type: "application/pdf",
+        }),
+      );
+      element.dispatchEvent(
+        new ClipboardEvent("paste", {
+          clipboardData: transfer,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    await expect(editor).toContainText("![](Media/Fixture.pdf)");
+    expect(await readFile(join(vault, "Media/Fixture.pdf"), "utf8")).toContain(
+      "%PDF",
+    );
+    await editor.press("Control+s");
+    expect(await readFile(join(vault, "B.md"), "utf8")).toBe("# B\n");
+    await editor.press("Control+Shift+s");
+    await expect
+      .poll(() => readFile(join(vault, "B.md"), "utf8"))
+      .toContain("Media/Fixture.pdf");
+    await page.getByRole("button", { name: "A", exact: true }).click();
+    await closeNative(
+      app,
+      page.getByRole("button", { name: "Закрыть окно", exact: true }),
+    );
+    app = await launch(data, profile, false);
+    page = app.page;
+    await expect(
+      page.getByRole("tab", { name: "B", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator(".reading-document")).toBeVisible();
+    await page.keyboard.press("Control+,");
+    await section("Горячие клавиши");
+    await settings()
+      .getByRole("button", {
+        name: "Сбросить сочетание: Сохранить",
+        exact: true,
+      })
+      .click();
+    await expect(
+      settings().getByRole("button", {
+        name: "Изменить сочетание: Сохранить",
+        exact: true,
+      }),
+    ).toHaveText("Ctrl S");
+    await section("Рабочее пространство");
+    await settings()
+      .getByRole("combobox", { name: /^При запуске/ })
+      .selectOption("recent");
+    await page.keyboard.press("Escape");
+    await closeNative(
+      app,
+      page.getByRole("button", { name: "Закрыть окно", exact: true }),
+    );
+    app = await launch(data, profile, false);
+    page = app.page;
+    const recent = page.getByRole("region", {
+      name: "Недавние файлы",
+      exact: true,
+    });
+    await expect(recent.getByRole("button", { name: /A.md/ })).toBeVisible();
+    await recent.getByRole("button", { name: /A.md/ }).click();
+    await expect(
+      page.getByRole("tab", { name: "A", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+  } finally {
+    await stop(app);
+  }
+});
+
 test("settings preserve drafts, editor history and preferences", async () => {
   const run = await mkdtemp(join(root, ".build-cache/native-language-"));
   const vault = join(run, "Native-MVP"),
@@ -61,6 +228,18 @@ test("settings preserve drafts, editor history and preferences", async () => {
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
     await page.emulateMedia({ colorScheme: "dark" });
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await settings.getByText("Лаванда", { exact: true }).click();
+    await settings.getByText("Компактный", { exact: true }).click();
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-density",
+      "compact",
+    );
+    await expect(
+      settings.getByRole("radio", { name: "Лаванда" }),
+    ).toBeChecked();
+    await page.screenshot({
+      path: test.info().outputPath("appearance-narrow.png"),
+    });
     await settings
       .getByRole("button", { name: "Редактор", exact: true })
       .click();
@@ -101,6 +280,12 @@ test("settings preserve drafts, editor history and preferences", async () => {
       .click();
     await expect(
       restored.getByRole("radio", { name: "Follow system" }),
+    ).toBeChecked();
+    await expect(
+      restored.getByRole("radio", { name: "Lavender" }),
+    ).toBeChecked();
+    await expect(
+      restored.getByRole("radio", { name: "Compact" }),
     ).toBeChecked();
     await restored.getByRole("button", { name: "Editor", exact: true }).click();
     await expect(
@@ -2308,9 +2493,39 @@ test("editor modes toggle reading/live, active line number follows the caret and
     expect(
       await page.evaluate(() => localStorage.getItem("aether.ui.lineWrapping")),
     ).toBe("false");
+    const horizontalBar = page.getByRole("region", {
+      name: "Горизонтальная прокрутка редактора",
+    });
+    await expect(horizontalBar).toBeVisible();
+    expect(
+      await horizontalBar.evaluate((element) => {
+        const bar = element.getBoundingClientRect();
+        const panel = element
+          .closest(".editor-tab-panel")!
+          .getBoundingClientRect();
+        return Math.abs(bar.bottom - panel.bottom);
+      }),
+    ).toBeLessThan(2);
+    await horizontalBar.evaluate((element) => {
+      element.scrollLeft = 150;
+    });
+    await expect
+      .poll(() => scroller.evaluate((element) => element.scrollLeft))
+      .toBe(150);
     await scroller.evaluate((element) => {
       element.scrollLeft = 150;
     });
+    await expect
+      .poll(() =>
+        scroller.evaluate((element) => {
+          const viewport = element.getBoundingClientRect();
+          const gutter = element
+            .querySelector(".cm-gutters")!
+            .getBoundingClientRect();
+          return Math.abs(gutter.left - viewport.left);
+        }),
+      )
+      .toBeLessThan(2);
     expect(
       await page.locator(".cm-gutters").evaluate((element) => {
         const rect = element.getBoundingClientRect();
@@ -2617,6 +2832,18 @@ async function closeNative(app: RunningApp, button: Locator): Promise<void> {
 }
 
 async function noteAction(page: Page, label: string) {
+  if (
+    ["Номера строк", "Перенос строк", "Панель форматирования"].includes(label)
+  ) {
+    await page.keyboard.press("Control+,");
+    const settings = page.getByRole("dialog", { name: "Настройки" });
+    await settings
+      .getByRole("button", { name: "Редактор", exact: true })
+      .click();
+    await settings.getByRole("switch", { name: new RegExp(label) }).click();
+    await page.keyboard.press("Escape");
+    return;
+  }
   if (label === "Переименовать") {
     await page.keyboard.press("Control+p");
     await page
@@ -4094,12 +4321,50 @@ test("tab strip scrolls with the wheel and reveals the active note", async () =>
     await expect.poll(visibleActive).toBe(true);
     await page.setViewportSize({ width: 800, height: 650 });
     await expect.poll(visibleActive).toBe(true);
+    const lastTab = strip.getByRole("tab", { name: names[11], exact: true });
+    const previousTab = strip.getByRole("tab", {
+      name: names[10],
+      exact: true,
+    });
+    await lastTab.dragTo(previousTab, { targetPosition: { x: 4, y: 12 } });
+    await expect(strip.getByRole("tab").nth(10)).toContainText(names[11]);
+    await expect(lastTab).toHaveAttribute("aria-selected", "true");
+    await lastTab.press("Alt+Shift+ArrowRight");
+    await expect(strip.getByRole("tab").nth(11)).toContainText(names[11]);
     await expect(
       page.getByRole("button", { name: "Открыть новую заметку", exact: true }),
     ).toBeVisible();
     await page.screenshot({
       path: test.info().outputPath("scrolling-tabs.png"),
     });
+    await page.keyboard.press("Control+Shift+f");
+    await page
+      .getByRole("textbox", { name: "Поиск по содержимому" })
+      .fill("Заметка");
+    await expect(page.locator(".search-hit").first()).toBeVisible();
+    await page.screenshot({
+      path: test.info().outputPath("search-hierarchy.png"),
+    });
+    const tabList = page.getByRole("button", {
+      name: "Список вкладок",
+      exact: true,
+    });
+    await tabList.click();
+    await page
+      .getByRole("group", { name: "Список вкладок", exact: true })
+      .getByRole("button", { name: names[0], exact: true })
+      .click();
+    await expect(
+      strip.getByRole("tab", { name: names[0], exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("Control+,");
+    const preferences = page.getByRole("dialog", { name: "Настройки" });
+    await preferences
+      .getByRole("button", { name: "Рабочее пространство", exact: true })
+      .click();
+    await preferences.getByRole("switch", { name: /^Список вкладок/ }).click();
+    await page.keyboard.press("Escape");
+    await expect(tabList).toHaveCount(0);
     expect(await readFile(join(vault, `${names.at(-1)}.md`), "utf8")).toBe(
       `# ${names.at(-1)}\n`,
     );
@@ -5120,6 +5385,61 @@ test("graph view: navigation, filters, dragging and preserved draft", async () =
       .getByRole("button", { name: "Beta.md", exact: true })
       .press("Enter");
     await expect(editor).toContainText("# Beta");
+  } finally {
+    await stop(app);
+  }
+});
+
+test("graph tab shares ordering, keyboard actions and restart restoration with notes", async () => {
+  const run = await mkdtemp(join(root, ".build-cache/native-graph-tab-"));
+  const vault = join(run, "Native-MVP"),
+    data = join(run, "data"),
+    profile = join(run, "profile");
+  await mkdir(vault);
+  await mkdir(data);
+  await writeFile(join(vault, "A.md"), "# A\n[[B]]\n");
+  await writeFile(join(vault, "B.md"), "# B\n");
+  await writeFile(
+    join(data, "settings.json"),
+    JSON.stringify({ lastVault: vault }),
+  );
+  let app: RunningApp | undefined;
+  try {
+    app = await launch(data, profile, false);
+    let page = app.page;
+    await page.getByRole("button", { name: "A", exact: true }).click();
+    await page.getByRole("button", { name: "B", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Граф связей", exact: true })
+      .click();
+    let graphTab = page.getByRole("tab", { name: "Граф связей", exact: true });
+    await graphTab.dragTo(page.getByRole("tab", { name: "A", exact: true }), {
+      targetPosition: { x: 4, y: 12 },
+    });
+    await expect(page.getByRole("tab").first()).toHaveText("Граф связей");
+    await expect(graphTab).toHaveAttribute("aria-selected", "true");
+    await graphTab.press("Alt+Shift+ArrowRight");
+    await expect(page.getByRole("tab").nth(1)).toHaveText("Граф связей");
+    await closeNative(
+      app,
+      page.getByRole("button", { name: "Закрыть окно", exact: true }),
+    );
+    app = await launch(data, profile, false);
+    page = app.page;
+    graphTab = page.getByRole("tab", { name: "Граф связей", exact: true });
+    await expect(page.getByRole("tab").nth(1)).toHaveText("Граф связей");
+    await expect(graphTab).toHaveAttribute("aria-selected", "true");
+    await page.getByRole("button", { name: "Закрыть A", exact: true }).click();
+    await expect(page.getByRole("tab").first()).toHaveText("Граф связей");
+    await graphTab.click({ button: "right" });
+    await page.screenshot({
+      path: test.info().outputPath("graph-tab-menu.png"),
+    });
+    await page.getByRole("menuitem", { name: /^Закрыть вкладку/ }).click();
+    await expect(graphTab).toHaveCount(0);
+    await expect(
+      page.getByRole("tab", { name: "B", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
   } finally {
     await stop(app);
   }

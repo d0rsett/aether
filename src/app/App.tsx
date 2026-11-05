@@ -1,4 +1,16 @@
 import {
+  binding,
+  isEditorShortcut,
+  readShortcuts,
+  shortcutFromEvent,
+  shortcutIds,
+  shortcutsKey,
+  shortcutLabel,
+  type Shortcuts,
+  type ShortcutCommand,
+  type EditorShortcut,
+} from "../workspace/shortcuts";
+import {
   readTypography,
   typographyKey,
   type Typography,
@@ -11,8 +23,22 @@ import {
   readPalette,
   parsePalette,
   paletteKey,
+  densityKey,
+  dividerKey,
+  readDividerWidth,
+  readDensity,
+  type Density,
 } from "../workspace/theme";
 import { readGraphTab, writeGraphTab } from "../workspace/graphStorage";
+import {
+  preferencesKey,
+  readPreferences,
+  readRecent,
+  readStartupNote,
+  startupNoteKey,
+  type Preferences,
+} from "../workspace/preferences";
+import { titleOf } from "../workspace/model";
 import { KnowledgeGraph } from "../components/KnowledgeGraph";
 import { t, useLocale, setLocale } from "../i18n";
 import { Welcome } from "../components/Welcome";
@@ -100,6 +126,38 @@ export function App() {
   const renameReview = useRenameReview();
   const vaultCreation = useVaultCreation();
   const app = useWorkspace(ask, renameReview.review, vaultCreation.request);
+  const [preferences, setPreferences] = useState(readPreferences);
+  const [shortcuts, setShortcuts] = useState(readShortcuts);
+  const hotkey = (id: ShortcutCommand) => shortcutLabel(binding(shortcuts, id));
+  const changeShortcuts = (next: Shortcuts) => {
+    setShortcuts(next);
+    try {
+      localStorage.setItem(shortcutsKey, JSON.stringify(next));
+    } catch {
+      app.setError(t("Не удалось сохранить настройки."));
+    }
+  };
+  const [startupNote, setStartupNote] = useState("");
+  useEffect(() => {
+    setStartupNote(app.vault ? readStartupNote(app.vault.id) : "");
+  }, [app.vault?.id]);
+  const changePreferences = (next: Preferences) => {
+    setPreferences(next);
+    try {
+      localStorage.setItem(preferencesKey, JSON.stringify(next));
+    } catch {
+      app.setError(t("Не удалось сохранить настройки."));
+    }
+  };
+  const changeStartupNote = (path: string) => {
+    if (!app.vault) return;
+    setStartupNote(path);
+    try {
+      localStorage.setItem(startupNoteKey(app.vault.id), path.trim());
+    } catch {
+      app.setError(t("Не удалось сохранить настройки."));
+    }
+  };
   const [previews] = useState(() => new NotePreviews());
   const context = useContextMenu(app.setError);
   const [dragged, setDragged] = useState<string | null>(null);
@@ -124,6 +182,42 @@ export function App() {
   const [settings, setSettings] = useState(false);
   const [themePreference, setTheme] = useState(readTheme);
   const [palette, setPaletteColor] = useState(readPalette);
+  const [density, setDensity] = useState(readDensity);
+  const [dividerWidth, setDividerWidth] = useState(readDividerWidth);
+  const changeDividerWidth = (next: number) => {
+    if (![1, 2, 3].includes(next)) return;
+    setDividerWidth(next);
+    try {
+      localStorage.setItem(dividerKey, String(next));
+    } catch {
+      app.setError(
+        t(
+          "Не удалось сохранить толщину разделителей. Изменения действуют до закрытия приложения.",
+        ),
+      );
+    }
+  };
+  useLayoutEffect(() => {
+    document.documentElement.style.setProperty(
+      "--workspace-divider-width",
+      `${dividerWidth}px`,
+    );
+  }, [dividerWidth]);
+  const changeDensity = (next: Density) => {
+    setDensity(next);
+    try {
+      localStorage.setItem(densityKey, next);
+    } catch {
+      app.setError(
+        t(
+          "Не удалось сохранить плотность интерфейса. Изменения действуют до закрытия приложения.",
+        ),
+      );
+    }
+  };
+  useLayoutEffect(() => {
+    document.documentElement.dataset.density = density;
+  }, [density]);
   const changePalette = (value: string | null) => {
     const next = parsePalette(value);
     setPaletteColor(next);
@@ -200,6 +294,26 @@ export function App() {
   }, [left]);
   const [graph, setGraph] = useState(false);
   const [graphTab, setGraphTab] = useState(false);
+  const [graphPosition, setGraphPosition] = useState(Number.MAX_SAFE_INTEGER);
+  const graphOrder = useRef<{ vault: string | undefined; paths: string[] }>({
+    vault: undefined,
+    paths: [],
+  });
+  useEffect(() => {
+    const previous = graphOrder.current;
+    const paths = app.workspace.tabs.map((tab) => tab.path);
+    if (
+      previous.vault === app.vault?.id &&
+      paths.length < previous.paths.length
+    ) {
+      const removedBefore = previous.paths
+        .slice(0, graphPosition)
+        .filter((path) => !paths.includes(path)).length;
+      if (removedBefore && graphPosition !== Number.MAX_SAFE_INTEGER)
+        setGraphPosition((position) => Math.max(0, position - removedBefore));
+    }
+    graphOrder.current = { vault: app.vault?.id, paths };
+  }, [app.vault?.id, app.workspace.tabs, graphPosition]);
   const [graphSessionVault, setGraphSessionVault] = useState<string | null>(
     null,
   );
@@ -220,13 +334,14 @@ export function App() {
     if (!id || app.busy || graphSessionVault === id) return;
     const saved = readGraphTab(id);
     setGraphTab(saved.open);
-    setGraph(saved.active);
+    setGraphPosition(saved.position);
+    setGraph(saved.active && !app.startupOverride);
     setGraphSessionVault(id);
-  }, [app.vault?.id, app.busy, graphSessionVault]);
+  }, [app.vault?.id, app.busy, app.startupOverride, graphSessionVault]);
   useEffect(() => {
     if (!app.vault || graphSessionVault !== app.vault.id || app.busy) return;
     try {
-      writeGraphTab(app.vault.id, graphTab, graph);
+      writeGraphTab(app.vault.id, graphTab, graph, graphPosition);
     } catch {
       app.setError(t("Не удалось сохранить состояние вкладки графа."));
     }
@@ -235,25 +350,10 @@ export function App() {
     app.busy,
     graphSessionVault,
     graphTab,
+    graphPosition,
     graph,
     app.setError,
   ]);
-  useEffect(() => {
-    if (!graph) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (
-        (event.ctrlKey || event.metaKey) &&
-        event.code === "KeyW" &&
-        !document.querySelector("dialog[open]")
-      ) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        closeGraph();
-      }
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [graph]);
   const [paletteOpen, setPalette] = useState(false);
   const [templates, setTemplates] = useState(false);
   const [templateCommand, setTemplateCommand] = useState<{
@@ -265,7 +365,25 @@ export function App() {
   const [query, setQuery] = useState("");
   const [help, setHelp] = useState(false);
   const [stats, setStats] = useState({ words: 0, chars: 0, lines: 0 });
-  const [mode, setMode] = useState<Mode>("live");
+  const [noteModes, setNoteModes] = useState<Map<string, Mode>>(
+    () => new Map(),
+  );
+  const modeKey = JSON.stringify([app.vault?.id, app.workspace.active]);
+  const mode = noteModes.get(modeKey) ?? preferences.mode;
+  const setMode = (next: Mode) => {
+    setNoteModes((previous) => new Map(previous).set(modeKey, next));
+  };
+  useEffect(() => {
+    const open = new Set(
+      app.workspace.tabs.map((tab) =>
+        JSON.stringify([app.vault?.id, tab.path]),
+      ),
+    );
+    setNoteModes((previous) => {
+      const retained = [...previous].filter(([key]) => open.has(key));
+      return retained.length === previous.size ? previous : new Map(retained);
+    });
+  }, [app.vault?.id, app.workspace.tabs]);
   const [propertyCommand, setPropertyCommand] = useState<
     | (PropertyCommand & {
         path: string;
@@ -319,20 +437,6 @@ export function App() {
     if (app.active)
       setFormatCommand({ id: ++formatId.current, type, path: app.active.path });
   };
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (
-        (event.ctrlKey || event.metaKey) &&
-        event.code === "KeyE" &&
-        !document.querySelector("dialog[open]")
-      ) {
-        event.preventDefault();
-        setMode((previous) => (previous === "reading" ? "live" : "reading"));
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
   const actionRef = useRef(app);
   actionRef.current = app;
   const knowledge = useKnowledge(
@@ -383,57 +487,50 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [app.active?.content]);
   useEffect(() => {
+    const actions: Record<
+      Exclude<ShortcutCommand, EditorShortcut>,
+      () => void
+    > = {
+      settings: () => setSettings(true),
+      search: () => {
+        setLeft(true);
+        setLeftView("search");
+      },
+      save: () => void actionRef.current.save(),
+      openVault: () => void actionRef.current.choose(),
+      newVault: () => void actionRef.current.createVault(),
+      newNote: () => void actionRef.current.createQuick(),
+      close: () => {
+        if (graph) closeGraph();
+        else if (actionRef.current.workspace.active)
+          void actionRef.current.close(actionRef.current.workspace.active);
+      },
+      palette: () => {
+        setPalette(true);
+        setQuery("");
+      },
+      sidebar: () => setLeft((value) => !value),
+      reading: () => setMode(mode === "reading" ? "live" : "reading"),
+    };
     const onKey = (event: KeyboardEvent) => {
       if (
-        !(event.ctrlKey || event.metaKey) ||
-        event.altKey ||
+        event.isComposing ||
+        event.getModifierState("AltGraph") ||
         document.querySelector("dialog[open]")
       )
         return;
-      const key = event.code.startsWith("Key")
-        ? event.code.slice(3).toLowerCase()
-        : event.code === "Backslash"
-          ? "\\"
-          : event.key.toLowerCase();
-      if (event.code === "Comma" || key === ",") {
-        event.preventDefault();
-        setSettings(true);
-      }
-      if (key === "f" && event.shiftKey) {
-        event.preventDefault();
-        setLeft(true);
-        setLeftView("search");
-      }
-      if (key === "s") {
-        event.preventDefault();
-        void actionRef.current.save();
-      }
-      if (key === "o") {
-        event.preventDefault();
-        void actionRef.current.choose();
-      }
-      if (key === "n") {
-        event.preventDefault();
-        if (event.shiftKey) void actionRef.current.createVault();
-        else void actionRef.current.createQuick();
-      }
-      if (key === "w" && actionRef.current.workspace.active) {
-        event.preventDefault();
-        void actionRef.current.close(actionRef.current.workspace.active);
-      }
-      if (key === "p") {
-        event.preventDefault();
-        setPalette(true);
-        setQuery("");
-      }
-      if (key === "\\") {
-        event.preventDefault();
-        setLeft((value) => !value);
-      }
+      const key = shortcutFromEvent(event);
+      if (!key) return;
+      const id = shortcutIds.find((id) => binding(shortcuts, id) === key);
+      if (id && isEditorShortcut(id)) return;
+      if (!id && key !== "KeyS") return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (id && !event.repeat) actions[id]();
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [shortcuts, graph, mode, modeKey]);
   const changeLanguage = (next: "ru" | "en") => {
     if (!setLocale(next))
       app.setError(
@@ -445,7 +542,7 @@ export function App() {
   const commands = [
     {
       title: t("Настройки"),
-      shortcut: "Ctrl ,",
+      shortcut: hotkey("settings"),
       enabled: true,
       action: () => setSettings(true),
     },
@@ -478,7 +575,7 @@ export function App() {
     },
     {
       title: t("Создать хранилище"),
-      shortcut: "Ctrl Shift N",
+      shortcut: hotkey("newVault"),
       action: () => void app.createVault(),
       enabled: true,
     },
@@ -533,7 +630,7 @@ export function App() {
       ] as const
     ).map((item) => ({
       title: item.title,
-      shortcut: item.key === "reading" ? "Ctrl E" : "",
+      shortcut: item.key === "reading" ? hotkey("reading") : "",
       action: () => setMode(item.key),
       enabled: !!app.active,
     })),
@@ -547,7 +644,7 @@ export function App() {
     },
     {
       title: t("Поиск по хранилищу"),
-      shortcut: "Ctrl Shift F",
+      shortcut: hotkey("search"),
       action: () => {
         setLeft(true);
         setLeftView("search");
@@ -556,13 +653,13 @@ export function App() {
     },
     {
       title: t("Открыть хранилище"),
-      shortcut: "Ctrl O",
+      shortcut: hotkey("openVault"),
       action: () => void app.choose(),
       enabled: true,
     },
     {
       title: t("Новая заметка"),
-      shortcut: "Ctrl N",
+      shortcut: hotkey("newNote"),
       action: () => void app.createQuick(),
       enabled: !!app.vault,
     },
@@ -574,7 +671,7 @@ export function App() {
     },
     {
       title: t("Сохранить заметку"),
-      shortcut: "Ctrl S",
+      shortcut: hotkey("save"),
       action: () => void app.save(),
       enabled: !!app.active,
     },
@@ -753,14 +850,27 @@ export function App() {
     >
       {settings && (
         <SettingsDialog
+          shortcuts={shortcuts}
+          onShortcuts={changeShortcuts}
+          preferences={preferences}
+          onPreferences={changePreferences}
+          startupNote={startupNote}
+          activeNote={app.active?.path}
+          setStartupNote={app.vault ? changeStartupNote : undefined}
           palette={palette}
+          density={density}
+          dividerWidth={dividerWidth}
+          setDividerWidth={changeDividerWidth}
+          setDensity={changeDensity}
           setPaletteColor={changePalette}
           typography={typography}
           setTypography={changeTypography}
-          commands={commands.map(({ title, shortcut }) => ({
-            title,
-            shortcut,
-          }))}
+          commands={commands
+            .filter(({ shortcut }) => !shortcut)
+            .map(({ title, shortcut }) => ({
+              title,
+              shortcut,
+            }))}
           theme={themePreference}
           setTheme={setTheme}
           locale={locale}
@@ -797,7 +907,7 @@ export function App() {
             className="icon-button"
             aria-label={t("Переключить левую панель")}
             aria-expanded={left}
-            data-tooltip={t("Левая панель · Ctrl+\\")}
+            data-tooltip={t("Левая панель") + " · " + hotkey("sidebar")}
             onClick={() => setLeft(!left)}
           >
             {left ? <PanelLeftClose size={17} /> : <PanelLeftOpen size={17} />}
@@ -840,7 +950,7 @@ export function App() {
             }
             aria-label={t("Поиск по хранилищу")}
             aria-pressed={left && leftView === "search"}
-            data-tooltip={t("Поиск · Ctrl+Shift+F")}
+            data-tooltip={t("Поиск") + " · " + hotkey("search")}
             onClick={() => {
               setLeft(true);
               setLeftView("search");
@@ -873,7 +983,7 @@ export function App() {
             <button
               className="rail-button"
               aria-label={t("Настройки")}
-              data-tooltip={t("Настройки · Ctrl+,")}
+              data-tooltip={t("Настройки") + " · " + hotkey("settings")}
               onClick={() => setSettings(true)}
             >
               <Settings size={18} />
@@ -881,7 +991,7 @@ export function App() {
             <button
               className="rail-button"
               aria-label={t("Палитра команд")}
-              data-tooltip={t("Команды · Ctrl+P")}
+              data-tooltip={t("Команды") + " · " + hotkey("palette")}
               onClick={() => {
                 setPalette(true);
                 setQuery("");
@@ -904,7 +1014,9 @@ export function App() {
                     <button
                       className="icon-button"
                       aria-label={t("Новая заметка")}
-                      data-tooltip={t("Новая заметка · Ctrl+N")}
+                      data-tooltip={
+                        t("Новая заметка") + " · " + hotkey("newNote")
+                      }
                       disabled={!app.vault || app.busy}
                       onClick={() => void app.createQuick()}
                     >
@@ -1099,11 +1211,15 @@ export function App() {
 
         <main className="main-pane">
           <WorkspaceTabs
+            showTabList={preferences.tabList}
+            closeShortcut={hotkey("close")}
             app={app}
             graph={
               graphTab
                 ? {
                     active: graph,
+                    position: graphPosition,
+                    onReorder: setGraphPosition,
                     onActivate: () => setGraph(true),
                     onClose: closeGraph,
                   }
@@ -1184,7 +1300,13 @@ export function App() {
 
             {app.active || app.activeImage ? (
               <>
-                <NoteHeader app={app} mode={mode} setMode={setMode} />
+                <NoteHeader
+                  app={app}
+                  mode={mode}
+                  setMode={setMode}
+                  saveShortcut={hotkey("save")}
+                  readingShortcut={hotkey("reading")}
+                />
                 {app.active && formatting && mode !== "reading" && (
                   <FormattingToolbar
                     onTemplates={() => setTemplates(true)}
@@ -1238,6 +1360,7 @@ export function App() {
                               hidden={mode === "reading"}
                             >
                               <MarkdownEditor
+                                shortcuts={shortcuts}
                                 templateCommand={
                                   templateCommand?.path === tab.path &&
                                   templateCommand.vaultId === app.vault?.id
@@ -1372,6 +1495,36 @@ export function App() {
                   </Suspense>
                 </div>
               </>
+            ) : app.vault && preferences.startup === "recent" && !app.busy ? (
+              <section
+                className="recent-start"
+                aria-label={t("Недавние файлы")}
+              >
+                <h2>{t("Недавние файлы")}</h2>
+                {[
+                  ...new Set([
+                    ...readRecent(app.vault.id),
+                    ...app.workspace.tabs.map((tab) => tab.path),
+                  ]),
+                ]
+                  .slice(0, 20)
+                  .map((path) => (
+                    <button
+                      className="search-hit"
+                      key={path}
+                      onClick={() => void app.open(path)}
+                    >
+                      <strong>{titleOf(path)}</strong>
+                      <small>{path}</small>
+                    </button>
+                  ))}
+                <button
+                  className="button secondary"
+                  onClick={() => void app.createQuick()}
+                >
+                  {t("Новая заметка")}
+                </button>
+              </section>
             ) : (
               <Welcome app={app} onHelp={() => setHelp(true)} />
             )}
@@ -1490,17 +1643,17 @@ export function App() {
           </p>
           <div className="shortcut-list">
             {[
-              [t("Открыть хранилище"), "Ctrl O"],
-              [t("Создать хранилище"), "Ctrl Shift N"],
-              [t("Новая заметка"), "Ctrl N"],
-              [t("Сохранить"), "Ctrl S"],
-              [t("Закрыть вкладку"), "Ctrl W"],
-              [t("Палитра команд"), "Ctrl P"],
-              [t("Поиск в заметке"), "Ctrl F"],
+              [t("Открыть хранилище"), hotkey("openVault")],
+              [t("Создать хранилище"), hotkey("newVault")],
+              [t("Новая заметка"), hotkey("newNote")],
+              [t("Сохранить"), hotkey("save")],
+              [t("Закрыть вкладку"), hotkey("close")],
+              [t("Палитра команд"), hotkey("palette")],
+              [t("Поиск в заметке"), hotkey("find")],
               [t("Замена"), "Ctrl H"],
-              [t("Чтение / Live Preview"), "Ctrl E"],
-              [t("Жирный / курсив"), "Ctrl B / Ctrl I"],
-              [t("Отмена / повтор"), "Ctrl Z / Ctrl Y"],
+              [t("Чтение / Live Preview"), hotkey("reading")],
+              [t("Жирный / курсив"), hotkey("bold") + " / " + hotkey("italic")],
+              [t("Отмена / повтор"), hotkey("undo") + " / " + hotkey("redo")],
             ].map(([label, shortcut]) => (
               <div key={label}>
                 <span>{label}</span>

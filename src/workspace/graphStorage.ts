@@ -84,7 +84,11 @@ export function readGraphView(id: string): GraphViewState {
 export function writeGraphView(id: string, state: GraphViewState): void {
   localStorage.setItem(key(id), JSON.stringify(state));
 }
-export function readGraphTab(id: string): { open: boolean; active: boolean } {
+export function readGraphTab(id: string): {
+  open: boolean;
+  active: boolean;
+  position: number;
+} {
   try {
     const value = record(
       JSON.parse(localStorage.getItem(`aether.graph-tab.v1:${id}`) ?? "null"),
@@ -92,18 +96,25 @@ export function readGraphTab(id: string): { open: boolean; active: boolean } {
     return {
       open: value.open === true,
       active: value.open === true && value.active === true,
+      position: number(
+        value.position,
+        Number.MAX_SAFE_INTEGER,
+        0,
+        Number.MAX_SAFE_INTEGER,
+      ),
     };
   } catch {
-    return { open: false, active: false };
+    return { open: false, active: false, position: Number.MAX_SAFE_INTEGER };
   }
 }
 export function writeGraphTab(
   id: string,
   open: boolean,
   active: boolean,
+  position = Number.MAX_SAFE_INTEGER,
 ): void {
   localStorage.setItem(
     `aether.graph-tab.v1:${id}`,
-    JSON.stringify({ open, active: open && active }),
+    JSON.stringify({ open, active: open && active, position }),
   );
 }

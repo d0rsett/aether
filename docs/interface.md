@@ -59,3 +59,11 @@ Open Settings from the gear at the bottom of the ribbon, the command palette, or
 In Appearance, choose Light, Dark, or Follow system. Follow system updates when the operating system changes its color scheme.
 
 Editor settings also provide font size (12–24 px), line height (1.2–2.4), text width (480–1100 px), a text sample and a reset action. Preferences apply to Source, Live Preview and Reading and persist for the profile. Keyboard shortcuts lists commands with a search by title or shortcut; assignments are read-only.
+
+Appearance offers eight palette presets, a custom base color, and compact or comfortable interface density. Density adjusts spacing in the file tree, tabs, and menus. Both preferences persist for the profile.
+
+Reorder note and image tabs by dragging or by pressing Alt+Shift+Left/Right on a focused tab. The order persists with the workspace while each tab keeps its unsaved content.
+
+The graph tab participates in the shared tab order. Drag it, move it with Alt+Shift+Left/Right, or close it through its context menu or Ctrl+W. Its position restores separately for each vault.
+
+Editor settings set the default mode for new tabs. Workspace settings select the startup note, recent files, link opening behavior, and the tab overflow menu. Opening a link in the current tab keeps tabs with unsaved drafts open. Attachment settings choose a folder inside the vault and Wiki or Markdown links, with an option to use Obsidian settings. Keyboard shortcuts can be reassigned for application and editor commands, checked for conflicts, and reset individually.

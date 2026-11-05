@@ -5,7 +5,7 @@ import {
   GRAPH_LABEL_MIN_SCALE,
   GRAPH_LABEL_FULL_SCALE,
 } from "../src/graph/labels";
-import type { GraphNode } from "../src/graph/model";
+import { graphNodeRadius, type GraphNode } from "../src/graph/model";
 const node = (path: string, x = 0, y = 0, title = path): GraphNode => ({
   path,
   title,
@@ -64,6 +64,9 @@ it("wraps all captions below their own node and keeps text a constant projected 
     expect(a.y).toBeGreaterThan(0);
     expect(a.width * 2).toBeCloseTo(b.width * 4);
     expect(a.height * 2).toBeCloseTo(b.height * 4);
+    const radius = graphNodeRadius(n.path, new Map(), 1);
+    expect((a.y - radius) * 2).toBeCloseTo((b.y - radius) * 4);
+    expect((a.y - radius) * 2).toBeCloseTo(14);
     expect(a.lines.every((line) => measure(line) <= 120)).toBe(true);
   }
 });

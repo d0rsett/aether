@@ -16,6 +16,39 @@ pub struct Imported {
     pub path: String,
     pub link: String,
 }
+#[derive(Default, Deserialize)]
+pub struct ImportPreferences {
+    pub folder: Option<String>,
+    pub format: Option<LinkFormat>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LinkFormat {
+    Wiki,
+    Markdown,
+}
+
+fn configured(vault: &Vault, preferences: &ImportPreferences) -> Result<serde_json::Value> {
+    let mut config = if preferences.folder.is_some() && preferences.format.is_some() {
+        serde_json::Value::Null
+    } else {
+        settings(vault)?
+    };
+    if !config.is_object() {
+        config = serde_json::json!({});
+    }
+    if let Some(folder) = &preferences.folder {
+        config["attachmentFolderPath"] = serde_json::json!(folder);
+    }
+    if let Some(format) = &preferences.format {
+        config["useMarkdownLinks"] = serde_json::json!(matches!(format, LinkFormat::Markdown));
+        config["newLinkFormat"] = serde_json::json!(match format {
+            LinkFormat::Wiki => "absolute",
+            LinkFormat::Markdown => "relative",
+        });
+    }
+    Ok(config)
+}
 
 fn settings(vault: &Vault) -> Result<serde_json::Value> {
     let path = vault.resolve(".obsidian/app.json", false)?;
@@ -55,10 +88,12 @@ fn folder(source: &str, config: &serde_json::Value) -> Result<String> {
         }
         path => path.trim_end_matches('/').to_owned(),
     };
-    if result
-        .split('/')
-        .any(|part| matches!(part, ".obsidian" | ".git" | ".aether") || part == "..")
-    {
+    if result.split('/').any(|part| {
+        matches!(
+            part.to_ascii_lowercase().as_str(),
+            ".obsidian" | ".git" | ".aether" | ".."
+        )
+    }) {
         return Err(Error::InvalidPath(
             "Недопустимая папка вложений в настройках Obsidian.".into(),
         ));
@@ -149,6 +184,22 @@ pub fn import_with_options(
     uploads: Vec<Upload>,
     root_images: bool,
 ) -> Result<Vec<Imported>> {
+    import_with_preferences(
+        vault,
+        source,
+        uploads,
+        root_images,
+        &ImportPreferences::default(),
+    )
+}
+
+pub fn import_with_preferences(
+    vault: &Vault,
+    source: &str,
+    uploads: Vec<Upload>,
+    root_images: bool,
+    preferences: &ImportPreferences,
+) -> Result<Vec<Imported>> {
     if !vault.note_path(source)?.is_file() {
         return Err(Error::InvalidPath(
             "Заметка для вставки вложений не найдена.".into(),
@@ -157,7 +208,7 @@ pub fn import_with_options(
     if uploads.is_empty() || uploads.len() > 20 {
         return Err(Error::Io("За один раз можно вставить до 20 файлов.".into()));
     }
-    let config = settings(vault)?;
+    let config = configured(vault, preferences)?;
     let folder = folder(source, &config)?;
     vault.resolve(&folder, true)?;
     let mut total = 0;
@@ -193,7 +244,10 @@ pub fn import_with_options(
             }
             attachments::image_mime(&bytes)?;
         }
-        let destination = if root_images && crate::vault::is_image(std::path::Path::new(&name)) {
+        let destination = if preferences.folder.is_none()
+            && root_images
+            && crate::vault::is_image(std::path::Path::new(&name))
+        {
             String::new()
         } else {
             folder.clone()
@@ -290,13 +344,22 @@ fn link_for(
 }
 
 pub fn existing(vault: &Vault, source: &str, paths: Vec<String>) -> Result<Vec<Imported>> {
+    existing_with_preferences(vault, source, paths, &ImportPreferences::default())
+}
+
+pub fn existing_with_preferences(
+    vault: &Vault,
+    source: &str,
+    paths: Vec<String>,
+    preferences: &ImportPreferences,
+) -> Result<Vec<Imported>> {
     vault.note_path(source)?;
     if paths.is_empty() || paths.len() > 20 {
         return Err(Error::Io(
             "За один раз можно вставить до 20 изображений.".into(),
         ));
     }
-    let config = settings(vault)?;
+    let config = configured(vault, preferences)?;
     paths
         .into_iter()
         .map(|path| {
@@ -332,6 +395,42 @@ mod tests {
             name: name.into(),
             data: STANDARD.encode(PNG),
         }
+    }
+
+    #[test]
+    fn explicit_folder_and_format_override_vault_settings_without_rewriting_them() -> Result<()> {
+        let (temp, vault) = fixture(serde_json::json!({
+            "attachmentFolderPath": "Obsidian assets",
+            "useMarkdownLinks": false
+        }))?;
+        let config_path = temp.path().join(".obsidian/app.json");
+        let original = fs::read(&config_path)?;
+        let prefs = ImportPreferences {
+            folder: Some("./Media".into()),
+            format: Some(LinkFormat::Markdown),
+        };
+        let imported = import_with_preferences(
+            &vault,
+            "Notes/Note.md",
+            vec![upload("Picture.png")],
+            true,
+            &prefs,
+        )?;
+        assert_eq!(imported[0].path, "Notes/Media/Picture.png");
+        assert_eq!(imported[0].link, "![](Media/Picture.png)");
+        assert_eq!(fs::read(config_path)?, original);
+        assert!(import_with_preferences(
+            &vault,
+            "Notes/Note.md",
+            vec![upload("Escape.png")],
+            false,
+            &ImportPreferences {
+                folder: Some(".OBSIDIAN".into()),
+                format: None
+            },
+        )
+        .is_err());
+        Ok(())
     }
 
     #[test]

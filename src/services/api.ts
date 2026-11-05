@@ -161,6 +161,7 @@ export const api = {
       data: string;
     }[],
     rootImages = false,
+    preferences?: { folder?: string; format?: "wiki" | "markdown" },
   ) =>
     invoke<
       {
@@ -172,8 +173,14 @@ export const api = {
       source,
       uploads,
       rootImages,
+      preferences,
     }),
-  attachmentLinks: (vaultId: string, source: string, paths: string[]) =>
+  attachmentLinks: (
+    vaultId: string,
+    source: string,
+    paths: string[],
+    preferences?: { format?: "wiki" | "markdown" },
+  ) =>
     invoke<
       {
         path: string;
@@ -183,6 +190,7 @@ export const api = {
       vaultId,
       source,
       paths,
+      preferences,
     }),
   resolveAttachment: (
     vaultId: string,

@@ -768,9 +768,16 @@ async fn import_attachments(
     source: String,
     uploads: Vec<Upload>,
     root_images: Option<bool>,
+    preferences: Option<attachment_import::ImportPreferences>,
 ) -> Result<Vec<Imported>> {
     with_vault(state.inner().clone(), vault_id, move |v| {
-        attachment_import::import_with_options(v, &source, uploads, root_images.unwrap_or(false))
+        attachment_import::import_with_preferences(
+            v,
+            &source,
+            uploads,
+            root_images.unwrap_or(false),
+            &preferences.unwrap_or_default(),
+        )
     })
     .await
 }
@@ -780,9 +787,15 @@ async fn attachment_links(
     vault_id: String,
     source: String,
     paths: Vec<String>,
+    preferences: Option<attachment_import::ImportPreferences>,
 ) -> Result<Vec<Imported>> {
     with_vault(state.inner().clone(), vault_id, move |v| {
-        attachment_import::existing(v, &source, paths)
+        attachment_import::existing_with_preferences(
+            v,
+            &source,
+            paths,
+            &preferences.unwrap_or_default(),
+        )
     })
     .await
 }

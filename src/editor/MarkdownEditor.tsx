@@ -47,7 +47,17 @@ import {
   indentOnInput,
   syntaxTree,
 } from "@codemirror/language";
-import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
+import {
+  searchKeymap,
+  highlightSelectionMatches,
+  openSearchPanel,
+} from "@codemirror/search";
+import {
+  binding,
+  editorShortcutKey,
+  shortcutLabel,
+  type Shortcuts,
+} from "../workspace/shortcuts";
 import { tags } from "@lezer/highlight";
 import {
   formatSelection,
@@ -118,6 +128,47 @@ interface Props {
   onPropertiesSource?: () => void;
   showLineNumbers?: boolean;
   lineWrapping?: boolean;
+  shortcuts?: Shortcuts;
+}
+const defaultShortcuts: Shortcuts = {};
+function editorBindings(shortcuts: Shortcuts) {
+  return keymap.of([
+    {
+      key: editorShortcutKey(shortcuts, "bold"),
+      run: (view) => {
+        formatSelection(view, "bold");
+        return true;
+      },
+    },
+    {
+      key: editorShortcutKey(shortcuts, "italic"),
+      run: (view) => {
+        formatSelection(view, "italic");
+        return true;
+      },
+    },
+    {
+      key: editorShortcutKey(shortcuts, "undo"),
+      run: undo,
+      preventDefault: true,
+    },
+    {
+      key: editorShortcutKey(shortcuts, "redo"),
+      run: redo,
+      preventDefault: true,
+    },
+    {
+      key: editorShortcutKey(shortcuts, "find"),
+      run: openSearchPanel,
+      scope: "editor search-panel",
+    },
+    ...historyKeymap.filter(
+      (item) =>
+        item.run !== undo &&
+        (item.run !== redo || (!shortcuts.redo && item.linux !== undefined)),
+    ),
+    ...searchKeymap.filter((item) => item.run !== openSearchPanel),
+  ]);
 }
 export function MarkdownEditor({
   templateCommand,
@@ -143,12 +194,14 @@ export function MarkdownEditor({
   typography,
   showLineNumbers = false,
   lineWrapping = true,
+  shortcuts = defaultShortcuts,
   onFormatsChange,
   onAttachmentsImported,
   onPropertiesSource,
 }: Props) {
   const locale = useLocale();
   const host = useRef<HTMLDivElement>(null);
+  const horizontalScroll = useRef<HTMLDivElement>(null);
   const lastTemplate = useRef<number | undefined>(undefined);
   const editor = useRef<EditorView | null>(null);
   const context = useContextMenu((message) =>
@@ -185,6 +238,7 @@ export function MarkdownEditor({
   const gutter = useRef(new Compartment());
   const wrapping = useRef(new Compartment());
   const language = useRef(new Compartment());
+  const shortcutBindings = useRef(new Compartment());
   useEffect(() => {
     if (!host.current) return;
     const view = new EditorView({
@@ -282,21 +336,8 @@ export function MarkdownEditor({
             "aria-label": t("Markdown-редактор"),
             spellcheck: "false",
           }),
+          shortcutBindings.current.of(editorBindings(shortcuts)),
           keymap.of([
-            {
-              key: "Mod-b",
-              run: (view) => {
-                formatSelection(view, "bold");
-                return true;
-              },
-            },
-            {
-              key: "Mod-i",
-              run: (view) => {
-                formatSelection(view, "italic");
-                return true;
-              },
-            },
             {
               key: "Mod-s",
               run: () => {
@@ -305,8 +346,6 @@ export function MarkdownEditor({
               },
             },
             ...defaultKeymap,
-            ...historyKeymap,
-            ...searchKeymap,
             indentWithTab,
           ]),
           EditorView.updateListener.of((update) => {
@@ -519,9 +558,58 @@ export function MarkdownEditor({
     editor.current?.requestMeasure();
   }, [typography]);
   useEffect(() => {
+    editor.current?.dispatch({
+      effects: shortcutBindings.current.reconfigure(editorBindings(shortcuts)),
+    });
+  }, [shortcuts]);
+  useEffect(() => {
     if (visible && editor.current)
       callbacks.current.onFormatsChange?.(activeFormats(editor.current.state));
   }, [visible]);
+  useEffect(() => {
+    const view = editor.current;
+    const bar = horizontalScroll.current;
+    const track = bar?.firstElementChild;
+    if (
+      !view ||
+      !bar ||
+      !(track instanceof HTMLElement) ||
+      lineWrapping ||
+      !visible
+    )
+      return;
+    const scroller = view.scrollDOM;
+    const measure = () => {
+      const overflow = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+      bar.hidden = overflow < 1;
+      track.style.width = `${bar.clientWidth + overflow}px`;
+      bar.scrollLeft = scroller.scrollLeft;
+    };
+    const fromEditor = () => {
+      bar.scrollLeft = scroller.scrollLeft;
+    };
+    const fromBar = () => {
+      scroller.scrollLeft = bar.scrollLeft;
+    };
+    const resize = new ResizeObserver(measure);
+    resize.observe(scroller);
+    resize.observe(view.contentDOM);
+    const changes = new MutationObserver(measure);
+    changes.observe(view.contentDOM, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+    scroller.addEventListener("scroll", fromEditor);
+    bar.addEventListener("scroll", fromBar);
+    measure();
+    return () => {
+      resize.disconnect();
+      changes.disconnect();
+      scroller.removeEventListener("scroll", fromEditor);
+      bar.removeEventListener("scroll", fromBar);
+    };
+  }, [lineWrapping, visible]);
   return (
     <>
       <div
@@ -555,8 +643,16 @@ export function MarkdownEditor({
             ? []
             : (
                 [
-                  ["bold", t("Жирный"), "Ctrl B"],
-                  ["italic", t("Курсив"), "Ctrl I"],
+                  [
+                    "bold",
+                    t("Жирный"),
+                    shortcutLabel(binding(shortcuts, "bold")),
+                  ],
+                  [
+                    "italic",
+                    t("Курсив"),
+                    shortcutLabel(binding(shortcuts, "italic")),
+                  ],
                   ["code", t("Код"), ""],
                   ["heading", t("Заголовок"), ""],
                   ["quote", t("Цитата"), ""],
@@ -589,7 +685,7 @@ export function MarkdownEditor({
             },
             {
               label: t("Отменить"),
-              shortcut: "Ctrl Z",
+              shortcut: shortcutLabel(binding(shortcuts, "undo")),
               disabled: undoDepth(view.state) === 0 || view.state.readOnly,
               run: () => {
                 ensureCurrent();
@@ -598,7 +694,7 @@ export function MarkdownEditor({
             },
             {
               label: t("Повторить"),
-              shortcut: "Ctrl Y",
+              shortcut: shortcutLabel(binding(shortcuts, "redo")),
               disabled: redoDepth(view.state) === 0 || view.state.readOnly,
               run: () => {
                 ensureCurrent();
@@ -660,7 +756,7 @@ export function MarkdownEditor({
             },
             {
               label: t("Сохранить заметку"),
-              shortcut: "Ctrl S",
+              shortcut: shortcutLabel(binding(shortcuts, "save")),
               divider: true,
               disabled: view.state.readOnly,
               run: () => callbacks.current.onSave(),
@@ -668,6 +764,16 @@ export function MarkdownEditor({
           ]);
         }}
       />
+      <div
+        ref={horizontalScroll}
+        className="editor-horizontal-scroll"
+        hidden={lineWrapping || !visible}
+        tabIndex={0}
+        role="region"
+        aria-label={t("Горизонтальная прокрутка редактора")}
+      >
+        <div />
+      </div>
       {context.menu}
     </>
   );

@@ -2,6 +2,16 @@
 
 [Русский](CHANGELOG.ru.md) · [README](README.md)
 
+## 0.4.0 — 2026-11-05
+
+- Add a settings window with editor typography, default note mode, and startup choices for the last note, a selected note, or recent files.
+- Add system appearance, theme previews, custom accent colors, palette presets, interface density, and adjustable dividers.
+- Reorder note, image, and graph tabs by dragging or with the keyboard. Restore their order and use an optional overflow list.
+- Open links in the current or a new tab while keeping tabs with unsaved drafts open.
+- Choose an attachment folder and link format or follow the vault's Obsidian settings.
+- Reassign shortcuts, check conflicts, cancel recording, and restore defaults for one or all commands.
+- Improve narrow dialogs, search results, note properties, and the links panel. Keep horizontal scrolling within reach on long unwrapped notes.
+
 ## 0.3.0 — 2026-11-01
 
 ### Graph and navigation

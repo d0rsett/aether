@@ -337,7 +337,7 @@
   font-size: 11px;
 }
 .palette-settings {
-  margin-top: 28px;
+  margin-top: 24px;
 }
 .settings-row input[type="color"] {
   flex-shrink: 0;
@@ -352,4 +352,154 @@
 .settings-reset:disabled {
   opacity: 0.5;
   cursor: default;
+}
+.palette-presets {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+.palette-preset {
+  position: relative;
+  cursor: pointer;
+}
+.palette-preset input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.palette-preset-card {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 11px;
+}
+.palette-preset:hover .palette-preset-card {
+  background: var(--hover);
+}
+.palette-preset input:checked + .palette-preset-card {
+  border-color: var(--accent);
+  background: var(--selected);
+}
+.palette-preset input:focus-visible + .palette-preset-card {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.palette-sample {
+  display: flex;
+  height: 36px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--palette-color) 10%, #fafafa);
+}
+.palette-sample span:first-child {
+  width: 25%;
+  background: color-mix(in srgb, var(--palette-color) 20%, #fafafa);
+}
+.palette-sample span:nth-child(2) {
+  width: 25%;
+  background: var(--palette-color);
+}
+.palette-sample span:last-child {
+  width: 50%;
+  background: color-mix(in srgb, var(--palette-color) 20%, #222);
+}
+.density-picker {
+  margin-top: 24px;
+}
+.appearance-section {
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+.density-picker legend {
+  float: left;
+  width: 100%;
+}
+.density-picker .theme-options {
+  clear: both;
+  padding-top: 14px;
+  margin-top: 0;
+}
+.density-picker .density-preview {
+  height: 44px;
+}
+.palette-settings .settings-row {
+  margin-top: 14px;
+  padding: 14px 0;
+  border-bottom: 0;
+}
+.palette-settings .settings-reset {
+  font-size: 12px;
+}
+.palette-preset-card {
+  min-width: 0;
+}
+.palette-preset-card > span:last-child {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 420px) {
+  .palette-presets {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .settings-row {
+    flex-wrap: wrap;
+  }
+  .settings-range {
+    max-width: 100%;
+  }
+}
+.density-preview {
+  display: grid;
+  align-content: center;
+  height: 66px;
+  gap: 10px;
+  padding: 10px;
+}
+.density-preview.compact {
+  gap: 5px;
+}
+.density-preview span {
+  height: 5px;
+  border-radius: 2px;
+  background: var(--subtle);
+}
+.density-preview span:first-child {
+  width: 70%;
+  background: var(--accent);
+}
+.settings-row input[type="text"] {
+  width: min(45%, 240px);
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+}
+.shortcut-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.shortcut-actions .button {
+  padding: 5px 8px;
+}
+.shortcut-actions .tree-error {
+  flex-basis: 100%;
+  margin: 0;
+  text-align: right;
+}
+.settings-shortcut-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.settings-shortcut-tools input {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.shortcut-actions .icon-button {
+  width: 28px;
+  height: 28px;
 }
