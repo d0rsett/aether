@@ -1,17 +1,33 @@
 import { useState, type ReactNode } from "react";
-import { Globe, Palette, TextCursorInput, Keyboard, X } from "lucide-react";
+import {
+  Check,
+  Globe,
+  Palette,
+  TextCursorInput,
+  Keyboard,
+  X,
+} from "lucide-react";
 import { defaultTypography, type Typography } from "../workspace/typography";
+import type { ThemePreference } from "../workspace/theme";
 import { platform } from "../services/platform";
 import { t, useLocale, type Locale } from "../i18n";
 import { DialogSurface } from "./DialogSurface";
 import "../styles/settings.css";
 
+const themeOptions = [
+  { value: "light", label: "Светлая", previews: ["light"] },
+  { value: "dark", label: "Тёмная", previews: ["dark"] },
+  { value: "system", label: "Как в системе", previews: ["light", "dark"] },
+] as const;
+
 interface Props {
+  palette?: string | null;
+  setPaletteColor?: (color: string | null) => void;
   typography?: Typography;
   setTypography?: (value: Typography) => void;
   commands?: { title: string; shortcut: string }[];
-  theme: string;
-  setTheme: (value: string) => void;
+  theme: ThemePreference;
+  setTheme: (value: ThemePreference) => void;
   locale: Locale;
   setLanguage: (value: Locale) => void;
   formatting: boolean;
@@ -125,18 +141,71 @@ export function SettingsDialog(props: Props) {
             </Row>
           )}
           {section === "appearance" && (
-            <Row
-              label="Тема"
-              description="Цветовая схема рабочего пространства."
-            >
-              <select
-                value={props.theme}
-                onChange={(event) => props.setTheme(event.target.value)}
-              >
-                <option value="dark">{t("Тёмная")}</option>
-                <option value="light">{t("Светлая")}</option>
-              </select>
-            </Row>
+            <>
+              <fieldset className="theme-picker">
+                <legend className="settings-label">{t("Тема")}</legend>
+                <p className="settings-description">
+                  {t("Цветовая схема рабочего пространства.")}
+                </p>
+                <div className="theme-options">
+                  {themeOptions.map(({ value, label, previews }) => (
+                    <label className="theme-option" key={value}>
+                      <input
+                        type="radio"
+                        name="appearance-theme"
+                        value={value}
+                        checked={props.theme === value}
+                        onChange={() => props.setTheme(value)}
+                      />
+                      <span className="theme-card">
+                        <span className="theme-preview" aria-hidden="true">
+                          {previews.map((preview) => (
+                            <span
+                              className="theme-preview-pane"
+                              data-preview={preview}
+                              key={preview}
+                            >
+                              <span className="theme-preview-sidebar" />
+                              <span className="theme-preview-note">
+                                <span />
+                                <span />
+                                <span />
+                              </span>
+                            </span>
+                          ))}
+                        </span>
+                        <span className="theme-card-label">
+                          {t(label)}
+                          <Check size={15} aria-hidden="true" />
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <div className="palette-settings">
+                <Row
+                  label="Основной цвет"
+                  description="Оттенки интерфейса рассчитываются автоматически."
+                >
+                  <input
+                    type="color"
+                    value={props.palette ?? "#7c9b80"}
+                    onChange={(event) =>
+                      props.setPaletteColor?.(event.target.value)
+                    }
+                  />
+                </Row>
+                <button
+                  className="settings-reset"
+                  type="button"
+                  disabled={!props.palette}
+                  onClick={() => props.setPaletteColor?.(null)}
+                >
+                  {t("Вернуть стандартную гамму")}
+                </button>
+              </div>
+            </>
           )}
           {section === "editor" && (
             <>

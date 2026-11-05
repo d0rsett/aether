@@ -22,7 +22,7 @@ import { createHash } from "node:crypto";
 const root = resolve(import.meta.dirname, "../..");
 const executable = resolve(root, "src-tauri/target/e2e/release/aether.exe");
 
-test("language switching preserves drafts, editor history and preference", async () => {
+test("settings preserve drafts, editor history and preferences", async () => {
   const run = await mkdtemp(join(root, ".build-cache/native-language-"));
   const vault = join(run, "Native-MVP"),
     data = join(run, "data"),
@@ -47,9 +47,32 @@ test("language switching preserves drafts, editor history and preference", async
     await editor.evaluate((element) => {
       element.setAttribute("data-language-identity", "original");
     });
-    await page
-      .getByRole("button", { name: "Язык интерфейса: Русский", exact: true })
+    await page.setViewportSize({ width: 680, height: 650 });
+    await editor.press("Control+,");
+    const settings = page.getByRole("dialog", { name: "Настройки" });
+    await page.emulateMedia({ colorScheme: "light" });
+    await settings
+      .getByRole("button", { name: "Оформление", exact: true })
       .click();
+    await settings.getByRole("radio", { name: "Тёмная" }).press("ArrowRight");
+    await expect(
+      settings.getByRole("radio", { name: "Как в системе" }),
+    ).toBeChecked();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await page.emulateMedia({ colorScheme: "dark" });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await settings
+      .getByRole("button", { name: "Редактор", exact: true })
+      .click();
+    const fontSize = settings.getByRole("slider", { name: "Размер шрифта" });
+    await fontSize.press("End");
+    await expect(fontSize).toHaveValue("24");
+    await page.keyboard.press("Escape");
+    await expect(settings).toBeHidden();
+    await expect(editor).toBeFocused();
+    await editor.press("Control+,");
+    await settings.getByRole("combobox").selectOption("en");
+    await page.keyboard.press("Escape");
     await expect(page.locator("html")).toHaveAttribute("lang", "en");
     editor = page.getByRole("textbox", { name: "Markdown editor" });
     await expect(editor).toHaveAttribute("data-language-identity", "original");
@@ -70,15 +93,24 @@ test("language switching preserves drafts, editor history and preference", async
     );
     app = await launch(data, profile, false, "en");
     page = app.page;
-    await expect(
-      page.getByRole("button", {
-        name: "Interface language: English",
-        exact: true,
-      }),
-    ).toBeVisible();
-    await page
-      .getByRole("button", { name: "Interface language: English", exact: true })
+    await page.keyboard.press("Control+,");
+    const restored = page.getByRole("dialog", { name: "Settings" });
+    await expect(restored.getByRole("combobox")).toHaveValue("en");
+    await restored
+      .getByRole("button", { name: "Appearance", exact: true })
       .click();
+    await expect(
+      restored.getByRole("radio", { name: "Follow system" }),
+    ).toBeChecked();
+    await restored.getByRole("button", { name: "Editor", exact: true }).click();
+    await expect(
+      restored.getByRole("slider", { name: "Font size" }),
+    ).toHaveValue("24");
+    await restored
+      .getByRole("button", { name: "General", exact: true })
+      .click();
+    await restored.getByRole("combobox").selectOption("ru");
+    await page.keyboard.press("Escape");
     await expect(
       page.getByRole("textbox", { name: "Markdown-редактор" }),
     ).toContainText("Русский заголовок");
@@ -136,13 +168,14 @@ for (const language of ["en", "ru"] as const)
       app = await launch(data, join(run, "profile"), false, "ru", vaultName);
       const page = app.page;
       await page.setViewportSize({ width: 1440, height: 1150 });
-      if (en)
+      if (en) {
+        await page.keyboard.press("Control+,");
         await page
-          .getByRole("button", {
-            name: "Язык интерфейса: Русский",
-            exact: true,
-          })
-          .click();
+          .getByRole("dialog", { name: "Настройки" })
+          .getByRole("combobox")
+          .selectOption("en");
+        await page.keyboard.press("Escape");
+      }
       await page.getByRole("button", { name: title, exact: true }).click();
       const mode = async (label: string) => {
         const name = en ? "Note mode" : "Режим заметки";
@@ -167,12 +200,7 @@ for (const language of ["en", "ru"] as const)
       await page.mouse.move(0, 0);
       await audit();
       await page.screenshot({ path: join(destination, "workspace-dark.png") });
-      await page
-        .getByRole("button", {
-          name: en ? "Toggle theme" : "Переключить тему",
-          exact: true,
-        })
-        .click();
+      await toggleTheme(page, en);
       await expect(
         page.getByRole("group", {
           name: en ? "Table editor" : "Редактор таблицы",
@@ -181,12 +209,7 @@ for (const language of ["en", "ru"] as const)
       await page.mouse.move(0, 0);
       await audit();
       await page.screenshot({ path: join(destination, "workspace-light.png") });
-      await page
-        .getByRole("button", {
-          name: en ? "Toggle theme" : "Переключить тему",
-          exact: true,
-        })
-        .click();
+      await toggleTheme(page, en);
       await mode(en ? "Reading" : "Чтение");
       await page
         .getByRole("link", {
@@ -554,9 +577,7 @@ test("writing workflows: folding, hover, property chips, callout tables and temp
     await modal
       .getByRole("button", { name: "Закрыть диалог", exact: true })
       .click();
-    await page
-      .getByRole("button", { name: "Переключить тему", exact: true })
-      .click();
+    await toggleTheme(page);
     await setMode(page, "Live Preview");
     await page
       .locator(".reading-callout")
@@ -1182,9 +1203,7 @@ test("note properties: inline edits, drafts, undo, preservation and explicit sav
     await page.screenshot({
       path: test.info().outputPath("properties-inline-dark.png"),
     });
-    await page
-      .getByRole("button", { name: "Переключить тему", exact: true })
-      .click();
+    await toggleTheme(page);
     await page.setViewportSize({ width: 900, height: 650 });
     await page.screenshot({
       path: test.info().outputPath("properties-inline-light.png"),
@@ -1312,9 +1331,7 @@ test("YAML aliases: navigation, embeds, duplicate suggestions and portable inser
     await expect(popup).toContainText("→ Other.md");
     await page.mouse.move(10, 10);
     await page.screenshot({ path: test.info().outputPath("aliases-dark.png") });
-    await page
-      .getByRole("button", { name: "Переключить тему", exact: true })
-      .click();
+    await toggleTheme(page);
     await expect(popup).toBeHidden();
     await editor.press("Control+Space");
     await expect(popup.getByRole("option")).toHaveCount(2);
@@ -2213,7 +2230,7 @@ test("editor modes toggle reading/live, active line number follows the caret and
     await page.screenshot({
       path: test.info().outputPath("editor-toolbar-dark.png"),
     });
-    await page.getByRole("button", { name: "Переключить тему" }).click();
+    await toggleTheme(page);
     await page.screenshot({
       path: test.info().outputPath("editor-toolbar-light.png"),
     });
@@ -2475,6 +2492,28 @@ async function freePort(): Promise<number> {
     server.close((error) => (error ? reject(error) : done())),
   );
   return address.port;
+}
+
+async function toggleTheme(page: Page, en = false) {
+  const theme = await page.locator("html").getAttribute("data-theme");
+  await page.keyboard.press("Control+,");
+  const settings = page.getByRole("dialog", {
+    name: en ? "Settings" : "Настройки",
+  });
+  await settings
+    .getByRole("button", {
+      name: en ? "Appearance" : "Оформление",
+      exact: true,
+    })
+    .click();
+  await settings
+    .getByText(
+      theme === "dark" ? (en ? "Light" : "Светлая") : en ? "Dark" : "Тёмная",
+      { exact: true },
+    )
+    .click();
+  await page.keyboard.press("Escape");
+  await expect(settings).toBeHidden();
 }
 
 async function launch(
@@ -2863,6 +2902,11 @@ test("native MVP: real files, Unicode, conflicts, trash, tabs, close guard and r
 
     await test.step("trash the test copy with a recoverable original, reject path traversal", async () => {
       await noteAction(page, "Переместить в корзину");
+      await expect(
+        page
+          .locator("dialog[open]")
+          .getByRole("button", { name: "Отмена", exact: true }),
+      ).toBeFocused();
       await page
         .locator("dialog[open]")
         .getByRole("button", { name: "В корзину", exact: true })
@@ -2911,9 +2955,7 @@ test("native MVP: real files, Unicode, conflicts, trash, tabs, close guard and r
       await editor.pressSequentially(
         "Несохранённый черновик после перезапуска.",
       );
-      await page
-        .getByRole("button", { name: "Переключить тему", exact: true })
-        .click();
+      await toggleTheme(page);
       const theme = await page.locator("html").getAttribute("data-theme");
       await page
         .getByRole("button", { name: "Закрыть окно", exact: true })
@@ -3402,9 +3444,7 @@ test("live rich blocks: inline/display math, table, image, Mermaid, source editi
     await page.screenshot({
       path: test.info().outputPath("live-rich-blocks.png"),
     });
-    await page
-      .getByRole("button", { name: "Переключить тему", exact: true })
-      .click();
+    await toggleTheme(page);
     await expect(page.getByTitle("Диаграмма Mermaid")).toHaveAttribute(
       "srcdoc",
       /background:#f5f5f1/,
@@ -3798,9 +3838,7 @@ test("resizable sidebars, rounded tabs and theme-aware caret", async () => {
     const colors: string[] = [];
     for (const theme of ["light", "dark"]) {
       if ((await page.locator("html").getAttribute("data-theme")) !== theme)
-        await page
-          .getByRole("button", { name: "Переключить тему", exact: true })
-          .click();
+        await toggleTheme(page);
       await editor.click();
       await editor.press("Control+End");
       await expect(page.locator(".cm-cursor").first()).toBeAttached();
@@ -4516,9 +4554,7 @@ test("wiki completion styling, uniform brackets and automatic closing", async ()
     await page.screenshot({
       path: test.info().outputPath("wiki-completion-dark.png"),
     });
-    await page
-      .getByRole("button", { name: "Переключить тему", exact: true })
-      .click();
+    await toggleTheme(page);
     await setMode(page, "Исходник");
     await editor.press("Control+Space");
     await expect(popup).toBeVisible();
@@ -5049,9 +5085,7 @@ test("graph view: navigation, filters, dragging and preserved draft", async () =
     await page.screenshot({ path: join(run, "graph.png") });
     await graph.getByText("Силы", { exact: true }).click();
     await page.screenshot({ path: join(run, "graph-settings-dark.png") });
-    await page
-      .getByRole("button", { name: "Переключить тему", exact: true })
-      .click();
+    await toggleTheme(page);
     await page.setViewportSize({ width: 850, height: 650 });
     await page.screenshot({
       path: join(run, "graph-settings-light-narrow.png"),

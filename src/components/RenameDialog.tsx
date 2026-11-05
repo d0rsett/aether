@@ -66,6 +66,26 @@ function RenameDialog({
       onClose={() => {
         if (!loading) finish(null);
       }}
+      actions={
+        <>
+          <button
+            className="button secondary"
+            type="button"
+            disabled={loading}
+            onClick={() => finish(null)}
+          >
+            {t(" Отмена ")}
+          </button>
+          <button
+            className="button primary"
+            type="button"
+            disabled={!preview || loading || blocked.length > 0}
+            onClick={() => finish(preview)}
+          >
+            {t(" Применить переименование ")}
+          </button>
+        </>
+      }
     >
       <form
         className="rename-form"
@@ -158,24 +178,6 @@ function RenameDialog({
             </p>
           </section>
         )}
-        <div className="modal-actions">
-          <button
-            className="button secondary"
-            type="button"
-            disabled={loading}
-            onClick={() => finish(null)}
-          >
-            {t(" Отмена ")}
-          </button>
-          <button
-            className="button primary"
-            type="button"
-            disabled={!preview || loading || blocked.length > 0}
-            onClick={() => finish(preview)}
-          >
-            {t(" Применить переименование ")}
-          </button>
-        </div>
       </form>
     </Modal>
   );

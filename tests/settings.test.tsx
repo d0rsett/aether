@@ -22,12 +22,13 @@ it("switches sections and applies editor preferences through the shared dialog",
   const setLineNumbers = vi.fn();
   const onClose = vi.fn();
   const setTypography = vi.fn();
+  const setTheme = vi.fn();
   render(
     <SettingsDialog
       setTypography={setTypography}
       commands={[{ title: "Сохранить заметку", shortcut: "Ctrl S" }]}
       theme="dark"
-      setTheme={vi.fn()}
+      setTheme={setTheme}
       locale="ru"
       setLanguage={vi.fn()}
       formatting={false}
@@ -53,7 +54,11 @@ it("switches sections and applies editor preferences through the shared dialog",
   });
   await userEvent.click(screen.getByRole("button", { name: "Оформление" }));
   expect(screen.queryByRole("switch")).toBeNull();
-  expect(screen.getByRole("combobox")).toBeTruthy();
+  expect(
+    screen.getByRole("radio", { name: "Тёмная", checked: true }),
+  ).toBeTruthy();
+  await userEvent.click(screen.getByText("Светлая"));
+  expect(setTheme).toHaveBeenCalledWith("light");
   await userEvent.click(
     screen.getByRole("button", { name: "Горячие клавиши" }),
   );

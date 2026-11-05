@@ -144,8 +144,11 @@ export function Popover({
                 if (
                   event.target instanceof Element &&
                   event.target.closest("button")
-                )
+                ) {
+                  if (event.currentTarget.contains(document.activeElement))
+                    trigger.current?.focus({ preventScroll: true });
                   setOpen(false);
+                }
               }}
             >
               {children}

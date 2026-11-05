@@ -21,7 +21,7 @@ export function DialogSurface({
     const node = dialog.current;
     const opener = document.activeElement;
     node?.showModal();
-    node?.querySelector("input")?.focus();
+    node?.querySelector<HTMLElement>("[data-dialog-focus], input")?.focus();
     return () => {
       node?.close();
       queueMicrotask(() => {

@@ -4,6 +4,14 @@ import {
   type Typography,
 } from "../workspace/typography";
 import { SettingsDialog } from "../components/SettingsDialog";
+import {
+  readTheme,
+  resolveTheme,
+  themeKey,
+  readPalette,
+  parsePalette,
+  paletteKey,
+} from "../workspace/theme";
 import { readGraphTab, writeGraphTab } from "../workspace/graphStorage";
 import { KnowledgeGraph } from "../components/KnowledgeGraph";
 import { t, useLocale, setLocale } from "../i18n";
@@ -12,7 +20,14 @@ import { FormattingToolbar } from "../components/FormattingToolbar";
 import { Templates } from "../components/Templates";
 import { Inspector } from "../components/Inspector";
 import { Titlebar } from "../components/Titlebar";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   Waypoints,
   CircleHelp,
@@ -76,13 +91,6 @@ const MarkdownEditor = lazy(() =>
     default: module.MarkdownEditor,
   })),
 );
-function initialTheme(): string {
-  try {
-    return localStorage.getItem("aether.theme") ?? "dark";
-  } catch {
-    return "dark";
-  }
-}
 export function App() {
   const locale = useLocale();
   useEffect(() => {
@@ -114,7 +122,36 @@ export function App() {
     }
   };
   const [settings, setSettings] = useState(false);
-  const [theme, setTheme] = useState(initialTheme);
+  const [themePreference, setTheme] = useState(readTheme);
+  const [palette, setPaletteColor] = useState(readPalette);
+  const changePalette = (value: string | null) => {
+    const next = parsePalette(value);
+    setPaletteColor(next);
+    try {
+      if (next) localStorage.setItem(paletteKey, next);
+      else localStorage.removeItem(paletteKey);
+    } catch {
+      app.setError(
+        t(
+          "Не удалось сохранить цветовую гамму. Изменения действуют до закрытия приложения.",
+        ),
+      );
+    }
+  };
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    if (palette) {
+      root.style.setProperty("--palette-color", palette);
+      root.dataset.palette = "custom";
+    } else {
+      root.style.removeProperty("--palette-color");
+      delete root.dataset.palette;
+    }
+  }, [palette]);
+  const [systemLight, setSystemLight] = useState(
+    () => window.matchMedia?.("(prefers-color-scheme: light)").matches ?? false,
+  );
+  const theme = resolveTheme(themePreference, systemLight);
   const [left, setLeft] = useState(() => readFlag("left", true));
   const [leftView, setLeftView] = useState<"explorer" | "search">("explorer");
   const [searchCommand, setSearchCommand] = useState<{
@@ -217,7 +254,7 @@ export function App() {
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, [graph]);
-  const [palette, setPalette] = useState(false);
+  const [paletteOpen, setPalette] = useState(false);
   const [templates, setTemplates] = useState(false);
   const [templateCommand, setTemplateCommand] = useState<{
     id: number;
@@ -314,14 +351,24 @@ export function App() {
     if (knowledge.status && !knowledge.status.running)
       app.setRefresh((n) => n + 1);
   }, [knowledge.status?.revision, knowledge.status?.running, app.setRefresh]);
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const scheme = window.matchMedia?.("(prefers-color-scheme: light)");
+    if (!scheme) return;
+    const update = () => setSystemLight(scheme.matches);
+    scheme.addEventListener("change", update);
+    update();
+    return () => scheme.removeEventListener("change", update);
+  }, []);
+  useLayoutEffect(() => {
     document.documentElement.dataset.theme = theme;
+  }, [theme]);
+  useEffect(() => {
     try {
-      localStorage.setItem("aether.theme", theme);
+      localStorage.setItem(themeKey, themePreference);
     } catch {
       /* Theme remains usable without persistence. */
     }
-  }, [theme]);
+  }, [themePreference]);
   useEffect(() => {
     const text = app.active?.content ?? "";
     const timer = window.setTimeout(
@@ -706,13 +753,15 @@ export function App() {
     >
       {settings && (
         <SettingsDialog
+          palette={palette}
+          setPaletteColor={changePalette}
           typography={typography}
           setTypography={changeTypography}
           commands={commands.map(({ title, shortcut }) => ({
             title,
             shortcut,
           }))}
-          theme={theme}
+          theme={themePreference}
           setTheme={setTheme}
           locale={locale}
           setLanguage={changeLanguage}
@@ -1399,7 +1448,7 @@ export function App() {
       {vaultCreation.dialog}
       {context.menu}
       {renameReview.dialog}
-      {palette && (
+      {paletteOpen && (
         <Modal title={t("Палитра команд")} onClose={() => setPalette(false)}>
           <div className="palette-search">
             <Search size={17} />

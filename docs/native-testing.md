@@ -21,7 +21,7 @@ Build again after frontend/host changes so the tests exercise matching code. See
 For a focused localization/editor run:
 
 ```powershell
-npm run test:e2e -- --grep 'language switching|writing workflows:|editor compatibility:|note properties:'
+npm run test:e2e -- --grep 'settings preserve|writing workflows:|editor compatibility:|note properties:'
 ```
 
 The language test verifies the same editor DOM survives switching, user text stays unchanged, undo/redo still works, Save is explicit and language persists across restart. Existing scenarios cover drafts, revisions, rename recovery, navigation, table/property editing, templates and embedded content. Native tests do not benchmark window dragging, FPS or memory.

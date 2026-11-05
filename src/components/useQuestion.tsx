@@ -1,8 +1,9 @@
 import { t } from "../i18n";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Modal } from "./Modal";
 import type { Ask, Question } from "../app/useWorkspace";
 export function useQuestion() {
+  const formId = useId();
   const [question, setQuestion] = useState<Question | null>(null);
   const [value, setValue] = useState("");
   const pending = useRef<((answer: string | null) => void) | null>(null);
@@ -21,8 +22,40 @@ export function useQuestion() {
     setQuestion(null);
   };
   const dialog = question && (
-    <Modal title={question.title} onClose={() => answer(null)}>
+    <Modal
+      title={question.title}
+      onClose={() => answer(null)}
+      actions={
+        <>
+          <button
+            type="button"
+            className="button secondary"
+            data-dialog-focus={
+              question.dangerous && question.initial === undefined
+                ? ""
+                : undefined
+            }
+            onClick={() => answer(null)}
+          >
+            {t(" Отмена ")}
+          </button>
+          <button
+            data-dialog-focus={
+              !question.dangerous && question.initial === undefined
+                ? ""
+                : undefined
+            }
+            className={`button ${question.dangerous ? "danger" : "primary"}`}
+            type="submit"
+            form={formId}
+          >
+            {t(question.label ?? "Продолжить")}
+          </button>
+        </>
+      }
+    >
       <form
+        id={formId}
         onSubmit={(e) => {
           e.preventDefault();
           answer(value);
@@ -43,22 +76,6 @@ export function useQuestion() {
             />
           </label>
         )}
-        <div className="modal-actions">
-          <button
-            type="button"
-            className="button secondary"
-            onClick={() => answer(null)}
-          >
-            {t(" Отмена ")}
-          </button>
-          <button
-            autoFocus={question.initial === undefined}
-            className={`button ${question.dangerous ? "danger" : "primary"}`}
-            type="submit"
-          >
-            {t(question.label ?? "Продолжить")}
-          </button>
-        </div>
       </form>
     </Modal>
   );

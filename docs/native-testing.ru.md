@@ -21,7 +21,7 @@ npm run test:e2e
 Выборочная проверка языка и редактора:
 
 ```powershell
-npm run test:e2e -- --grep 'language switching|writing workflows:|editor compatibility:|note properties:'
+npm run test:e2e -- --grep 'settings preserve|writing workflows:|editor compatibility:|note properties:'
 ```
 
 Тест языка проверяет сохранение DOM редактора, неизменность пользовательского текста, отмену/повтор, явное сохранение и язык после перезапуска. Другие сценарии покрывают черновики, ревизии, восстановление переименования, навигацию, таблицы/свойства, шаблоны и встроенные материалы. Нативные тесты не измеряют перетаскивание окна, FPS или память.

@@ -24,6 +24,13 @@ export const english: Record<string, string> = {
   "Разделы настроек": "Settings sections",
   Общие: "General",
   Оформление: "Appearance",
+  "Как в системе": "Follow system",
+  "Основной цвет": "Base color",
+  "Оттенки интерфейса рассчитываются автоматически.":
+    "Interface shades are calculated automatically.",
+  "Вернуть стандартную гамму": "Restore default palette",
+  "Не удалось сохранить цветовую гамму. Изменения действуют до закрытия приложения.":
+    "Could not save the palette. Changes apply until the app closes.",
   Редактор: "Editor",
   "Язык интерфейса": "Interface language",
   "Язык меню, команд и диалогов приложения.":

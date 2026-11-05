@@ -6,11 +6,13 @@ export function Modal({
   title,
   onClose,
   children,
+  actions,
   className = "",
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  actions?: ReactNode;
   className?: string;
 }) {
   useLocale();
@@ -33,6 +35,7 @@ export function Modal({
         </button>
       </div>
       <div className="modal-body">{children}</div>
+      {actions && <div className="modal-footer">{actions}</div>}
     </DialogSurface>
   );
 }

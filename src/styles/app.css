@@ -1,4 +1,6 @@
-:root {
+:root,
+.theme-preview-pane {
+  color-scheme: dark;
   font-family:
     "Segoe UI",
     -apple-system,
@@ -22,7 +24,9 @@
   --danger: #e59d95;
   --mono: "Cascadia Code", "Consolas", monospace;
 }
-:root[data-theme="light"] {
+:root[data-theme="light"],
+.theme-preview-pane[data-preview="light"] {
+  color-scheme: light;
   --base: #fafbf8;
   --sidebar: #f0f2ed;
   --rail: #e8ece5;
@@ -1041,6 +1045,7 @@ h1 > span {
   border-bottom: 1px solid var(--border);
 }
 .banner > svg {
+  flex-shrink: 0;
   margin-top: 2px;
 }
 .banner > span {
@@ -1054,7 +1059,9 @@ h1 > span {
 .banner.error > button:not(.icon-button) {
   font-size: 10px;
   text-decoration: underline;
-  white-space: nowrap;
+  max-width: 40%;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .banner.preview {
   color: var(--muted);
@@ -1062,6 +1069,7 @@ h1 > span {
   font-size: 10px;
 }
 .banner .icon-button {
+  flex-shrink: 0;
   width: 18px;
   height: 18px;
 }
@@ -2792,4 +2800,34 @@ input[type="checkbox"]:not([role="switch"]):disabled {
   input[type="checkbox"]:not([role="switch"])::before {
     content: none;
   }
+}
+:root[data-palette="custom"],
+:root[data-palette="custom"] .theme-preview-pane {
+  --base: color-mix(in srgb, var(--palette-color) 6%, #1b1b1b);
+  --surface: color-mix(in srgb, var(--palette-color) 7%, #232323);
+  --sidebar: color-mix(in srgb, var(--palette-color) 6%, #191919);
+  --rail: color-mix(in srgb, var(--palette-color) 5%, #151515);
+  --hover: color-mix(in srgb, var(--palette-color) 14%, #2d2d2d);
+  --border: color-mix(in srgb, var(--palette-color) 16%, #2e2e2e);
+  --selected: color-mix(in srgb, var(--palette-color) 24%, #242424);
+  --text: color-mix(in srgb, var(--palette-color) 3%, #dadada);
+  --muted: color-mix(in srgb, var(--palette-color) 5%, #8b8b8b);
+  --subtle: color-mix(in srgb, var(--palette-color) 7%, #656565);
+  --accent: color-mix(in srgb, var(--palette-color) 55%, white);
+  --accent-text: #1c1c1c;
+}
+:root[data-palette="custom"][data-theme="light"],
+:root[data-palette="custom"] .theme-preview-pane[data-preview="light"] {
+  --base: color-mix(in srgb, var(--palette-color) 3%, #fafafa);
+  --surface: #fff;
+  --sidebar: color-mix(in srgb, var(--palette-color) 7%, #f1f1f1);
+  --rail: color-mix(in srgb, var(--palette-color) 9%, #eaeaea);
+  --hover: color-mix(in srgb, var(--palette-color) 12%, #f2f2f2);
+  --border: color-mix(in srgb, var(--palette-color) 18%, #dfdfdf);
+  --text: color-mix(in srgb, var(--palette-color) 3%, #303030);
+  --muted: color-mix(in srgb, var(--palette-color) 5%, #707070);
+  --subtle: color-mix(in srgb, var(--palette-color) 7%, #888888);
+  --selected: color-mix(in srgb, var(--palette-color) 18%, white);
+  --accent: color-mix(in srgb, var(--palette-color) 55%, #1c1c1c);
+  --accent-text: #fff;
 }
