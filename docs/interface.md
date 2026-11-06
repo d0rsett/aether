@@ -10,6 +10,8 @@ Sidebars are resizable and collapsible; themes, line numbers and formatting cont
 
 ![English workspace](screenshots/en/workspace-dark.png)
 
+Files in the tree share the same context menu. **Choose icon** is also available for folders. Search the icon picker or reset an entry to its default icon. Assignments are stored locally per vault and follow file and folder renames made in Aether.
+
 ## Writing and tables
 
 Source and Live Preview share the editor state; Reading renders the current buffer. Formatting, templates and property/table edits use transactions so undo and unsaved text remain available. Supported headings and lists can be folded. The fold control sits between line numbers and text; collapsed content uses a plain ellipsis.
@@ -32,9 +34,19 @@ Local images, PDF, audio and video have dedicated views. PDF supports text selec
 
 ![English link preview](screenshots/en/link-preview.png)
 
+## Canvas
+
+Create a `.canvas` board from the file tree context menu or command palette, or open an existing one. Double-click the background or use **Add card** to create a text card. Double-click a card to edit it. Space-drag, middle-drag or scroll to pan. Drag the empty background to select cards in a rectangle, and use Ctrl/Command + scroll to zoom around the pointer. The right toolbar zooms and fits the board.
+
+Select a card and drag a connection point to another card, or activate the point and then the destination card. Select the line to change its label and arrow direction or remove it. Drag cards or move them with the arrow keys (Shift increases the step), and edits save automatically after a short pause. If the file changes externally, reload the disk version or save the draft as a copy. Unrecognized JSON fields are retained. Add notes, images, PDF, audio or video with **Add file** or drag them from the tree. The board stores the vault path and shows a preview. Double-click a note card to edit its shared draft on the board. Use **Save note** to write Markdown. Drag external files to import them, or convert a text card into a note. URL cards open pages in the browser.
+
+Shift-click cards to select several, then use **Create group** to wrap them in a group. With no selection, the command creates an empty group. Double-click the group name to edit it. The group toolbar sets its color and a vault image background, with cover, fit, or tile modes. Move a group to move cards fully inside it. Use corner handles to resize an individual card or group. The right toolbar and your Undo/Redo shortcuts apply to the active board; a completed drag or resize takes one history step.
+
+Canvas settings offer snapping to the grid and neighboring cards. Pasting copied cards assigns new IDs and retains their internal connections. Select a line and drag an endpoint to reconnect it. Aether renames update canvas file and group background references through the rename journal.
+
 ## Compatibility boundaries
 
-Ordinary Markdown and attachments stay portable. Aether respects supported Obsidian attachment-folder/link preferences and reads aliases, templates and shared property types. It does not implement Obsidian's plugin runtime, Canvas, Bases, sync or every Markdown extension. Complex YAML and unsupported table structures may require Source; there is no dedicated visual math/diagram editor. Compatibility means preserving usable files, not reproducing every Obsidian screen.
+Ordinary Markdown and attachments stay portable. Aether respects supported Obsidian attachment-folder/link preferences and reads aliases, templates and shared property types. It does not implement Obsidian's plugin runtime, Bases, sync or every Markdown extension. Complex YAML and unsupported table structures may require Source; there is no dedicated visual math/diagram editor. Compatibility means preserving usable files, not reproducing every Obsidian screen.
 
 Original notes are saved explicitly. Recovery drafts, rename journals and local trash support recovery but do not replace backups.
 

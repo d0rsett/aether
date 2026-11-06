@@ -414,6 +414,43 @@ async fn list_directory(
 }
 
 #[tauri::command]
+async fn read_canvas(state: State<'_, AppState>, vault_id: String, path: String) -> Result<Note> {
+    with_vault(state.inner().clone(), vault_id, move |v| {
+        v.read_canvas(&path)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn create_canvas(
+    state: State<'_, AppState>,
+    vault_id: String,
+    path: String,
+    content: String,
+) -> Result<Note> {
+    with_vault(state.inner().clone(), vault_id, move |v| {
+        renaming::assert_writable(v, &path)?;
+        v.create_canvas(&path, &content)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn save_canvas(
+    state: State<'_, AppState>,
+    vault_id: String,
+    path: String,
+    content: String,
+    revision: String,
+) -> Result<String> {
+    with_vault(state.inner().clone(), vault_id, move |v| {
+        renaming::assert_writable(v, &path)?;
+        v.save_canvas(&path, &content, &revision)
+    })
+    .await
+}
+
+#[tauri::command]
 async fn read_note(state: State<'_, AppState>, vault_id: String, path: String) -> Result<Note> {
     with_vault(state.inner().clone(), vault_id, move |v| v.read_note(&path)).await
 }
@@ -593,6 +630,46 @@ async fn locate_anchor(
     with_vault(state.inner().clone(), vault_id, move |v| {
         v.note_path(&path)?;
         navigation::locate(&content, &anchor)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn asset_revision(
+    state: State<'_, AppState>,
+    vault_id: String,
+    path: String,
+) -> Result<String> {
+    with_vault(state.inner().clone(), vault_id, move |v| {
+        v.asset_revision(&path)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn trash_asset(
+    state: State<'_, AppState>,
+    vault_id: String,
+    path: String,
+    revision: String,
+) -> Result<String> {
+    with_vault(state.inner().clone(), vault_id, move |v| {
+        renaming::assert_writable(v, &path)?;
+        v.trash_asset(&path, &revision)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn trash_canvas(
+    state: State<'_, AppState>,
+    vault_id: String,
+    path: String,
+    revision: String,
+) -> Result<String> {
+    with_vault(state.inner().clone(), vault_id, move |v| {
+        renaming::assert_writable(v, &path)?;
+        v.trash_canvas(&path, &revision)
     })
     .await
 }
@@ -1050,6 +1127,9 @@ pub fn run() {
             create_vault,
             choose_vault_parent,
             list_directory,
+            read_canvas,
+            create_canvas,
+            save_canvas,
             read_note,
             save_note,
             create_note,
@@ -1080,6 +1160,9 @@ pub fn run() {
             open_external,
             reveal_in_explorer,
             trash_note,
+            trash_canvas,
+            asset_revision,
+            trash_asset,
             search_notes,
             link_suggestions,
             inspect_note,

@@ -38,7 +38,7 @@ import {
   startupNoteKey,
   type Preferences,
 } from "../workspace/preferences";
-import { titleOf } from "../workspace/model";
+import { dirty, titleOf } from "../workspace/model";
 import { KnowledgeGraph } from "../components/KnowledgeGraph";
 import { t, useLocale, setLocale } from "../i18n";
 import { Welcome } from "../components/Welcome";
@@ -72,6 +72,7 @@ import {
   X,
 } from "lucide-react";
 import { FileTree } from "../explorer/FileTree";
+import { EntryIconPicker } from "../components/EntryIconPicker";
 import { Modal } from "../components/Modal";
 import { ImageDocument } from "../components/ImageDocument";
 import { imageExtension } from "../services/images";
@@ -101,6 +102,9 @@ import type { MouseEvent } from "react";
 import type { FileEntry } from "../services/api";
 import { useContextMenu } from "../components/ContextMenu";
 import { NoteTitle } from "../components/NoteTitle";
+import { markdownFile, mediaFile } from "../services/canvasFiles";
+import { CanvasBoard } from "../components/CanvasBoard";
+
 const ReadingView = lazy(() =>
   import("../reading/ReadingView").then((m) => ({ default: m.ReadingView })),
 );
@@ -126,6 +130,10 @@ export function App() {
   const renameReview = useRenameReview();
   const vaultCreation = useVaultCreation();
   const app = useWorkspace(ask, renameReview.review, vaultCreation.request);
+  const [iconPicker, setIconPicker] = useState<{
+    vault: string;
+    entry: FileEntry;
+  } | null>(null);
   const [preferences, setPreferences] = useState(readPreferences);
   const [shortcuts, setShortcuts] = useState(readShortcuts);
   const hotkey = (id: ShortcutCommand) => shortcutLabel(binding(shortcuts, id));
@@ -526,7 +534,14 @@ export function App() {
       if (!id && key !== "KeyS") return;
       event.preventDefault();
       event.stopPropagation();
-      if (id && !event.repeat) actions[id]();
+      if (!id || event.repeat) return;
+      const notePath =
+        event.target instanceof Element
+          ? event.target.closest<HTMLElement>("[data-canvas-note-editor]")
+              ?.dataset.canvasNoteEditor
+          : undefined;
+      if (id === "save" && notePath) void actionRef.current.save(notePath);
+      else actions[id]();
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
@@ -658,6 +673,15 @@ export function App() {
       enabled: true,
     },
     {
+      title: t("Новая доска"),
+      shortcut: "",
+      enabled: !!app.vault,
+      action: () => {
+        setGraph(false);
+        void app.createCanvas();
+      },
+    },
+    {
       title: t("Новая заметка"),
       shortcut: hotkey("newNote"),
       action: () => void app.createQuick(),
@@ -673,7 +697,7 @@ export function App() {
       title: t("Сохранить заметку"),
       shortcut: hotkey("save"),
       action: () => void app.save(),
-      enabled: !!app.active,
+      enabled: !!(app.active || app.activeCanvas),
     },
     {
       title: t("Переименовать заметку"),
@@ -706,29 +730,22 @@ export function App() {
       enabled: true,
     },
   ];
+  const openFileEntry = (path: string) => {
+    if (!app.vault) return;
+    setGraph(false);
+    if (mediaFile.test(path))
+      void api
+        .reveal(app.vault.id, path)
+        .catch((error) => app.setError(errorMessage(error)));
+    else void app.open(path);
+  };
   const entryMenu = (event: MouseEvent<HTMLElement>, entry: FileEntry) => {
-    if (app.busy) {
+    if (app.busy || !app.vault) {
       event.preventDefault();
       event.stopPropagation();
       return;
     }
-    if (!entry.isDirectory && imageExtension(entry.path)) {
-      context.show(event, t("Действия с изображением"), [
-        {
-          label: t("Открыть изображение"),
-          run: () => app.open(entry.path),
-        },
-        {
-          label: t("Копировать путь"),
-          run: () => navigator.clipboard.writeText(entry.path),
-        },
-        {
-          label: t("Открыть в проводнике"),
-          run: () => api.reveal(app.vault!.id, entry.path),
-        },
-      ]);
-      return;
-    }
+    const vault = app.vault.id;
     context.show(
       event,
       entry.isDirectory ? t("Действия с папкой") : t("Действия с файлом"),
@@ -740,31 +757,30 @@ export function App() {
                 run: () => app.createQuick(entry.path),
               },
               {
+                label: t("Новая доска"),
+                run: () => {
+                  setGraph(false);
+                  return app.createCanvas(entry.path);
+                },
+              },
+              {
                 label: t("Новая папка"),
                 run: () => app.createFolderQuick(entry.path),
               },
-              {
-                label: t("Переименовать"),
-                run: () => app.setEntryEdit(entry.path),
-              },
             ]
-          : [
-              {
-                label: t("Открыть заметку"),
-                run: () => app.open(entry.path),
-              },
-              {
-                label: t("Переименовать"),
-                run: () => app.setEntryEdit(entry.path),
-              },
-            ]),
+          : [{ label: t("Открыть"), run: () => openFileEntry(entry.path) }]),
+        { label: t("Переименовать"), run: () => app.setEntryEdit(entry.path) },
+        {
+          label: t("Выбрать значок"),
+          run: () => setIconPicker({ vault, entry }),
+        },
         {
           label: t("Копировать путь"),
           run: () => navigator.clipboard.writeText(entry.path),
         },
         {
           label: t("Открыть в проводнике"),
-          run: () => api.reveal(app.vault!.id, entry.path),
+          run: () => api.reveal(vault, entry.path),
         },
         ...(entry.isDirectory
           ? [
@@ -772,21 +788,17 @@ export function App() {
                 label: t("Обновить дерево"),
                 run: () => app.setRefresh((n) => n + 1),
               },
-              {
-                label: t("Переместить в корзину"),
-                danger: true,
-                divider: true,
-                run: () => app.removeDirectory(entry.path),
-              },
             ]
-          : [
-              {
-                label: t("Переместить в корзину"),
-                danger: true,
-                divider: true,
-                run: () => app.remove(entry.path),
-              },
-            ]),
+          : []),
+        {
+          label: t("Переместить в корзину"),
+          danger: true,
+          divider: true,
+          run: () =>
+            entry.isDirectory
+              ? app.removeDirectory(entry.path)
+              : app.remove(entry.path),
+        },
       ],
     );
   };
@@ -1137,6 +1149,13 @@ export function App() {
                     run: () => app.createQuick(),
                   },
                   {
+                    label: t("Новая доска"),
+                    run: () => {
+                      setGraph(false);
+                      return app.createCanvas("");
+                    },
+                  },
+                  {
                     label: t("Новая папка"),
                     run: () => app.createFolderQuick(),
                   },
@@ -1170,10 +1189,8 @@ export function App() {
                     vaultId={app.vault.id}
                     active={app.workspace.active}
                     refresh={app.refresh}
-                    onOpen={(path) => {
-                      setGraph(false);
-                      void app.open(path);
-                    }}
+                    icons={app.entryIcons.icons}
+                    onOpen={openFileEntry}
                     onFolder={app.setFolder}
                     onContext={entryMenu}
                     editPath={app.entryEdit}
@@ -1269,7 +1286,7 @@ export function App() {
               <div className="banner error" role="alert">
                 <Info size={16} />
                 <span>{t(app.error)}</span>
-                {app.active && (
+                {(app.active || app.activeCanvas) && (
                   <button
                     onClick={() => void app.create(false, true)}
                     disabled={app.busy}
@@ -1298,15 +1315,34 @@ export function App() {
               </div>
             )}
 
-            {app.active || app.activeImage ? (
+            {app.active || app.activeImage || app.activeCanvas ? (
               <>
-                <NoteHeader
-                  app={app}
-                  mode={mode}
-                  setMode={setMode}
-                  saveShortcut={hotkey("save")}
-                  readingShortcut={hotkey("reading")}
-                />
+                {app.activeCanvas ? (
+                  <div className="document-toolbar">
+                    <button
+                      className="save-button"
+                      disabled={app.busy || !dirty(app.activeCanvas)}
+                      onClick={() => void app.save()}
+                    >
+                      {t("Сохранить")}
+                    </button>
+                    <button
+                      className="save-button"
+                      disabled={app.busy}
+                      onClick={() => void app.reload()}
+                    >
+                      {t("Перечитать")}
+                    </button>
+                  </div>
+                ) : (
+                  <NoteHeader
+                    app={app}
+                    mode={mode}
+                    setMode={setMode}
+                    saveShortcut={hotkey("save")}
+                    readingShortcut={hotkey("reading")}
+                  />
+                )}
                 {app.active && formatting && mode !== "reading" && (
                   <FormattingToolbar
                     onTemplates={() => setTemplates(true)}
@@ -1336,7 +1372,102 @@ export function App() {
                         hidden={tab.path !== app.workspace.active}
                         key={`${app.vault?.id}:${tab.path}`}
                       >
-                        {tab.kind === "image" && app.vault ? (
+                        {/\.canvas$/i.test(tab.path) ? (
+                          <CanvasBoard
+                            shortcuts={shortcuts}
+                            content={tab.content}
+                            refresh={app.refresh}
+                            files={
+                              app.vault
+                                ? {
+                                    context: {
+                                      vaultId: app.vault.id,
+                                      path: tab.path,
+                                      theme,
+                                      previews,
+                                      onWiki: (target) =>
+                                        void app.openWiki(tab.path, target),
+                                      onNavigate: (source, target) =>
+                                        void app.openWiki(source, target),
+                                      onError: app.setError,
+                                    },
+                                    edit: app.openCardEditor,
+                                    saveNote: (path) => void app.save(path),
+                                    convert: app.convertCard,
+                                    importFiles: (files) =>
+                                      app.importCanvasFiles(tab.path, files),
+                                    requestUrl: (initial) =>
+                                      ask({
+                                        title: t("Адрес веб-страницы"),
+                                        initial: initial ?? "https://",
+                                        label: t("Сохранить"),
+                                      }),
+                                    editor: (path) => {
+                                      const note = app.workspace.tabs.find(
+                                        (item) => item.path === path,
+                                      );
+                                      if (!note || !app.vault) return null;
+                                      return (
+                                        <div
+                                          className="canvas-note-editor"
+                                          data-canvas-note-editor={path}
+                                        >
+                                          <MarkdownEditor
+                                            content={note.content}
+                                            vaultId={app.vault.id}
+                                            path={path}
+                                            live
+                                            theme={theme}
+                                            previews={previews}
+                                            shortcuts={shortcuts}
+                                            onChange={(content) =>
+                                              app.dispatch({
+                                                type: "edit",
+                                                path,
+                                                content,
+                                              })
+                                            }
+                                            onSave={() => void app.save(path)}
+                                            onWikiLink={(target) =>
+                                              void app.openWiki(path, target)
+                                            }
+                                            onError={app.setError}
+                                          />
+                                        </div>
+                                      );
+                                    },
+                                    open: (path, subpath) => {
+                                      if (markdownFile.test(path) && subpath)
+                                        void app.open(
+                                          path,
+                                          false,
+                                          subpath.slice(1),
+                                        );
+                                      else if (
+                                        markdownFile.test(path) ||
+                                        imageExtension(path) ||
+                                        /\.canvas$/i.test(path)
+                                      )
+                                        void app.open(path);
+                                      else if (app.vault)
+                                        void api
+                                          .reveal(app.vault.id, path)
+                                          .catch((error) =>
+                                            app.setError(errorMessage(error)),
+                                          );
+                                    },
+                                  }
+                                : undefined
+                            }
+                            onChange={(content) =>
+                              app.dispatch({
+                                type: "edit",
+                                path: tab.path,
+                                content,
+                              })
+                            }
+                          />
+                        ) : tab.kind === "image" && app.vault ? (
                           <ImageDocument
                             vaultId={app.vault.id}
                             path={tab.path}
@@ -1579,6 +1710,23 @@ export function App() {
       </div>
 
       {dialog}
+      {iconPicker && iconPicker.vault === app.vault?.id && (
+        <EntryIconPicker
+          name={iconPicker.entry.name}
+          current={app.entryIcons.icons.get(iconPicker.entry.path)}
+          onClose={() => setIconPicker(null)}
+          onSelect={(icon) => {
+            if (
+              app.entryIcons.assign(
+                iconPicker.vault,
+                iconPicker.entry.path,
+                icon,
+              )
+            )
+              setIconPicker(null);
+          }}
+        />
+      )}
       {templates && app.active && app.vault && (
         <Templates
           key={`${app.vault.id}:${app.active.path}`}

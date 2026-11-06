@@ -141,7 +141,13 @@ impl Vault {
             {
                 continue;
             }
-            if metadata.is_dir() || is_markdown(&entry.path()) || is_image(&entry.path()) {
+            if metadata.is_dir()
+                || (metadata.is_file()
+                    && (is_markdown(&entry.path())
+                        || is_image(&entry.path())
+                        || is_canvas(&entry.path())
+                        || is_media(&entry.path())))
+            {
                 entries.push(Entry {
                     path: if relative.is_empty() {
                         name.clone()
@@ -170,6 +176,24 @@ impl Vault {
         }
         Ok(path)
     }
+}
+
+pub(crate) fn is_media(path: &Path) -> bool {
+    path.extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| {
+            [
+                "pdf", "mp3", "wav", "ogg", "m4a", "flac", "3gp", "mp4", "webm", "mov", "mkv",
+                "ogv",
+            ]
+            .contains(&value.to_ascii_lowercase().as_str())
+        })
+}
+
+pub(crate) fn is_canvas(path: &Path) -> bool {
+    path.extension()
+        .and_then(|s| s.to_str())
+        .is_some_and(|s| s.eq_ignore_ascii_case("canvas"))
 }
 
 fn is_markdown(path: &Path) -> bool {
@@ -215,9 +239,13 @@ mod tests {
         fs::create_dir(dir.path().join(".aether"))?;
         fs::write(dir.path().join("Заметки/Привет.MD"), "Привет")?;
         fs::write(dir.path().join("image.png"), [])?;
+        fs::write(dir.path().join("Slides.PDF"), [])?;
+        fs::write(dir.path().join("private.txt"), [])?;
         let vault = Vault::open(dir.path())?;
-        assert_eq!(vault.list("")?.len(), 2);
+        assert_eq!(vault.list("")?.len(), 3);
         assert_eq!(vault.list("")?[1].path, "image.png");
+        assert_eq!(vault.list("")?[2].path, "Slides.PDF");
+        assert!(vault.note_path("Slides.PDF").is_err());
         assert_eq!(vault.list("Заметки")?[0].path, "Заметки/Привет.MD");
         Ok(())
     }

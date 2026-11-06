@@ -10,12 +10,14 @@ export function NoteEmbed({
   context,
   wiki = true,
   preview = false,
+  exactFile,
 }: {
   target: string;
   label: string;
   context: RenderContext;
   wiki?: boolean;
   preview?: boolean;
+  exactFile?: { path: string; open: () => void };
 }) {
   useLocale();
   const [fallback] = useState(() => new NotePreviews());
@@ -40,6 +42,7 @@ export function NoteEmbed({
     context.vaultId,
     context.path,
     target,
+    exactFile?.path,
     wiki,
     attempt,
     snapshot.diskRevision,
@@ -61,6 +64,10 @@ export function NoteEmbed({
         t("Слишком много вложенных заметок. Откройте исходную заметку."),
       );
       return;
+    }
+    if (exactFile?.path) {
+      setResolution({ path: exactFile.path, key: requestKey });
+      return release;
     }
     void (async () => {
       const destination = wiki
@@ -147,7 +154,8 @@ export function NoteEmbed({
     ? t("Циклическое встраивание. Откройте исходную заметку.")
     : error;
   const open = () => {
-    if (wiki) context.onWiki(target);
+    if (exactFile) exactFile.open();
+    else if (wiki) context.onWiki(target);
     else
       void api
         .documentLink(context.vaultId, context.path, target)

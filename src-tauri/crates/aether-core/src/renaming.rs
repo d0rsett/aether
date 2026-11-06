@@ -69,6 +69,8 @@ struct Manifest {
     #[serde(default)]
     directory: bool,
     #[serde(default)]
+    asset: bool,
+    #[serde(default)]
     tree: BTreeMap<String, String>,
 }
 #[derive(Default, Serialize, Deserialize)]
@@ -279,8 +281,97 @@ fn database<'a>(notes: impl Iterator<Item = (String, &'a str)>) -> Result<Connec
     }
     Ok(db)
 }
+fn canvas_path(path: &str) -> bool {
+    crate::vault::is_canvas(std::path::Path::new(path))
+}
+
+fn document_path(v: &Vault, path: &str) -> Result<std::path::PathBuf> {
+    if canvas_path(path) {
+        v.asset_path(path)
+    } else {
+        v.note_path(path)
+    }
+}
+
+fn save_document(v: &Vault, path: &str, content: &str, rev: &str) -> Result<String> {
+    if canvas_path(path) {
+        v.save_canvas(path, content, rev)
+    } else {
+        v.save_note(path, content, rev)
+    }
+}
+
+fn canvas_catalog(v: &Vault) -> Result<BTreeMap<String, String>> {
+    let mut boards = BTreeMap::new();
+    for entry in walkdir::WalkDir::new(v.root())
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|entry| {
+            entry.depth() == 0
+                || ![".aether", ".obsidian", ".git"]
+                    .iter()
+                    .any(|name| entry.file_name().eq_ignore_ascii_case(name))
+        })
+    {
+        let entry = entry.map_err(|error| Error::Io(error.to_string()))?;
+        if !entry.file_type().is_file() || !crate::vault::is_canvas(entry.path()) {
+            continue;
+        }
+        let path = entry
+            .path()
+            .strip_prefix(v.root())
+            .map_err(|error| Error::Io(error.to_string()))?
+            .to_string_lossy()
+            .replace('\\', "/");
+        boards.insert(path.clone(), v.read_canvas(&path)?.content);
+    }
+    Ok(boards)
+}
+
+fn update_board(content: &str, from: &str, to: &str, directory: bool) -> Result<Option<String>> {
+    let bom = content.starts_with('\u{feff}');
+    let Ok(mut json) =
+        serde_json::from_str::<serde_json::Value>(content.trim_start_matches('\u{feff}'))
+    else {
+        return Ok(None);
+    };
+    let Some(nodes) = json
+        .get_mut("nodes")
+        .and_then(serde_json::Value::as_array_mut)
+    else {
+        return Ok(None);
+    };
+    let mut changed = false;
+    for node in nodes {
+        let Some(node) = node.as_object_mut() else {
+            continue;
+        };
+        let key = match node.get("type").and_then(serde_json::Value::as_str) {
+            Some("file") => "file",
+            Some("group") => "background",
+            _ => continue,
+        };
+        let Some(path) = node.get(key).and_then(serde_json::Value::as_str) else {
+            continue;
+        };
+        let mapped = remap(path, from, to, directory);
+        if mapped != path {
+            node.insert(key.into(), mapped.into());
+            changed = true;
+        }
+    }
+    if !changed {
+        return Ok(None);
+    }
+    let value = serde_json::to_string_pretty(&json).map_err(|error| failure(error.to_string()))?;
+    Ok(Some(format!(
+        "{}{value}\n",
+        if bom { "\u{feff}" } else { "" }
+    )))
+}
+
 fn canonical(v: &Vault, path: &str) -> Result<String> {
-    Ok(v.note_path(path)?
+    Ok(document_path(v, path)?
         .strip_prefix(v.root())
         .map_err(|e| Error::InvalidPath(e.to_string()))?
         .to_string_lossy()
@@ -484,20 +575,23 @@ impl Plan {
                 "Сначала восстановите незавершённое переименование.",
             ));
         }
-        let from = if directory {
-            from.to_owned()
+        let asset = !directory && v.note_path(from).is_err();
+        let (from, to, target) = if directory {
+            (from.to_owned(), to.to_owned(), v.resolve(to, false)?)
+        } else if asset {
+            let source = v.asset_path(from)?;
+            let target = v.asset_path(to)?;
+            if source.extension() != target.extension()
+                || v.asset_revision(from)?.as_str() != expected.unwrap_or("")
+            {
+                return Err(Error::Conflict);
+            }
+            (from.to_owned(), to.to_owned(), target)
         } else {
-            canonical(v, from)?
-        };
-        let to = if directory {
-            to.to_owned()
-        } else {
-            canonical(v, to)?
-        };
-        let target = if directory {
-            v.resolve(&to, false)?
-        } else {
-            v.note_path(&to)?
+            let from = canonical(v, from)?;
+            let to = canonical(v, to)?;
+            let target = v.note_path(&to)?;
+            (from, to, target)
         };
         let tree = if directory {
             inventory(v, &from)?
@@ -516,7 +610,10 @@ impl Plan {
             ));
         }
         let all = catalog(v)?;
-        if !directory && all.get(&from).map(|s| revision(s.as_bytes())).as_deref() != expected {
+        if !directory
+            && !asset
+            && all.get(&from).map(|s| revision(s.as_bytes())).as_deref() != expected
+        {
             return Err(Error::Conflict);
         }
         let before = database(all.iter().map(|(p, content)| (p.clone(), content.as_str())))?;
@@ -528,7 +625,17 @@ impl Plan {
         let mut contents = Vec::new();
         let mut changes = Vec::new();
         let mut unresolved = 0;
-        let order: Vec<_> = if directory {
+        if asset {
+            let hash = expected.ok_or(Error::Conflict)?.to_owned();
+            files.push(File {
+                path: from.clone(),
+                after_path: to.clone(),
+                before: hash.clone(),
+                after: hash,
+            });
+            contents.push((String::new(), String::new()));
+        }
+        let order: Vec<_> = if directory || asset {
             all.keys().collect()
         } else {
             std::iter::once(&from)
@@ -668,6 +775,32 @@ impl Plan {
                 contents.push((content.clone(), updated));
             }
         }
+        let boards = canvas_catalog(v)?;
+        for (path, content) in &boards {
+            let after_path = remap(path, &from, &to, directory);
+            let Some(updated) = update_board(content, &from, &to, directory)? else {
+                continue;
+            };
+            if asset && path == &from {
+                // The moved canvas itself is the first journal entry.
+                files[0].after = revision(updated.as_bytes());
+                contents[0] = (content.clone(), updated);
+            } else {
+                files.push(File {
+                    path: path.clone(),
+                    after_path,
+                    before: revision(content.as_bytes()),
+                    after: revision(updated.as_bytes()),
+                });
+                contents.push((content.clone(), updated));
+            }
+            changes.push(Change {
+                path: path.clone(),
+                line: 1,
+                before: from.clone(),
+                after: to.clone(),
+            });
+        }
         let id = format!(
             "r-{}-{}",
             std::time::SystemTime::now()
@@ -689,11 +822,13 @@ impl Plan {
                 changes,
                 unresolved,
                 directory,
+                asset,
                 tree,
             },
             contents,
             stamps: all
                 .into_iter()
+                .chain(boards)
                 .map(|(p, c)| (p, revision(c.as_bytes())))
                 .collect(),
         })
@@ -718,6 +853,7 @@ impl Plan {
         }
         let current: BTreeMap<_, _> = catalog(v)?
             .into_iter()
+            .chain(canvas_catalog(v)?)
             .map(|(p, c)| (p, revision(c.as_bytes())))
             .collect();
         if current != self.stamps {
@@ -727,6 +863,8 @@ impl Plan {
         }
         let target = if self.manifest.directory {
             v.resolve(&self.manifest.to, false)?
+        } else if self.manifest.asset {
+            v.asset_path(&self.manifest.to)?
         } else {
             v.note_path(&self.manifest.to)?
         };
@@ -738,6 +876,13 @@ impl Plan {
         }
         let directory = operation_dir(v, &self.manifest.id, true)?;
         for (i, (before, after)) in self.contents.iter().enumerate() {
+            if i == 0
+                && self.manifest.asset
+                && self.manifest.files[0].before == self.manifest.files[0].after
+            {
+                continue;
+            }
+
             atomic_write(
                 &directory.join(format!("{i}-before.txt")),
                 before.as_bytes(),
@@ -754,6 +899,9 @@ impl Plan {
         let apply = (|| {
             if self.manifest.directory {
                 move_directory(v, &self.manifest.from, &self.manifest.to)?;
+            } else if self.manifest.asset {
+                let source = &self.manifest.files[0];
+                v.rename_asset(&source.path, &source.after_path, &source.before)?;
             } else {
                 let source = &self.manifest.files[0];
                 v.rename_note(&source.path, &source.after_path, &source.before)
@@ -766,13 +914,9 @@ impl Plan {
             }
             for (file, (_, after)) in self.manifest.files.iter().zip(&self.contents) {
                 if file.before != file.after {
-                    v.save_note(&file.after_path, after, &file.before)
-                        .map_err(|e| {
-                            Error::Transaction(format!(
-                                "Обновление ссылок в {}: {e}",
-                                file.after_path
-                            ))
-                        })?;
+                    save_document(v, &file.after_path, after, &file.before).map_err(|e| {
+                        Error::Transaction(format!("Обновление ссылок в {}: {e}", file.after_path))
+                    })?;
                 }
             }
             self.manifest.state = "committed".into();
@@ -789,18 +933,22 @@ impl Plan {
                 ))),
             };
         }
-        let note = Note {
-            path: self.manifest.to.clone(),
-            content: if self.manifest.directory {
-                String::new()
-            } else {
-                self.contents[0].1.clone()
-            },
-            revision: if self.manifest.directory {
-                String::new()
-            } else {
-                self.manifest.files[0].after.clone()
-            },
+        let note = if self.manifest.asset && canvas_path(&self.manifest.to) {
+            v.read_canvas(&self.manifest.to)?
+        } else {
+            Note {
+                path: self.manifest.to.clone(),
+                content: if self.manifest.directory {
+                    String::new()
+                } else {
+                    self.contents[0].1.clone()
+                },
+                revision: if self.manifest.directory {
+                    String::new()
+                } else {
+                    self.manifest.files[0].after.clone()
+                },
+            }
         };
         Ok(Applied {
             changed_paths: self
@@ -919,8 +1067,13 @@ fn read_manifest(v: &Vault, id: &str) -> Result<Manifest> {
         }
     }
     for (i, f) in m.files.iter().enumerate() {
-        canonical(v, &f.path)?;
-        canonical(v, &f.after_path)?;
+        if i == 0 && m.asset {
+            v.asset_path(&f.path)?;
+            v.asset_path(&f.after_path)?;
+        } else {
+            canonical(v, &f.path)?;
+            canonical(v, &f.after_path)?;
+        }
         if (if m.directory {
             remap(&f.path, &m.from, &m.to, true) != f.after_path
         } else {
@@ -933,12 +1086,11 @@ fn read_manifest(v: &Vault, id: &str) -> Result<Manifest> {
     Ok(m)
 }
 fn current(v: &Vault, path: &str) -> Result<Option<String>> {
-    let full = v.note_path(path)?;
-    match fs::read(full) {
-        Ok(bytes) => Ok(Some(revision(&bytes))),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(e.into()),
+    let full = document_path(v, path).or_else(|_| v.asset_path(path))?;
+    if !full.exists() {
+        return Ok(None);
     }
+    Ok(Some(crate::files::file_revision(&full)?))
 }
 pub fn state(v: &Vault, open: &[String]) -> Result<Option<RenameState>> {
     let mut id = pointer(v)?.id;
@@ -979,6 +1131,11 @@ fn restore(v: &Vault, m: &mut Manifest, undo: bool) -> Result<()> {
     let mut observed = Vec::new();
     // Preflight every backup and current file before changing even one Markdown file.
     for (i, file) in m.files.iter().enumerate() {
+        if i == 0 && m.asset && file.before == file.after {
+            backups.push(String::new());
+            observed.push(current(v, &file.after_path)?);
+            continue;
+        }
         let mut pair = Vec::new();
         for (label, hash) in [("before", &file.before), ("after", &file.after)] {
             let path = directory.join(format!("{i}-{label}.txt"));
@@ -1034,7 +1191,10 @@ fn restore(v: &Vault, m: &mut Manifest, undo: bool) -> Result<()> {
     }
     if from.is_some()
         && to.is_some()
-        && !same_file::is_same_file(v.note_path(&m.from)?, v.note_path(&m.to)?)?
+        && !same_file::is_same_file(
+            document_path(v, &m.from).or_else(|_| v.asset_path(&m.from))?,
+            document_path(v, &m.to).or_else(|_| v.asset_path(&m.to))?,
+        )?
     {
         return Err(failure(
             "Целевой путь занят независимым файлом. Он не будет удалён.",
@@ -1043,29 +1203,35 @@ fn restore(v: &Vault, m: &mut Manifest, undo: bool) -> Result<()> {
     for (i, file) in m.files.iter().enumerate().skip(1) {
         let rev = observed[i].as_deref().ok_or(Error::Conflict)?;
         if rev != file.before {
-            v.save_note(&file.path, &backups[i], rev)?;
+            save_document(v, &file.path, &backups[i], rev)?;
         } else if current(v, &file.path)?.as_deref() != Some(rev) {
             return Err(Error::Conflict);
         }
     }
     if from.is_some() && to.is_some() {
-        if !same_file::is_same_file(v.note_path(&m.from)?, v.note_path(&m.to)?)?
-            || current(v, &m.from)? != from
+        if !same_file::is_same_file(
+            document_path(v, &m.from).or_else(|_| v.asset_path(&m.from))?,
+            document_path(v, &m.to).or_else(|_| v.asset_path(&m.to))?,
+        )? || current(v, &m.from)? != from
             || current(v, &m.to)? != to
         {
             return Err(Error::Conflict);
         }
-        fs::remove_file(v.note_path(&m.to)?)?;
+        fs::remove_file(document_path(v, &m.to).or_else(|_| v.asset_path(&m.to))?)?;
     }
     let path = if from.is_some() { &m.from } else { &m.to };
     let rev = if from.is_some() { from } else { to }.ok_or(Error::Conflict)?;
     if rev != source.before {
-        v.save_note(path, &backups[0], &rev)?;
+        save_document(v, path, &backups[0], &rev)?;
     } else if current(v, path)?.as_deref() != Some(&rev) {
         return Err(Error::Conflict);
     }
     if path == &m.to {
-        v.rename_note(&m.to, &m.from, &source.before)?;
+        if m.asset {
+            v.rename_asset(&m.to, &m.from, &source.before)?;
+        } else {
+            v.rename_note(&m.to, &m.from, &source.before)?;
+        }
     }
     m.state = if undo { "undone" } else { "rolledBack" }.into();
     write_manifest(v, m)?;
@@ -1131,7 +1297,7 @@ fn restore_directory(v: &Vault, m: &mut Manifest, undo: bool) -> Result<()> {
         let path = if at_new { &file.after_path } else { &file.path };
         let now = current(v, path)?.ok_or(Error::Conflict)?;
         if now != file.before {
-            v.save_note(path, &backups[index], &now)?;
+            save_document(v, path, &backups[index], &now)?;
         }
     }
     if at_new {
@@ -1162,7 +1328,17 @@ pub fn undo(v: &Vault, id: &str, recover: bool) -> Result<Applied> {
                 revision: String::new(),
             }
         } else {
-            v.read_note(&m.from)?
+            if canvas_path(&m.from) {
+                v.read_canvas(&m.from)?
+            } else if m.asset {
+                Note {
+                    path: m.from.clone(),
+                    content: String::new(),
+                    revision: v.asset_revision(&m.from)?,
+                }
+            } else {
+                v.read_note(&m.from)?
+            }
         },
         directory: m.directory,
     })
@@ -1171,6 +1347,37 @@ pub fn undo(v: &Vault, id: &str, recover: bool) -> Result<Applied> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn canvas_references_follow_note_and_asset_renames_and_undo() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let v = Vault::open(dir.path())?;
+        let note = v.create_note("Note.md", "# Note")?;
+        fs::write(v.resolve("image.png", false)?, b"asset")?;
+        let initial = r##"{"nodes":[{"id":"n","type":"file","file":"Note.md","subpath":"#Note"},{"id":"a","type":"file","file":"image.png"},{"type":"group","background":"image.png","custom":true}],"edges":[]}"##;
+        v.create_canvas("Board.canvas", initial)?;
+        Plan::prepare(&v, "Note.md", "New.md", &note.revision)?.apply(&v)?;
+        let note_renamed = v.read_canvas("Board.canvas")?.content;
+        assert!(note_renamed.contains("New.md") && note_renamed.contains("#Note"));
+        let image_revision = v.asset_revision("image.png")?;
+        let plan = Plan::prepare(&v, "image.png", "asset.png", &image_revision)?;
+        assert_eq!(
+            plan.preview(&["Board.canvas".into()], 0)
+                .affected_open_paths,
+            ["Board.canvas"]
+        );
+        plan.apply(&v)?;
+        let updated = v.read_canvas("Board.canvas")?.content;
+        assert_eq!(updated.matches("asset.png").count(), 2);
+        assert!(updated.contains("\"custom\": true"));
+        let state = state(&v, &[])?.ok_or(Error::Conflict)?;
+        undo(&v, &state.id, false)?;
+        assert_eq!(v.read_canvas("Board.canvas")?.content, note_renamed);
+        let state = super::state(&v, &[])?.ok_or(Error::Conflict)?;
+        undo(&v, &state.id, false)?;
+        assert_eq!(v.read_canvas("Board.canvas")?.content, initial);
+        Ok(())
+    }
+
     #[test]
     fn renaming_preserves_alias_links_and_repairs_new_filename_shadowing() -> Result<()> {
         let dir = tempfile::tempdir()?;

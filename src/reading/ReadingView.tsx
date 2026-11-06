@@ -136,7 +136,7 @@ export function safeExternal(value: string): boolean {
     return false;
   }
 }
-function LocalImage({
+export function LocalImage({
   target,
   alt,
   caption,
@@ -164,6 +164,10 @@ function LocalImage({
   const label = description || (dimensions ? target : alt || target);
   useEffect(() => {
     if (!ref.current) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((e) => e.isIntersecting)) {

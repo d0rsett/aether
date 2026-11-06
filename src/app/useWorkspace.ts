@@ -12,8 +12,16 @@ import {
 } from "../services/api";
 import type { ReviewRename } from "../components/RenameDialog";
 import type { RequestVault } from "../components/CreateVaultDialog";
-import { dirty, initialWorkspace, workspaceReducer } from "../workspace/model";
+import {
+  dirty,
+  initialWorkspace,
+  workspaceReducer,
+  type Tab,
+} from "../workspace/model";
 import { readWorkspace, writeWorkspace } from "../workspace/storage";
+import { useEntryIcons } from "../workspace/entryIconStorage";
+import { attachmentBase64 } from "../services/attachmentUploads";
+import { markdownFile } from "../services/canvasFiles";
 import { imageExtension } from "../services/images";
 import {
   readPreferences,
@@ -21,6 +29,9 @@ import {
   readStartupNote,
   recentKey,
 } from "../workspace/preferences";
+const boardKey = (vaultId: string, path: string) =>
+  JSON.stringify([vaultId, path]);
+
 export interface Question {
   title: string;
   description?: string;
@@ -40,6 +51,7 @@ export function useWorkspace(
   const [workspace, dispatch] = useReducer(workspaceReducer, initialWorkspace);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const entryIcons = useEntryIcons(vault?.id, setError);
   const [notice, setNotice] = useState("");
   const [refresh, setRefresh] = useState(0);
   const [folder, setFolder] = useState("");
@@ -60,26 +72,37 @@ export function useWorkspace(
   const ref = useRef({ workspace, vault });
   ref.current = { workspace, vault };
   const running = useRef(false);
+  const [blockedBoards, setBlockedBoards] = useState<Record<string, string>>(
+    {},
+  );
   const initialized = useRef(false);
   const selected = workspace.tabs.find((t) => t.path === workspace.active);
-  const active = selected?.kind === "image" ? undefined : selected;
+  const activeCanvas =
+    selected && /\.canvas$/i.test(selected.path) ? selected : undefined;
+  const active =
+    selected?.kind === "image" || activeCanvas ? undefined : selected;
   const activeImage = selected?.kind === "image" ? selected : undefined;
-  const task = useCallback(async (action: () => Promise<void>) => {
-    if (running.current) return false;
-    running.current = true;
-    setBusy(true);
-    setError("");
-    try {
-      await action();
-      return true;
-    } catch (e) {
-      setError(errorMessage(e));
-      return false;
-    } finally {
-      running.current = false;
-      setBusy(false);
-    }
-  }, []);
+  const task = useCallback(
+    async (action: () => Promise<void>, quiet = false) => {
+      if (running.current) return false;
+      running.current = true;
+      if (!quiet) {
+        setBusy(true);
+        setError("");
+      }
+      try {
+        await action();
+        return true;
+      } catch (e) {
+        setError(errorMessage(e));
+        return false;
+      } finally {
+        running.current = false;
+        if (!quiet) setBusy(false);
+      }
+    },
+    [],
+  );
   const persist = useCallback(() => {
     const current = ref.current;
     if (current.vault) {
@@ -293,28 +316,33 @@ export function useWorkspace(
         throw new Error(t("Введите имя папки без пути."));
       return api.createVault(options.name.trim(), options.parent.trim());
     });
-  const open = (path: string, background = false) =>
+  const open = (path: string, background = false, anchor?: string) =>
     task(async () => {
       const current = ref.current;
       if (!current.vault) return;
-      if (current.workspace.tabs.some((t) => t.path === path)) {
+      const existing = current.workspace.tabs.find((tab) => tab.path === path);
+      if (existing) {
         if (!background) dispatch({ type: "activate", path });
-        return;
-      }
-      if (imageExtension(path)) {
+      } else if (imageExtension(path)) {
         dispatch({ type: "openImage", path });
         return;
       }
-      const note = await api.read(current.vault.id, path);
-      dispatch({ type: "open", note, background });
+      const note = existing ?? (await api.read(current.vault.id, path));
+      if (!existing) dispatch({ type: "open", note, background });
+      if (anchor) {
+        const location = await api.locateAnchor(
+          current.vault.id,
+          path,
+          note.content,
+          anchor,
+        );
+        setNavigation({ ...location, path, id: ++navigationId.current });
+      }
     });
-  const save = () =>
-    task(async () => {
-      const { vault: current, workspace: state } = ref.current;
-      const tab = state.tabs.find((t) => t.path === state.active);
-      if (!current || !tab || !dirty(tab)) return;
+  const saveSnapshot = useCallback(async (vaultId: string, tab: Tab) => {
+    try {
       const revision = await api.save(
-        current.id,
+        vaultId,
         tab.path,
         tab.content,
         tab.revision,
@@ -326,7 +354,161 @@ export function useWorkspace(
         revision,
       });
       setNotice(t("Изменения сохранены на диск."));
+    } catch (error) {
+      if (/\.canvas$/i.test(tab.path))
+        setBlockedBoards((previous) => ({
+          ...previous,
+          [boardKey(vaultId, tab.path)]: tab.revision,
+        }));
+      throw error;
+    }
+  }, []);
+  const save = (path = ref.current.workspace.active) =>
+    task(async () => {
+      const { vault: current, workspace: state } = ref.current;
+      const tab = state.tabs.find((t) => t.path === path);
+      if (current && tab && dirty(tab)) await saveSnapshot(current.id, tab);
     });
+
+  useEffect(() => {
+    if (!desktop || !vault || busy) return;
+    const next = workspace.tabs.find(
+      (tab) =>
+        /\.canvas$/i.test(tab.path) &&
+        dirty(tab) &&
+        blockedBoards[boardKey(vault.id, tab.path)] !== tab.revision,
+    );
+    if (!next) return;
+    const timer = window.setTimeout(() => {
+      void task(async () => {
+        const current = ref.current;
+        const tab = current.workspace.tabs.find(
+          (item) => item.path === next.path,
+        );
+        if (current.vault?.id === vault.id && tab && dirty(tab))
+          await saveSnapshot(vault.id, tab);
+      }, true);
+    }, 650);
+    return () => window.clearTimeout(timer);
+  }, [vault, workspace, busy, blockedBoards, task, saveSnapshot]);
+
+  useEffect(() => {
+    if (!desktop || !vault || !activeCanvas) return;
+    const path = activeCanvas.path;
+    let disposed = false;
+    let reading = false;
+    const check = async () => {
+      const tab = ref.current.workspace.tabs.find((item) => item.path === path);
+      if (!tab || reading || running.current) return;
+      reading = true;
+      try {
+        const disk = await api.read(vault.id, path);
+        if (
+          disposed ||
+          running.current ||
+          ref.current.vault?.id !== vault.id ||
+          ref.current.workspace.tabs.find((item) => item.path === path) !==
+            tab ||
+          disk.revision === tab.revision
+        )
+          return;
+        if (dirty(tab)) {
+          setBlockedBoards((previous) =>
+            previous[boardKey(vault.id, path)] === tab.revision
+              ? previous
+              : { ...previous, [boardKey(vault.id, path)]: tab.revision },
+          );
+          setError(
+            t("Доска изменена на диске. Перечитайте её или сохраните копию."),
+          );
+        } else dispatch({ type: "replace", path, note: disk });
+      } catch {
+        // A deleted or inaccessible file is reported on Save or Reload.
+      } finally {
+        reading = false;
+      }
+    };
+    const timer = window.setInterval(() => void check(), 2000);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [vault, activeCanvas?.path]);
+
+  const openCardEditor = async (path: string) => {
+    const current = ref.current;
+    if (!current.vault || !markdownFile.test(path)) return false;
+    if (current.workspace.tabs.some((tab) => tab.path === path)) return true;
+    return task(async () => {
+      const note = await api.read(current.vault!.id, path);
+      if (ref.current.vault?.id === current.vault?.id)
+        dispatch({ type: "open", note, background: true });
+    });
+  };
+  const convertCard = async (content: string) => {
+    let path: string | undefined;
+    await task(async () => {
+      const current = ref.current;
+      if (!current.vault) return;
+      const parent = current.workspace.active
+        ?.split("/")
+        .slice(0, -1)
+        .join("/");
+      const name = await ask({
+        title: t("Преобразовать в заметку"),
+        initial: `${parent ? parent + "/" : ""}${t("Без названия")}.md`,
+        label: t("Создать"),
+      });
+      if (!name?.trim()) return;
+      const destination = markdownFile.test(name.trim())
+        ? name.trim()
+        : name.trim() + ".md";
+      path = (await api.create(current.vault.id, destination, content)).path;
+      setRefresh((value) => value + 1);
+    });
+    return path;
+  };
+  const importCanvasFiles = async (path: string, files: File[]) => {
+    let imported: string[] = [];
+    await task(async () => {
+      const current = ref.current;
+      if (
+        !current.vault ||
+        !current.workspace.tabs.some((tab) => tab.path === path)
+      )
+        return;
+      if (
+        files.length > 20 ||
+        files.reduce((total, file) => total + file.size, 0) > 50 * 1024 * 1024
+      )
+        throw new Error(
+          t("За один раз можно вставить до 20 файлов общим размером до 50 МБ."),
+        );
+      for (const file of files) {
+        const limit = imageExtension(file.name) ? 8 : 25;
+        if (file.size > limit * 1024 * 1024)
+          throw new Error(t`${file.name}: размер превышает ${limit} МБ.`);
+      }
+      const uploads = await Promise.all(
+        files.map(async (file) => ({
+          name: file.name,
+          data: await attachmentBase64(file),
+        })),
+      );
+      const folder = readPreferences().attachmentFolder;
+      imported = (
+        await api.importAttachments(
+          current.vault.id,
+          path,
+          uploads,
+          false,
+          typeof folder === "string" ? { folder } : undefined,
+        )
+      ).map((file) => file.path);
+      setRefresh((value) => value + 1);
+    });
+    return imported;
+  };
   const close = (path: string) =>
     task(async () => {
       const tab = ref.current.workspace.tabs.find((t) => t.path === path);
@@ -352,6 +534,7 @@ export function useWorkspace(
       const tab = ref.current.workspace.tabs.find(
         (t) => t.path === ref.current.workspace.active,
       );
+      const canvasCopy = copy && tab && /\.canvas$/i.test(tab.path);
       const prefix = parent ? `${parent}/` : "";
       const name = await ask({
         title: directory
@@ -364,7 +547,7 @@ export function useWorkspace(
         ),
         initial: directory
           ? t`${prefix}Новая папка`
-          : `${prefix}${copy ? t("Копия") : t("Без названия")}.md`,
+          : `${prefix}${copy ? t("Копия") : t("Без названия")}${canvasCopy ? ".canvas" : ".md"}`,
         label: t("Создать"),
       });
       if (name === null) return;
@@ -372,13 +555,38 @@ export function useWorkspace(
       if (directory) {
         await api.mkdir(current.id, name.trim());
       } else {
-        const note = await api.create(
+        const createFile = canvasCopy ? api.createCanvas : api.create;
+        const note = await createFile(
           current.id,
           name.trim(),
           copy ? (tab?.content ?? "") : "",
         );
         dispatch({ type: "open", note });
       }
+      setRefresh((n) => n + 1);
+    });
+  const createCanvas = (parent = folder) =>
+    task(async () => {
+      const current = ref.current.vault;
+      if (!current) return;
+      const prefix = parent ? `${parent}/` : "";
+      const name = await ask({
+        title: t("Новая доска"),
+        description: t(
+          "Путь относительно хранилища. Родительская папка должна существовать.",
+        ),
+        initial: `${prefix}${t("Без названия")}.canvas`,
+        label: t("Создать"),
+      });
+      if (name === null || ref.current.vault?.id !== current.id) return;
+      const path = name.trim();
+      if (!path) throw new Error(t("Укажите имя."));
+      const note = await api.createCanvas(
+        current.id,
+        /\.canvas$/i.test(path) ? path : `${path}.canvas`,
+        '{ "nodes": [], "edges": [] }\n',
+      );
+      dispatch({ type: "open", note });
       setRefresh((n) => n + 1);
     });
   const createFolderQuick = (parent = "") =>
@@ -455,32 +663,9 @@ export function useWorkspace(
     task(async () => {
       const current = ref.current.vault;
       const selectedPath = targetPath ?? ref.current.workspace.active;
-      let tabs = ref.current.workspace.tabs;
-      if (!current || !selectedPath) return;
-      if (suggestedPath === selectedPath) return;
-      if (suggestedPath) {
-        setNotice("");
-        // Persist current buffers before planning link changes; revisions prevent overwriting external edits.
-        for (const draft of tabs.filter(dirty)) {
-          const revision = await api.save(
-            current.id,
-            draft.path,
-            draft.content,
-            draft.revision,
-          );
-          dispatch({
-            type: "saved",
-            path: draft.path,
-            content: draft.content,
-            revision,
-          });
-          tabs = tabs.map((tab) =>
-            tab.path === draft.path
-              ? { ...tab, revision, savedContent: draft.content }
-              : tab,
-          );
-        }
-      }
+      const tabs = ref.current.workspace.tabs;
+      if (!current || !selectedPath || suggestedPath === selectedPath) return;
+      if (suggestedPath) setNotice("");
       const tab = tabs.find((t) => t.path === selectedPath);
       if (tab && dirty(tab))
         throw new Error(
@@ -489,7 +674,10 @@ export function useWorkspace(
       if (!suggestedPath && !reviewRename)
         throw new Error(t("Предпросмотр переименования недоступен."));
       const revision =
-        tab?.revision ?? (await api.read(current.id, selectedPath)).revision;
+        tab?.revision ||
+        (markdownFile.test(selectedPath)
+          ? (await api.read(current.id, selectedPath)).revision
+          : await api.assetRevision(current.id, selectedPath));
       const preview = suggestedPath
         ? await api.previewRename(
             current.id,
@@ -536,6 +724,12 @@ export function useWorkspace(
     result: RenameApplied,
     paths: string[],
   ) => {
+    entryIcons.remap(
+      vaultId,
+      result.from,
+      result.note.path,
+      !!result.directory,
+    );
     if (result.directory) {
       const prefix = `${result.from}/`,
         next = `${result.note.path}/`;
@@ -577,7 +771,13 @@ export function useWorkspace(
     const sourceTab =
       ref.current.workspace.tabs.find((t) => t.path === result.from) ??
       ref.current.workspace.tabs.find((t) => t.path === result.note.path);
-    if (sourceTab)
+    if (sourceTab?.kind === "image")
+      dispatch({
+        type: "relocateImage",
+        path: sourceTab.path,
+        destination: result.note.path,
+      });
+    else if (sourceTab)
       dispatch({ type: "replace", path: sourceTab.path, note: result.note });
     const failures: string[] = [];
     for (const path of paths) {
@@ -663,10 +863,19 @@ export function useWorkspace(
           ),
         );
       const revision =
-        tab?.revision ?? (await api.read(current.id, selectedPath)).revision;
+        tab?.revision ||
+        (markdownFile.test(selectedPath)
+          ? (await api.read(current.id, selectedPath)).revision
+          : await api.assetRevision(current.id, selectedPath));
       if (
         (await ask({
-          title: t("Переместить заметку в корзину?"),
+          title: t(
+            /\.canvas$/i.test(selectedPath)
+              ? "Переместить доску в корзину?"
+              : markdownFile.test(selectedPath)
+                ? "Переместить заметку в корзину?"
+                : "Переместить файл в корзину?",
+          ),
           description: t`${selectedPath} будет сохранена в .aether/trash внутри хранилища.`,
           label: t("В корзину"),
           dangerous: true,
@@ -674,6 +883,7 @@ export function useWorkspace(
       )
         return;
       const path = await api.trash(current.id, selectedPath, revision);
+      entryIcons.remap(current.id, selectedPath, null, false);
       dispatch({ type: "close", path: selectedPath });
       setNotice(t`Файл перемещён в ${path}`);
       setRefresh((n) => n + 1);
@@ -699,6 +909,11 @@ export function useWorkspace(
         return;
       const note: Note = await api.read(current.id, tab.path);
       dispatch({ type: "replace", path: tab.path, note });
+      setBlockedBoards((previous) => {
+        const next = { ...previous };
+        delete next[boardKey(current.id, tab.path)];
+        return next;
+      });
     });
   const openWiki = (source: string, target: string) =>
     task(async () => {
@@ -764,6 +979,7 @@ export function useWorkspace(
     });
   return {
     vault,
+    entryIcons,
     startupOverride,
     knownVaults,
     switchVault,
@@ -771,6 +987,7 @@ export function useWorkspace(
     workspace,
     active,
     activeImage,
+    activeCanvas,
     dispatch,
     busy,
     error,
@@ -784,10 +1001,14 @@ export function useWorkspace(
     choose,
     open,
     save,
+    openCardEditor,
+    convertCard,
+    importCanvasFiles,
     close,
     create,
     createQuick,
     createFolderQuick,
+    createCanvas,
     removeDirectory: (path: string) =>
       task(async () => {
         const current = ref.current.vault;
@@ -819,6 +1040,7 @@ export function useWorkspace(
           });
         }
         const result = await api.trashDirectory(current.id, path);
+        entryIcons.remap(current.id, path, null, true);
         for (const tab of ref.current.workspace.tabs)
           if (tab.path.startsWith(prefix))
             dispatch({ type: "close", path: tab.path });
@@ -834,11 +1056,20 @@ export function useWorkspace(
     setEntryEdit,
     renameEntry: async (path: string, name: string, directory: boolean) => {
       if (!directory) {
-        const extension = path.match(/\.(md|markdown)$/i)?.[0] ?? ".md";
+        const extension = path.slice(path.lastIndexOf("."));
+        const stem = name.toLowerCase().endsWith(extension.toLowerCase())
+          ? name.slice(0, -extension.length)
+          : name;
+        if (!stem.trim()) {
+          setError(t("Укажите имя."));
+          return false;
+        }
         const destination =
-          path.slice(0, path.lastIndexOf("/") + 1) +
-          name.replace(/\.(md|markdown)$/i, "") +
-          extension;
+          path.slice(0, path.lastIndexOf("/") + 1) + stem + extension;
+        if (destination === path) {
+          setEntryEdit(null);
+          return true;
+        }
         const renamed = await rename(path, destination);
         if (renamed) setEntryEdit(null);
         return renamed;
@@ -847,20 +1078,8 @@ export function useWorkspace(
         const current = ref.current.vault;
         if (!current) return;
         const tabs = ref.current.workspace.tabs;
-        for (const tab of tabs.filter(dirty)) {
-          const revision = await api.save(
-            current.id,
-            tab.path,
-            tab.content,
-            tab.revision,
-          );
-          dispatch({
-            type: "saved",
-            path: tab.path,
-            content: tab.content,
-            revision,
-          });
-        }
+        if (tabs.some(dirty))
+          throw new Error(t("Сначала сохраните затронутые вкладки."));
         try {
           const result = await api.renameDirectory(current.id, path, name);
           await synchronizeRename(

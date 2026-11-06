@@ -1,5 +1,6 @@
 pub mod attachment_import;
 pub mod attachments;
+mod canvas;
 pub mod files;
 pub mod indexing;
 pub mod links;

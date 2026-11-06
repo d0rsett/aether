@@ -445,7 +445,7 @@ it("creates a new note without a prompt, avoiding existing names and races", asy
   expect(result.current.titleFocus?.path).toBe("Новая заметка 2.md");
 });
 
-it("renames inline without review after preserving open drafts and refreshes the workspace", async () => {
+it("renames inline after an explicit save and refreshes the workspace", async () => {
   const review = vi.fn();
   const { result } = renderHook(() => useWorkspace(ask, review));
   await waitFor(() => expect(result.current.busy).toBe(false));
@@ -458,6 +458,7 @@ it("renames inline without review after preserving open drafts and refreshes the
     }),
   );
   vi.mocked(api.save).mockResolvedValue("saved");
+  await act(async () => result.current.save());
   vi.mocked(api.previewRename).mockResolvedValue({
     token: "inline-plan",
     from: note.path,
@@ -500,7 +501,7 @@ it("renames inline without review after preserving open drafts and refreshes the
   expect(result.current.notice).toBe("");
 });
 
-it("does not rename when a draft conflicts with an external change", async () => {
+it("does not write or rename a note with an unsaved draft", async () => {
   const { result } = renderHook(() => useWorkspace(ask));
   await waitFor(() => expect(result.current.busy).toBe(false));
   await act(async () => result.current.open(note.path));
@@ -511,8 +512,8 @@ it("does not rename when a draft conflicts with an external change", async () =>
       content: "черновик",
     }),
   );
-  vi.mocked(api.save).mockRejectedValueOnce({ code: "Conflict" });
   await act(async () => result.current.rename(note.path, "Новое имя.md"));
+  expect(api.save).not.toHaveBeenCalled();
   expect(api.previewRename).not.toHaveBeenCalled();
   expect(api.applyRename).not.toHaveBeenCalled();
   expect(result.current.active?.content).toBe("черновик");
@@ -638,4 +639,46 @@ it("creates a note directly inside the requested folder without asking", async (
   expect(api.create).toHaveBeenCalledWith(vault.id, "Проект/Новая заметка.md");
   expect(question).not.toHaveBeenCalled();
   expect(result.current.active?.path).toBe("Проект/Новая заметка.md");
+});
+
+it("autosaves canvases while leaving note drafts alone and stops retrying a conflicting board", async () => {
+  const board = { path: "Board.canvas", content: "{}", revision: "c1" };
+  vi.mocked(api.read).mockImplementation(async (_vault, path) =>
+    path === board.path ? board : note,
+  );
+  const { result, unmount } = renderHook(() => useWorkspace(ask));
+  await waitFor(() => expect(result.current.vault?.id).toBe(vault.id));
+  await act(async () => result.current.open(note.path));
+  await act(async () => result.current.open(board.path));
+  vi.useFakeTimers();
+  try {
+    vi.mocked(api.save).mockRejectedValueOnce({ code: "Conflict" });
+    act(() => {
+      result.current.dispatch({
+        type: "edit",
+        path: note.path,
+        content: "draft",
+      });
+      result.current.dispatch({
+        type: "edit",
+        path: board.path,
+        content: '{"nodes":[]}',
+      });
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(700));
+    expect(api.save).toHaveBeenCalledExactlyOnceWith(
+      vault.id,
+      board.path,
+      '{"nodes":[]}',
+      "c1",
+    );
+    expect(result.current.activeCanvas?.content).toBe('{"nodes":[]}');
+    expect(result.current.activeCanvas?.savedContent).toBe("{}");
+    expect(result.current.error).toBe("Conflict");
+    await act(async () => vi.advanceTimersByTimeAsync(1500));
+    expect(api.save).toHaveBeenCalledTimes(1);
+  } finally {
+    unmount();
+    vi.useRealTimers();
+  }
 });

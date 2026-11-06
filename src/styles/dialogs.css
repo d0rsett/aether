@@ -275,3 +275,36 @@
 .modal .palette-search:focus-within {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 15%, transparent);
 }
+
+.entry-icon-picker-name {
+  overflow-wrap: anywhere;
+  margin: 0 0 10px;
+  color: var(--muted);
+}
+
+.entry-icon-picker input {
+  box-sizing: border-box;
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.entry-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(38px, 1fr));
+  gap: 6px;
+  max-height: 48vh;
+  overflow: auto;
+  padding: 2px;
+}
+
+.entry-icon-grid .icon-button {
+  width: 100%;
+  height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.entry-icon-grid [aria-pressed="true"] {
+  color: var(--accent);
+  background: var(--selected);
+}

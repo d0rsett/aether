@@ -1,10 +1,10 @@
-use crate::vault::{is_link, Vault};
+use crate::vault::{is_canvas, is_image, is_link, is_media, Vault};
 use crate::{Error, Result};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::fs;
-use std::io::Write;
-use std::path::Path;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -16,6 +16,39 @@ pub struct Note {
 
 pub fn revision(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
+}
+
+pub(crate) fn file_revision(path: &Path) -> Result<String> {
+    let mut file = fs::File::open(path)?;
+    let mut hash = Sha256::new();
+    let mut buffer = [0; 65536];
+    loop {
+        let count = file.read(&mut buffer)?;
+        if count == 0 {
+            break;
+        }
+        hash.update(&buffer[..count]);
+    }
+    Ok(format!("{:x}", hash.finalize()))
+}
+
+fn rename_file_exclusive(source: &Path, target: &Path) -> Result<()> {
+    if source == target {
+        return Ok(());
+    }
+    // A hard link claims the destination without replacing any existing file.
+    fs::hard_link(source, target).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::AlreadyExists {
+            Error::AlreadyExists
+        } else {
+            error.into()
+        }
+    })?;
+    if let Err(error) = fs::remove_file(source) {
+        let _ = fs::remove_file(target);
+        return Err(error.into());
+    }
+    Ok(())
 }
 
 /// Same-directory staging + flush + OS replacement. Original survives any staging failure.
@@ -182,29 +215,59 @@ impl Vault {
         if self.read_note(from)?.revision != expected {
             return Err(Error::Conflict);
         }
-        if source == target {
-            return self.read_note(from);
-        }
-        // hard_link is exclusive: an existing destination is never replaced (also on Unix).
-        fs::hard_link(&source, &target).map_err(|e| {
-            if e.kind() == std::io::ErrorKind::AlreadyExists {
-                Error::AlreadyExists
-            } else {
-                e.into()
-            }
-        })?;
-        if let Err(e) = fs::remove_file(source) {
-            // Leave both copies if rollback fails; never remove the source on a failed rename.
-            let _ = fs::remove_file(&target);
-            return Err(e.into());
-        }
+        rename_file_exclusive(&source, &target)?;
         self.read_note(to)
+    }
+
+    pub(crate) fn asset_path(&self, relative: &str) -> Result<PathBuf> {
+        let path = self.resolve(relative, false)?;
+        if !(is_canvas(&path) || is_image(&path) || is_media(&path)) {
+            return Err(Error::InvalidPath("Неподдерживаемый тип файла.".into()));
+        }
+        match fs::symlink_metadata(&path) {
+            Ok(metadata) if is_link(&metadata) || !metadata.is_file() => {
+                return Err(Error::InvalidPath("Укажите обычный файл.".into()));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+        Ok(path)
+    }
+
+    pub fn asset_revision(&self, relative: &str) -> Result<String> {
+        file_revision(&self.asset_path(relative)?)
+    }
+
+    pub fn rename_asset(&self, from: &str, to: &str, expected: &str) -> Result<()> {
+        let source = self.asset_path(from)?;
+        let target = self.asset_path(to)?;
+        if source.extension() != target.extension() {
+            return Err(Error::InvalidPath("Сохраните расширение файла.".into()));
+        }
+        if file_revision(&source)? != expected {
+            return Err(Error::Conflict);
+        }
+        rename_file_exclusive(&source, &target)
+    }
+
+    pub fn trash_asset(&self, relative: &str, expected: &str) -> Result<String> {
+        let source = self.asset_path(relative)?;
+        let extension = source
+            .extension()
+            .and_then(|value| value.to_str())
+            .ok_or_else(|| Error::InvalidPath("Укажите расширение файла.".into()))?;
+        self.trash_file(&source, expected, &format!(".{extension}"))
     }
 
     /// User deletion is recoverable: move to private vault trash, never unlink the only copy.
     pub fn trash_note(&self, relative: &str, expected: &str) -> Result<String> {
         let source = self.note_path(relative)?;
-        if self.read_note(relative)?.revision != expected {
+        self.trash_file(&source, expected, ".md")
+    }
+
+    pub(crate) fn trash_file(&self, source: &Path, expected: &str, suffix: &str) -> Result<String> {
+        if file_revision(source)? != expected {
             return Err(Error::Conflict);
         }
         let internal = self.root().join(".aether");
@@ -223,15 +286,14 @@ impl Vault {
         }
         let target = tempfile::Builder::new()
             .prefix("deleted-")
-            .suffix(".md")
+            .suffix(suffix)
             .tempfile_in(&trash)?;
         // Keep a durable copy before removing the source, including on filesystems without hard links.
-        let bytes = fs::read(&source)?;
-        if revision(&bytes) != expected {
+        std::io::copy(&mut fs::File::open(source)?, &mut target.as_file())?;
+        target.as_file().sync_all()?;
+        if file_revision(target.path())? != expected || file_revision(source)? != expected {
             return Err(Error::Conflict);
         }
-        target.as_file().write_all(&bytes)?;
-        target.as_file().sync_all()?;
         let (_, kept_path) = target.keep().map_err(|e| Error::Io(e.to_string()))?;
         fs::remove_file(source)?;
         Ok(kept_path.to_string_lossy().into_owned())
@@ -241,6 +303,37 @@ impl Vault {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn renames_and_trashes_binary_assets_without_overwriting() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let vault = Vault::open(root.path())?;
+        let payload = [0xff, 0x00, 0xfe];
+        fs::write(root.path().join("image.png"), payload)?;
+        fs::write(root.path().join("used.png"), b"keep")?;
+        let expected = vault.asset_revision("image.png")?;
+        assert!(matches!(
+            vault.rename_asset("image.png", "used.png", &expected),
+            Err(Error::AlreadyExists)
+        ));
+        assert!(vault
+            .rename_asset("image.png", "image.pdf", &expected)
+            .is_err());
+        assert!(vault
+            .rename_asset("image.png", "../image.png", &expected)
+            .is_err());
+        vault.rename_asset("image.png", "renamed.png", &expected)?;
+        assert!(matches!(
+            vault.trash_asset("renamed.png", "stale"),
+            Err(Error::Conflict)
+        ));
+        let trashed = vault.trash_asset("renamed.png", &expected)?;
+        assert!(trashed.ends_with(".png"));
+        assert_eq!(fs::read(trashed)?, payload);
+        assert!(!root.path().join("renamed.png").exists());
+        assert_eq!(fs::read(root.path().join("used.png"))?, b"keep");
+        Ok(())
+    }
 
     #[cfg(windows)]
     #[test]

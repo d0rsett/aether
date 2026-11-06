@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronRight,
   FileText,
+  PanelsTopLeft,
   Folder,
   FolderOpen,
   LoaderCircle,
@@ -11,6 +12,12 @@ import {
 } from "lucide-react";
 import { api, errorMessage, type FileEntry } from "../services/api";
 import { imageDragType, imageExtension } from "../services/images";
+import {
+  canvasFileDragType,
+  markdownFile,
+  mediaFile,
+} from "../services/canvasFiles";
+import { entryIconChoices, type EntryIcons } from "./entryIcons";
 interface Props {
   vaultId: string;
   path?: string;
@@ -18,6 +25,8 @@ interface Props {
   refresh: number;
   onOpen: (path: string) => void;
   onFolder: (path: string) => void;
+  icons?: EntryIcons;
+  includeFile?: (path: string) => boolean;
   onContext?: (event: MouseEvent<HTMLElement>, entry: FileEntry) => void;
   dragged?: string | null;
   onDrag?: (path: string | null) => void;
@@ -39,6 +48,8 @@ export function FileTree({
   refresh,
   onOpen,
   onFolder,
+  icons,
+  includeFile,
   onContext,
   dragged,
   onDrag,
@@ -82,7 +93,10 @@ export function FileTree({
         {t(" Загрузка\u2026 ")}
       </div>
     );
-  if (!entries.length)
+  const listed = includeFile
+    ? entries.filter((entry) => entry.isDirectory || includeFile(entry.path))
+    : entries;
+  if (!listed.length)
     return (
       <p className="tree-empty">
         {path ? t("Папка пуста") : t("Пока нет заметок")}
@@ -90,7 +104,7 @@ export function FileTree({
     );
   return (
     <ul className="file-tree">
-      {entries.map((entry) => (
+      {listed.map((entry) => (
         <TreeEntry
           key={entry.path}
           {...{
@@ -100,6 +114,8 @@ export function FileTree({
             refresh,
             onOpen,
             onFolder,
+            icons,
+            includeFile,
             onContext,
             dragged,
             onDrag,
@@ -125,6 +141,15 @@ function TreeEntry({
   const [expanded, setExpanded] = useState(false);
   const [over, setOver] = useState(false);
   const imageType = !entry.isDirectory ? imageExtension(entry.path) : null;
+  const canvasType = !entry.isDirectory && /\.canvas$/i.test(entry.path);
+  const customIcon = props.icons?.get(entry.path);
+  const CustomIcon = customIcon ? entryIconChoices[customIcon][0] : undefined;
+  const badge = imageType ?? (canvasType ? "CANVAS" : null);
+  const displayName = entry.isDirectory
+    ? entry.name
+    : entry.name.replace(/\.(md|markdown|canvas)$/i, "");
+  const noteType = !entry.isDirectory && markdownFile.test(entry.path);
+  const mediaType = !entry.isDirectory && mediaFile.test(entry.path);
   const directory = entry.isDirectory
     ? entry.path
     : entry.path.split("/").slice(0, -1).join("/");
@@ -151,17 +176,17 @@ function TreeEntry({
       ) : (
         <button
           className={`tree-item ${(props.editPath ?? props.active) === entry.path ? "selected" : ""} ${over && canDrop ? "drop-target" : ""} ${props.dragged === entry.path ? "is-dragging" : ""}`}
-          draggable={!entry.isDirectory && !!props.onDrag}
-          aria-label={
-            !entry.isDirectory
-              ? entry.name.replace(/\.(md|markdown)$/i, "")
-              : undefined
-          }
+          draggable={!!props.onDrag && (noteType || !!imageType || mediaType)}
+          aria-label={entry.isDirectory ? undefined : displayName}
           onDragStart={(event) => {
             if (entry.isDirectory) {
               event.preventDefault();
               return;
             }
+            event.dataTransfer.setData(
+              canvasFileDragType,
+              JSON.stringify({ vaultId: props.vaultId, path: entry.path }),
+            );
             if (imageType) {
               event.dataTransfer.setData(
                 imageDragType,
@@ -170,8 +195,13 @@ function TreeEntry({
               event.dataTransfer.effectAllowed = "copy";
               return;
             }
+            if (mediaType) {
+              event.dataTransfer.effectAllowed = "copy";
+              return;
+            }
+            if (!noteType) return;
             event.dataTransfer.setData("application/x-aether-note", entry.path);
-            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.effectAllowed = "copyMove";
             props.onDrag?.(entry.path);
           }}
           onDragEnd={() => props.onDrag?.(null)}
@@ -208,22 +238,32 @@ function TreeEntry({
               ) : (
                 <ChevronRight size={13} />
               )}
-              {expanded ? <FolderOpen size={15} /> : <Folder size={15} />}
+              {CustomIcon ? (
+                <CustomIcon className="tree-custom-icon" size={15} />
+              ) : expanded ? (
+                <FolderOpen size={15} />
+              ) : (
+                <Folder size={15} />
+              )}
             </>
           ) : (
             <>
               <span className="tree-spacer" />
-              {imageType ? <ImageIcon size={15} /> : <FileText size={15} />}
+              {CustomIcon ? (
+                <CustomIcon className="tree-custom-icon" size={15} />
+              ) : imageType ? (
+                <ImageIcon size={15} />
+              ) : canvasType ? (
+                <PanelsTopLeft size={15} />
+              ) : (
+                <FileText size={15} />
+              )}
             </>
           )}
-          <span className="tree-entry-name">
-            {entry.isDirectory
-              ? entry.name
-              : entry.name.replace(/\.(md|markdown)$/i, "")}
-          </span>
-          {imageType && (
+          <span className="tree-entry-name">{displayName}</span>
+          {badge && (
             <span className="tree-file-type" aria-hidden="true">
-              {imageType}
+              {badge}
             </span>
           )}
         </button>
@@ -269,7 +309,7 @@ function EntryNameEditor({
   useLocale();
   const original = entry.isDirectory
     ? entry.name
-    : entry.name.replace(/\.(md|markdown)$/i, "");
+    : entry.name.replace(/\.[^./]+$/, "");
   const [name, setName] = useState(original);
   const input = useRef<HTMLInputElement>(null);
   const pending = useRef(false),

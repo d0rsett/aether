@@ -1340,11 +1340,6 @@
   padding: 5px;
   margin-top: 0;
 }
-.tree-item > .lucide-file-text,
-.tree-item > .lucide-folder,
-.tree-item > .lucide-folder-open {
-  display: none;
-}
 .cm-activeLine {
   background: transparent !important;
 }

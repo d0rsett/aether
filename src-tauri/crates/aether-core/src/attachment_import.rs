@@ -200,7 +200,12 @@ pub fn import_with_preferences(
     root_images: bool,
     preferences: &ImportPreferences,
 ) -> Result<Vec<Imported>> {
-    if !vault.note_path(source)?.is_file() {
+    let origin = if crate::vault::is_canvas(std::path::Path::new(source)) {
+        vault.resolve(source, false)?
+    } else {
+        vault.note_path(source)?
+    };
+    if !origin.is_file() {
         return Err(Error::InvalidPath(
             "Заметка для вставки вложений не найдена.".into(),
         ));

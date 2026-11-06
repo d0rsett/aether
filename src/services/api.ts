@@ -263,11 +263,21 @@ export const api = {
   list: (vaultId: string, path: string) =>
     invoke<FileEntry[]>("list_directory", { vaultId, path }),
   read: (vaultId: string, path: string) =>
-    invoke<Note>("read_note", { vaultId, path }),
+    invoke<Note>(/\.canvas$/i.test(path) ? "read_canvas" : "read_note", {
+      vaultId,
+      path,
+    }),
   save: (vaultId: string, path: string, content: string, revision: string) =>
-    invoke<string>("save_note", { vaultId, path, content, revision }),
+    invoke<string>(/\.canvas$/i.test(path) ? "save_canvas" : "save_note", {
+      vaultId,
+      path,
+      content,
+      revision,
+    }),
   create: (vaultId: string, path: string, content = "") =>
     invoke<Note>("create_note", { vaultId, path, content }),
+  createCanvas: (vaultId: string, path: string, content: string) =>
+    invoke<Note>("create_canvas", { vaultId, path, content }),
   mkdir: (vaultId: string, path: string) =>
     invoke<void>("create_directory", { vaultId, path }),
   previewRename: (
@@ -309,8 +319,17 @@ export const api = {
     anchor: string,
   ) =>
     invoke<AnchorLocation>("locate_anchor", { vaultId, path, content, anchor }),
+  assetRevision: (vaultId: string, path: string) =>
+    invoke<string>("asset_revision", { vaultId, path }),
   trash: (vaultId: string, path: string, revision: string) =>
-    invoke<string>("trash_note", { vaultId, path, revision }),
+    invoke<string>(
+      /\.(md|markdown)$/i.test(path)
+        ? "trash_note"
+        : /\.canvas$/i.test(path)
+          ? "trash_canvas"
+          : "trash_asset",
+      { vaultId, path, revision },
+    ),
   indexStatus: (vaultId: string) =>
     invoke<IndexStatus>("index_status", { vaultId }),
   inspect: (vaultId: string, path: string) =>

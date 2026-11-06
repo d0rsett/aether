@@ -29,7 +29,7 @@ export const titleOf = (path: string): string =>
   path
     .split("/")
     .pop()
-    ?.replace(/\.(md|markdown)$/i, "") ?? path;
+    ?.replace(/\.(md|markdown|canvas)$/i, "") ?? path;
 
 export function workspaceReducer(state: Workspace, action: Action): Workspace {
   switch (action.type) {

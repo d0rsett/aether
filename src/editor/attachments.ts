@@ -1,6 +1,7 @@
 import { t } from "../i18n";
 import { Facet, type Extension } from "@codemirror/state";
 import { EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
+import { attachmentBase64 } from "../services/attachmentUploads";
 import { api, errorMessage } from "../services/api";
 import { imageDragType, imageExtension } from "../services/images";
 import { readPreferences } from "../workspace/preferences";
@@ -23,15 +24,6 @@ const mimeExtensions: Record<string, string> = {
 };
 function pastedName(file: File) {
   return t`Новое изображение.${mimeExtensions[file.type] ?? imageExtension(file.name)?.toLowerCase() ?? "png"}`;
-}
-function base64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result).split(",")[1]);
-    reader.onerror = () =>
-      reject(new Error(t`Не удалось прочитать ${file.name}`));
-    reader.readAsDataURL(file);
-  });
 }
 class AttachmentInput {
   destroyed = false;
@@ -98,7 +90,7 @@ class AttachmentInput {
               (file.type.startsWith("image/") || imageExtension(file.name))
                 ? pastedName(file)
                 : file.name,
-            data: await base64(file),
+            data: await attachmentBase64(file),
           })),
         );
         if (this.destroyed) return;
