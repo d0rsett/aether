@@ -21,6 +21,7 @@ it("switches sections and applies editor preferences through the shared dialog",
     },
   });
   const setLineNumbers = vi.fn();
+  const setLanguage = vi.fn();
   const onClose = vi.fn();
   const setTypography = vi.fn();
   const setTheme = vi.fn();
@@ -33,7 +34,7 @@ it("switches sections and applies editor preferences through the shared dialog",
       theme="dark"
       setTheme={setTheme}
       locale="ru"
-      setLanguage={vi.fn()}
+      setLanguage={setLanguage}
       formatting={false}
       setFormatting={vi.fn()}
       lineNumbers={false}
@@ -44,6 +45,18 @@ it("switches sections and applies editor preferences through the shared dialog",
     />,
   );
   expect(screen.getByRole("dialog", { name: "Настройки" })).toBeTruthy();
+  const language = screen.getByRole("button", { name: /Язык интерфейса/ });
+  await userEvent.click(language);
+  const list = screen.getByRole("listbox");
+  fireEvent.keyDown(list, { key: "End" });
+  fireEvent.keyDown(list, { key: "Enter" });
+  expect(setLanguage).toHaveBeenCalledWith("en");
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(document.activeElement).toBe(language);
+  await userEvent.click(language);
+  fireEvent.keyDown(screen.getByRole("listbox"), { key: "Escape" });
+  expect(onClose).not.toHaveBeenCalled();
+  expect(screen.queryByRole("listbox")).toBeNull();
   await userEvent.click(screen.getByRole("button", { name: "Редактор" }));
   await userEvent.click(screen.getByRole("switch", { name: /Номера строк/ }));
   expect(setLineNumbers).toHaveBeenCalledWith(true);

@@ -2,6 +2,15 @@
 
 [Русский](CHANGELOG.ru.md) · [README](README.md)
 
+## 1.0.0 — 2026-11-07
+
+- Add portable JSON Canvas boards with text, note and media cards, connections and groups.
+- Edit shared note drafts on the board; convert text cards to Markdown notes and import dropped files.
+- Autosave boards with revision checks and recovery drafts. Update canvas file and group background references through journaled renames.
+- Add selection rectangles, snapping, clipboard operations, resizing and undo/redo.
+- Unify file menus and support per-vault custom file and folder icons.
+- Display default file/folder icons, adapt text selection to the palette, and use custom settings dropdowns.
+
 ## 0.4.0 — 2026-11-05
 
 - Add a settings window with editor typography, default note mode, and startup choices for the last note, a selected note, or recent files.

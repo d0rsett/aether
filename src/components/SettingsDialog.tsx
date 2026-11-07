@@ -1,6 +1,7 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import {
   Check,
+  ChevronDown,
   Globe,
   Palette,
   TextCursorInput,
@@ -27,6 +28,7 @@ import {
   type Shortcuts,
 } from "../workspace/shortcuts";
 import { t, useLocale, type Locale } from "../i18n";
+import { createPortal } from "react-dom";
 import { DialogSurface } from "./DialogSurface";
 import "../styles/settings.css";
 
@@ -74,22 +76,172 @@ function PreferenceSelect<T extends string>({
   options: readonly (readonly [T, string])[];
   onChange: (value: T) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const [position, setPosition] = useState({
+    left: 0,
+    top: 0,
+    width: 0,
+    height: 240,
+  });
+  const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const id = useId();
+  const selected = Math.max(
+    0,
+    options.findIndex(([key]) => key === value),
+  );
+  const close = () => {
+    setOpen(false);
+    trigger.current?.focus();
+  };
+  const show = () => {
+    const rect = trigger.current?.getBoundingClientRect();
+    if (!rect) return;
+    const below = innerHeight - rect.bottom - 12;
+    const above = rect.top - 12;
+    const height = Math.min(240, Math.max(below, above));
+    const upwards = below < 160 && above > below;
+    setPosition({
+      left: Math.max(8, rect.right - Math.min(320, Math.max(200, rect.width))),
+      top: upwards
+        ? Math.max(8, rect.top - Math.min(height, options.length * 36 + 8) - 4)
+        : rect.bottom + 4,
+      width: Math.min(320, Math.max(200, rect.width)),
+      height,
+    });
+    setActive(selected);
+    setOpen(true);
+  };
+  useEffect(() => {
+    if (!open) return;
+    list.current?.focus();
+    const outside = (event: PointerEvent) => {
+      if (
+        event.target instanceof Node &&
+        !root.current?.contains(event.target) &&
+        !list.current?.contains(event.target)
+      )
+        setOpen(false);
+    };
+    const dismiss = () => setOpen(false);
+    const scroll = (event: Event) => {
+      if (event.target instanceof Node && !list.current?.contains(event.target))
+        dismiss();
+    };
+    document.addEventListener("scroll", scroll, true);
+    document.addEventListener("pointerdown", outside);
+    window.addEventListener("resize", dismiss);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      window.removeEventListener("resize", dismiss);
+      document.removeEventListener("scroll", scroll, true);
+    };
+  }, [open]);
+  useEffect(() => {
+    if (open)
+      document
+        .getElementById(id + "-" + active)
+        ?.scrollIntoView?.({ block: "nearest" });
+  }, [active, open, id]);
   return (
-    <select
-      value={value}
-      onChange={(event) => {
-        const option = options.find(([key]) => key === event.target.value);
-        if (option) onChange(option[0]);
-      }}
-    >
-      {options.map(([key, label]) => (
-        <option key={key} value={key}>
-          {t(label)}
-        </option>
-      ))}
-    </select>
+    <div className="settings-select" ref={root}>
+      <button
+        ref={trigger}
+        type="button"
+        className="settings-select-trigger"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? id : undefined}
+        onClick={() => (open ? close() : show())}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            show();
+          }
+        }}
+      >
+        <span>{t(options[selected]?.[1] ?? value)}</span>
+        <ChevronDown size={15} />
+      </button>
+      {open &&
+        root.current &&
+        createPortal(
+          <div
+            ref={list}
+            id={id}
+            role="listbox"
+            aria-label={t(options[selected]?.[1] ?? value)}
+            onClick={(event) => event.preventDefault()}
+            tabIndex={-1}
+            className="settings-select-list"
+            aria-activedescendant={id + "-" + active}
+            style={{
+              left: position.left,
+              top: position.top,
+              width: position.width,
+              maxHeight: position.height,
+            }}
+            onKeyDown={(event) => {
+              event.stopPropagation();
+              if (event.key === "Tab") {
+                setOpen(false);
+                trigger.current?.focus();
+                return;
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                close();
+                return;
+              }
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onChange(options[active][0]);
+                close();
+                return;
+              }
+              if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+                event.preventDefault();
+                setActive((current) =>
+                  event.key === "Home"
+                    ? 0
+                    : event.key === "End"
+                      ? options.length - 1
+                      : (current +
+                          (event.key === "ArrowDown" ? 1 : -1) +
+                          options.length) %
+                        options.length,
+                );
+              }
+            }}
+          >
+            {options.map(([key, label], index) => (
+              <button
+                id={id + "-" + index}
+                key={key}
+                type="button"
+                role="option"
+                tabIndex={-1}
+                aria-selected={key === value}
+                data-active={active === index}
+                onPointerMove={() => setActive(index)}
+                onClick={() => {
+                  onChange(key);
+                  close();
+                }}
+              >
+                <span>{t(label)}</span>
+                {key === value && <Check size={14} />}
+              </button>
+            ))}
+          </div>,
+          root.current.closest("dialog") ?? document.body,
+        )}
+    </div>
   );
 }
+
 function Row({
   label,
   description,
@@ -236,15 +388,14 @@ export function SettingsDialog(props: Props) {
               label="Язык интерфейса"
               description="Язык меню, команд и диалогов приложения."
             >
-              <select
+              <PreferenceSelect
                 value={props.locale}
-                onChange={(event) =>
-                  props.setLanguage(event.target.value === "en" ? "en" : "ru")
-                }
-              >
-                <option value="ru">Русский</option>
-                <option value="en">English</option>
-              </select>
+                options={[
+                  ["ru", "Русский"],
+                  ["en", "English"],
+                ]}
+                onChange={props.setLanguage}
+              />
             </Row>
           )}
           {section === "appearance" && (

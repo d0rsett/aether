@@ -5,7 +5,7 @@
 [English](README.md) · [Документация](docs/README.ru.md) · [Участие в разработке](CONTRIBUTING.ru.md)
 
 [![Checks](https://img.shields.io/github/actions/workflow/status/d0rsett/aether/checks.yml?branch=main&label=checks&logo=githubactions&style=flat-square)](https://github.com/d0rsett/aether/actions/workflows/checks.yml)
-![Aether 0.4.0](https://img.shields.io/badge/Aether-0.4.0-83bfa6?style=flat-square)
+![Aether 1.0.0](https://img.shields.io/badge/Aether-1.0.0-83bfa6?style=flat-square)
 [![Tauri 2.12.5](https://img.shields.io/badge/Tauri-2.12.5-24C8D8?logo=tauri&logoColor=white&style=flat-square)](https://v2.tauri.app/)
 [![React 19.3.1](https://img.shields.io/badge/React-19.3.1-61DAFB?logo=react&logoColor=white&style=flat-square)](https://react.dev/)
 [![TypeScript 5.9.3](https://img.shields.io/badge/TypeScript-5.9.3-3178C6?logo=typescript&logoColor=white&style=flat-square)](https://www.typescriptlang.org/)
@@ -42,9 +42,9 @@
 
 ## Запуск и сборка
 
-[Скачать Aether 0.4.0 для Windows и macOS](https://github.com/d0rsett/aether/releases/tag/v0.4.0) · [История изменений](CHANGELOG.ru.md)
+[Скачать Aether 1.0.0 для Windows и macOS](https://github.com/d0rsett/aether/releases/tag/v1.0.0) · [История изменений](CHANGELOG.ru.md)
 
-Версия **0.4.0**, ранняя разработка. **Проверенная платформа — Windows**; сборки macOS доступны для проверки, Linux не проверен. Для Windows нужен Microsoft Edge WebView2 Runtime. Автообновление и подписанные релизы не настроены; целевые показатели производительности не измерены.
+Версия **1.0.0**. **Проверенная платформа — Windows**; сборки macOS доступны для проверки, Linux не проверен. Для Windows нужен Microsoft Edge WebView2 Runtime. Автообновление и подписанные релизы не настроены; целевые показатели производительности не измерены.
 
 Для разработки установите Node.js **22.12+** (CI использует 24), Rust **1.90+**, Visual Studio Build Tools с компонентами разработки классических приложений на C++ и Windows SDK.
 

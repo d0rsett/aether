@@ -503,3 +503,57 @@
   width: 28px;
   height: 28px;
 }
+
+.settings-select {
+  flex-shrink: 0;
+  max-width: 45%;
+}
+.settings-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--base);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+.settings-select-trigger span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.settings-select-trigger svg {
+  flex-shrink: 0;
+}
+.settings-select-list {
+  position: fixed;
+  z-index: 50;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 8px 24px #0003;
+}
+.settings-select-list [role="option"] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 4px;
+  text-align: left;
+}
+.settings-select-list [data-active="true"] {
+  background: var(--selected);
+}
+.settings-select-list [aria-selected="true"] {
+  color: var(--accent);
+}

@@ -20,6 +20,7 @@
   --subtle: #5f6a64;
   --accent: #a4bea2;
   --accent-text: #17231c;
+  --text-selection: color-mix(in srgb, var(--accent) 32%, transparent);
   --selected: #28362e;
   --danger: #e59d95;
   --mono: "Cascadia Code", "Consolas", monospace;
@@ -85,7 +86,7 @@ button {
     color 0.12s;
 }
 ::selection {
-  background: #6d8b6c55;
+  background: var(--text-selection);
 }
 ::-webkit-scrollbar {
   width: 13px;
@@ -1026,7 +1027,7 @@ h1 > span {
 }
 .cm-selectionBackground,
 .cm-focused .cm-selectionBackground {
-  background: #76947830 !important;
+  background: var(--text-selection) !important;
 }
 .cm-panels {
   background: var(--surface) !important;
@@ -2431,7 +2432,7 @@ mark {
   display: contents;
 }
 .pdf-sheet .textLayer ::selection {
-  background: #4c8aff66;
+  background: var(--text-selection);
   color: transparent;
 }
 .pdf-sheet .textLayer mark {

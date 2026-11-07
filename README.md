@@ -5,7 +5,7 @@
 [Русский](README.ru.md) · [Documentation](docs/README.md) · [Contributing](CONTRIBUTING.md)
 
 [![Checks](https://img.shields.io/github/actions/workflow/status/d0rsett/aether/checks.yml?branch=main&label=checks&logo=githubactions&style=flat-square)](https://github.com/d0rsett/aether/actions/workflows/checks.yml)
-![Aether 0.4.0](https://img.shields.io/badge/Aether-0.4.0-83bfa6?style=flat-square)
+![Aether 1.0.0](https://img.shields.io/badge/Aether-1.0.0-83bfa6?style=flat-square)
 [![Tauri 2.12.5](https://img.shields.io/badge/Tauri-2.12.5-24C8D8?logo=tauri&logoColor=white&style=flat-square)](https://v2.tauri.app/)
 [![React 19.3.1](https://img.shields.io/badge/React-19.3.1-61DAFB?logo=react&logoColor=white&style=flat-square)](https://react.dev/)
 [![TypeScript 5.9.3](https://img.shields.io/badge/TypeScript-5.9.3-3178C6?logo=typescript&logoColor=white&style=flat-square)](https://www.typescriptlang.org/)
@@ -42,9 +42,9 @@ Screenshots use synthetic notes and the actual English interface. The [Russian e
 
 ## Run and build
 
-[Download Aether 0.4.0 for Windows and macOS](https://github.com/d0rsett/aether/releases/tag/v0.4.0) · [Changelog](CHANGELOG.md)
+[Download Aether 1.0.0 for Windows and macOS](https://github.com/d0rsett/aether/releases/tag/v1.0.0) · [Changelog](CHANGELOG.md)
 
-Version **0.4.0**, early development. **Windows is the tested platform**; macOS builds are available for testing, and Linux remains unvalidated. Windows requires Microsoft Edge WebView2 Runtime. There is no configured automatic updater or signed release pipeline; performance targets have not been benchmarked.
+Version **1.0.0**. **Windows is the tested platform**; macOS builds are available for testing, and Linux remains unvalidated. Windows requires Microsoft Edge WebView2 Runtime. There is no configured automatic updater or signed release pipeline; performance targets have not been benchmarked.
 
 For development install Node.js **22.12+** (CI uses 24), Rust **1.90+**, Visual Studio Build Tools with Desktop development with C++, and the Windows SDK.
 
