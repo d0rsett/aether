@@ -580,6 +580,17 @@ export function MarkdownEditor({
       return;
     const scroller = view.scrollDOM;
     const measure = () => {
+      // Rich blocks must not inherit the width of the longest source line.
+      const contentStyle = getComputedStyle(view.contentDOM);
+      const gutters = scroller.querySelector<HTMLElement>(".cm-gutters");
+      const previewWidth = Math.max(
+        0,
+        scroller.clientWidth -
+          (gutters?.getBoundingClientRect().width ?? 0) -
+          (parseFloat(contentStyle.paddingLeft) || 0) -
+          (parseFloat(contentStyle.paddingRight) || 0),
+      );
+      scroller.style.setProperty("--editor-preview-width", `${previewWidth}px`);
       const overflow = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
       bar.hidden = overflow < 1;
       track.style.width = `${bar.clientWidth + overflow}px`;
@@ -606,6 +617,7 @@ export function MarkdownEditor({
     return () => {
       resize.disconnect();
       changes.disconnect();
+      scroller.style.removeProperty("--editor-preview-width");
       scroller.removeEventListener("scroll", fromEditor);
       bar.removeEventListener("scroll", fromBar);
     };

@@ -2,7 +2,12 @@
 
 [Русский](CHANGELOG.ru.md) · [README](README.md)
 
-## 1.0.0 — 2026-11-07
+## 1.0.1 - 2026-11-08
+
+- Keep Live Preview blocks within the visible editor width when line wrapping is disabled, instead of centering them relative to the longest source line.
+- Fix Windows note and attachment renames in iCloud folders by using native exclusive moves instead of hard links, preserving collision protection and journaled recovery.
+
+## 1.0.0 - 2026-11-07
 
 - Add portable JSON Canvas boards with text, note and media cards, connections and groups.
 - Edit shared note drafts on the board; convert text cards to Markdown notes and import dropped files.

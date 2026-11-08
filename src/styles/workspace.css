@@ -735,6 +735,9 @@
   flex: 1 0 auto;
   padding: 24px 36px 80px !important;
 }
+.app-shell .cm-content:not(.cm-lineWrapping) > .live-block-preview {
+  max-width: var(--editor-preview-width, 100%);
+}
 .app-shell .cm-scroller:has(.cm-content:not(.cm-lineWrapping)) .cm-gutters {
   min-width: 60px;
   padding-left: 24px;

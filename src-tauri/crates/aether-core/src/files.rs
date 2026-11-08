@@ -32,23 +32,58 @@ pub(crate) fn file_revision(path: &Path) -> Result<String> {
     Ok(format!("{:x}", hash.finalize()))
 }
 
+#[cfg(windows)]
+fn move_file_exclusive(source: &Path, target: &Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn MoveFileExW(source: *const u16, target: *const u16, flags: u32) -> i32;
+    }
+
+    let wide_path = |path: &Path| -> std::io::Result<Vec<u16>> {
+        let mut wide: Vec<u16> = path.as_os_str().encode_wide().collect();
+        if wide.contains(&0) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "File path contains a null character",
+            ));
+        }
+        wide.push(0);
+        Ok(wide)
+    };
+    let source = wide_path(source)?;
+    let target = wide_path(target)?;
+    // No REPLACE_EXISTING or COPY_ALLOWED: fail on collisions and cross-volume moves.
+    // Unlike hard links, native renames are supported by Windows cloud providers.
+    // SAFETY: Both buffers are valid, null-terminated UTF-16 for the whole call.
+    if unsafe { MoveFileExW(source.as_ptr(), target.as_ptr(), 0) } == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn move_file_exclusive(source: &Path, target: &Path) -> std::io::Result<()> {
+    fs::hard_link(source, target)?;
+    if let Err(error) = fs::remove_file(source) {
+        let _ = fs::remove_file(target);
+        return Err(error);
+    }
+    Ok(())
+}
+
 fn rename_file_exclusive(source: &Path, target: &Path) -> Result<()> {
     if source == target {
         return Ok(());
     }
-    // A hard link claims the destination without replacing any existing file.
-    fs::hard_link(source, target).map_err(|error| {
+    move_file_exclusive(source, target).map_err(|error| {
         if error.kind() == std::io::ErrorKind::AlreadyExists {
             Error::AlreadyExists
         } else {
             error.into()
         }
-    })?;
-    if let Err(error) = fs::remove_file(source) {
-        let _ = fs::remove_file(target);
-        return Err(error.into());
-    }
-    Ok(())
+    })
 }
 
 /// Same-directory staging + flush + OS replacement. Original survives any staging failure.
@@ -461,6 +496,32 @@ mod tests {
             "keep"
         );
         assert!(!vault.resolve("Проект/Другое", false)?.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn exclusive_move_preserves_collisions_and_moves_unicode_paths() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let source = dir.path().join("New note.md");
+        let target = dir.path().join("MOC - С++.md");
+        fs::write(&source, b"source")?;
+        fs::write(&target, b"existing")?;
+        // Exercise the primitive directly, bypassing the vault's preflight checks.
+        assert!(matches!(
+            rename_file_exclusive(&source, &target),
+            Err(Error::AlreadyExists)
+        ));
+        assert_eq!(fs::read(&source)?, b"source");
+        assert_eq!(fs::read(&target)?, b"existing");
+        fs::remove_file(&target)?;
+        fs::create_dir(&target)?;
+        assert!(rename_file_exclusive(&source, &target).is_err());
+        assert_eq!(fs::read(&source)?, b"source");
+        assert!(target.is_dir());
+        fs::remove_dir(&target)?;
+        rename_file_exclusive(&source, &target)?;
+        assert!(!source.exists());
+        assert_eq!(fs::read(&target)?, b"source");
         Ok(())
     }
 

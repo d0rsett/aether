@@ -33,6 +33,43 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
+it("sizes unwrapped previews from the viewport and clears the bound on wrapping", async () => {
+  const props = {
+    content: "A very long source line ".repeat(100),
+    onChange: vi.fn(),
+    onSave: vi.fn(),
+  };
+  const { container, rerender } = render(
+    <MarkdownEditor {...props} lineWrapping={false} />,
+  );
+  const scroller = container.querySelector<HTMLElement>(".cm-scroller")!;
+  const content = container.querySelector<HTMLElement>(".cm-content")!;
+  const gutters = container.querySelector<HTMLElement>(".cm-gutters")!;
+  Object.defineProperty(scroller, "clientWidth", {
+    configurable: true,
+    value: 800,
+  });
+  Object.defineProperty(scroller, "scrollWidth", { value: 12000 });
+  vi.spyOn(gutters, "getBoundingClientRect").mockReturnValue(
+    new DOMRect(0, 0, 60, 100),
+  );
+  content.style.padding = "24px 36px 80px";
+  content.append(document.createTextNode(""));
+  await waitFor(() =>
+    expect(scroller.style.getPropertyValue("--editor-preview-width")).toBe(
+      "668px",
+    ),
+  );
+  Object.defineProperty(scroller, "clientWidth", { value: 500 });
+  content.append(document.createTextNode(""));
+  await waitFor(() =>
+    expect(scroller.style.getPropertyValue("--editor-preview-width")).toBe(
+      "368px",
+    ),
+  );
+  rerender(<MarkdownEditor {...props} lineWrapping />);
+  expect(scroller.style.getPropertyValue("--editor-preview-width")).toBe("");
+});
 it("keeps repeated footnote widgets visible alongside Markdown link decorations", async () => {
   const content =
     "# Title\n\nRef[^one] and again[^one].\n\n[^one]: Definition\n";

@@ -16,6 +16,8 @@ Tabs keep current text, saved text and a revision. Save takes a snapshot; acknow
 
 ## Transactions and trash
 
+On Windows, exclusive note and attachment moves use `MoveFileExW` without replacement or cross-volume copying. This preserves collision protection without hard links, which cloud folders such as iCloud may reject. Other platforms retain the hard-link-based move. Cloud synchronization remains the provider's responsibility.
+
 Writes use temporary files and revision checks; creation does not overwrite existing targets. Rename/move builds a plan from actual vault files, maps supported wiki/Markdown/image/reference links, checks snapshots and writes a journal/backups under `.aether/` before applying. Normal UI applies directly; the explicit preview command exposes the same planning boundary. The backend accepts an operation token rather than arbitrary client-supplied replacement content.
 
 Directory transactions record tree inventory/file hashes, include assets and empty directories, remap descendant notes and tabs, and support the same Undo/recovery flow. Recovery validates current paths/contents before writing. Conflicts preserve the journal for explicit recovery rather than overwriting unrelated changes. Older note journals remain readable.
