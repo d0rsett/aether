@@ -42,6 +42,7 @@ export function fitGraphCamera(
   viewportWidth = 1000,
   viewportHeight = 700,
   padding = 80,
+  maximumZoom = 2,
 ): { x: number; y: number; zoom: number } {
   if (!nodes.length) return { x: 0, y: 0, zoom: 1 };
   const bounds = nodes.reduce(
@@ -61,7 +62,7 @@ export function fitGraphCamera(
     availableHeight = Math.max(1, viewportHeight - padding * 2),
     zoom = Math.max(
       0.02,
-      Math.min(2, availableWidth / width, availableHeight / height),
+      Math.min(maximumZoom, availableWidth / width, availableHeight / height),
     );
   return { x: -centerX * zoom, y: -centerY * zoom, zoom };
 }

@@ -1,3 +1,4 @@
+import { titleOf } from "../workspace/model";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import {
   memo,
@@ -47,6 +48,7 @@ import { paintGraph } from "../graph/canvas";
 export function KnowledgeGraph({
   vaultId,
   revision,
+  compact = false,
   active,
   onOpen,
   onOpenBackground,
@@ -54,6 +56,7 @@ export function KnowledgeGraph({
   indexRunning = false,
 }: {
   vaultId: string;
+  compact?: boolean;
   revision: number;
   active?: string;
   onOpen: (path: string) => void;
@@ -63,7 +66,8 @@ export function KnowledgeGraph({
   indexRunning?: boolean;
 }) {
   useLocale();
-  const [initial] = useState(() => readGraphView(vaultId));
+  const viewId = compact ? vaultId + ":local-sidebar" : vaultId;
+  const [initial] = useState(() => readGraphView(viewId));
   const [persistenceError, setPersistenceError] = useState("");
   const context = useContextMenu(setPersistenceError);
   const nodesRef = useRef<GraphNode[]>([]);
@@ -74,16 +78,22 @@ export function KnowledgeGraph({
   } | null>(null);
   const [error, setError] = useState("");
   const [query, setQuery] = useState(initial.query);
-  const [local, setLocal] = useState(initial.local);
+  const [local, setLocal] = useState(compact || initial.local);
   const [depth, setDepth] = useState(initial.depth);
   const [orphans, setOrphans] = useState(initial.orphans);
   const [labels, setLabels] = useState(initial.labels);
   const [size, setSize] = useState(initial.size);
   const [thickness, setThickness] = useState(initial.thickness);
   const [forces, setForces] = useState(initial.forces);
-  const [settings, setSettings] = useState(initial.settings);
+  const [settings, setSettings] = useState(!compact && initial.settings);
   const [camera, setCamera] = useState(initial.camera);
   const [root, setRoot] = useState(initial.root);
+  useEffect(() => {
+    if (compact) {
+      setLocal(true);
+      setRoot(active ?? null);
+    }
+  }, [compact, active]);
   const [hover, setHover] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
   const [, redraw] = useState(0);
@@ -236,7 +246,7 @@ export function KnowledgeGraph({
     const save = () => {
       if (!loaded.current || !dirty.current) return;
       try {
-        writeGraphView(vaultId, {
+        writeGraphView(viewId, {
           ...stateRef.current,
           positions: nodesRef.current.map((n) => [
             n.path,
@@ -281,6 +291,7 @@ export function KnowledgeGraph({
     [data, query, local, root, active, depth, orphans],
   );
   const canvasMode = visible.nodes.length > 300;
+  const alwaysVisibleLabels = compact && visible.nodes.length <= 50;
   const isVisibleRef = useRef(isVisible);
   isVisibleRef.current = isVisible;
   const canvasStateRef = useRef({
@@ -294,6 +305,7 @@ export function KnowledgeGraph({
     size,
     thickness,
     canvasMode,
+    alwaysVisibleLabels,
   });
   const positions = useMemo(
     () => new Map(visible.nodes.map((n) => [n.path, n])),
@@ -321,8 +333,19 @@ export function KnowledgeGraph({
             degree,
             size,
             viewportScale * camera.zoom,
+            undefined,
+            alwaysVisibleLabels,
           ),
-    [canvasMode, labels, visible, degree, size, viewportScale, camera.zoom],
+    [
+      canvasMode,
+      labels,
+      visible,
+      degree,
+      size,
+      viewportScale,
+      camera.zoom,
+      alwaysVisibleLabels,
+    ],
   );
   const inView = (n: GraphNode) =>
     Math.abs(n.x * camera.zoom + camera.x) < 600 &&
@@ -351,6 +374,7 @@ export function KnowledgeGraph({
     size,
     thickness,
     canvasMode,
+    alwaysVisibleLabels,
   };
   const drawCanvas = useCallback(() => {
     if (
@@ -510,7 +534,16 @@ export function KnowledgeGraph({
     return () => node.removeEventListener("wheel", wheel);
   }, []);
   const fit = () => {
-    if (visible.nodes.length) setCamera(fitGraphCamera(visible.nodes));
+    if (visible.nodes.length)
+      setCamera(
+        fitGraphCamera(
+          visible.nodes,
+          1000,
+          700,
+          compact ? 160 : 80,
+          compact ? 5 : 2,
+        ),
+      );
   };
   const focusedLocalPath = useRef<string | null>(null);
   useEffect(() => {
@@ -519,12 +552,16 @@ export function KnowledgeGraph({
       focusedLocalPath.current = null;
       return;
     }
+    if (compact) {
+      setCamera(fitGraphCamera(visible.nodes, 1000, 700, 160, 5));
+      return;
+    }
     if (focusedLocalPath.current === focusPath) return;
     const node = nodesRef.current.find((n) => n.path === focusPath);
     if (!node) return;
     focusedLocalPath.current = focusPath;
     setCamera((c) => ({ ...c, x: -node.x * c.zoom, y: -node.y * c.zoom }));
-  }, [local, root, active, data]);
+  }, [local, root, active, data, compact, depth]);
   const rebuildLayout = () => {
     if (!data) return;
     const layout = initialGraphLayout(data.nodes, data.edges),
@@ -559,18 +596,45 @@ export function KnowledgeGraph({
     rebuildLayout();
   };
   return (
-    <section className="knowledge-graph" aria-label={t("Граф связей")}>
-      <div className="graph-stage">
-        <div className="graph-header-actions">
-          <button
-            className="icon-button"
-            aria-label={t("Настройки графа")}
-            aria-expanded={settings}
-            onClick={() => setSettings((s) => !s)}
-          >
-            <Settings2 size={17} />
-          </button>
+    <section
+      className={
+        compact ? "knowledge-graph local-sidebar-graph" : "knowledge-graph"
+      }
+      aria-label={t("Граф связей")}
+    >
+      {compact && (
+        <div className="local-graph-context">
+          <span className="local-graph-note" data-tooltip={active}>
+            {active ? titleOf(active) : t("Локальный граф")}
+          </span>
+          <div role="group" aria-label={t("Глубина")}>
+            {[1, 2, 3].map((value) => (
+              <button
+                className="icon-button"
+                key={value}
+                aria-label={`${t("Глубина")} ${value}`}
+                aria-pressed={depth === value}
+                onClick={() => setDepth(value)}
+              >
+                {value}
+              </button>
+            ))}
+          </div>
         </div>
+      )}
+      <div className="graph-stage">
+        {!compact && (
+          <div className="graph-header-actions">
+            <button
+              className="icon-button"
+              aria-label={t("Настройки графа")}
+              aria-expanded={settings}
+              onClick={() => setSettings((s) => !s)}
+            >
+              <Settings2 size={17} />
+            </button>
+          </div>
+        )}
         {canvasMode && (
           <canvas ref={canvas} className="graph-canvas" aria-hidden="true" />
         )}
@@ -777,7 +841,9 @@ export function KnowledgeGraph({
                       y={shownLabels.get(n.path)?.y}
                       textAnchor="middle"
                       style={{
-                        opacity: graphLabelOpacity(viewportScale * camera.zoom),
+                        opacity: alwaysVisibleLabels
+                          ? 1
+                          : graphLabelOpacity(viewportScale * camera.zoom),
                         fontSize: `${11 / (viewportScale * camera.zoom)}px`,
                         strokeWidth: 3 / (viewportScale * camera.zoom),
                       }}
@@ -815,7 +881,7 @@ export function KnowledgeGraph({
             )}
           </div>
         )}
-        {settings && (
+        {!compact && settings && (
           <aside className="graph-settings" aria-label={t("Настройки графа")}>
             <div className="graph-settings-heading">
               <Settings2 size={15} />

@@ -177,8 +177,8 @@ it("applies property commands in reading mode and reports stale header conflicts
 });
 it("completes YAML aliases as canonical links and preserves closing brackets and undo", async () => {
   const suggestions = vi.spyOn(api, "linkSuggestions").mockResolvedValue([
-    { path: "Notes/Topic.md", alias: "ИИ" },
-    { path: "Other.md", alias: "ИИ" },
+    { path: "Notes/Topic.md", alias: "ИИ", title: "Topic" },
+    { path: "Other.md", alias: "ИИ", title: "Other" },
   ]);
   try {
     render(

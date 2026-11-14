@@ -1,3 +1,4 @@
+import { parseGroupLayout, type GroupLayout } from "./groups";
 import type { Workspace } from "./model";
 import { dirty } from "./model";
 
@@ -9,6 +10,7 @@ interface StoredWorkspace {
   paths: string[];
   active: string | null;
   drafts: Record<string, Draft>;
+  groups?: GroupLayout;
 }
 const key = (id: string) => `aether.workspace.v1:${id}`;
 
@@ -42,6 +44,14 @@ export function readWorkspace(id: string): StoredWorkspace {
       paths: parsed.paths.filter((p): p is string => typeof p === "string"),
       active: typeof record.active === "string" ? record.active : null,
       drafts,
+      groups:
+        parseGroupLayout(record.groups) ??
+        ("groups" in record
+          ? undefined
+          : readLegacyGroups(
+              id,
+              parsed.paths.filter((p): p is string => typeof p === "string"),
+            )),
     };
   } catch {
     return empty;
@@ -60,6 +70,42 @@ export function writeWorkspace(id: string, state: Workspace): void {
       paths: state.tabs.map((t) => t.path),
       active: state.active,
       drafts,
+      groups: state.groups ?? null,
     }),
   );
+}
+
+function readLegacyGroups(
+  id: string,
+  paths: string[],
+): GroupLayout | undefined {
+  try {
+    const value: unknown = JSON.parse(
+      localStorage.getItem("aether.split.v1:" + id) ?? "null",
+    );
+    if (
+      !value ||
+      typeof value !== "object" ||
+      !("primary" in value) ||
+      !("secondary" in value) ||
+      !("ratio" in value) ||
+      typeof value.primary !== "string" ||
+      typeof value.secondary !== "string" ||
+      !paths.includes(value.primary) ||
+      !paths.includes(value.secondary) ||
+      value.primary === value.secondary
+    )
+      return;
+    return parseGroupLayout({
+      primary: {
+        tabs: paths.filter((path) => path !== value.secondary),
+        active: value.primary,
+      },
+      secondary: { tabs: [value.secondary], active: value.secondary },
+      focused: "primary",
+      ratio: value.ratio,
+    });
+  } catch {
+    return;
+  }
 }

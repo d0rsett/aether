@@ -15,6 +15,11 @@ export interface Note {
   content: string;
   revision: string;
 }
+export interface NoteSuggestion {
+  path: string;
+  alias: string | null;
+  title: string;
+}
 export interface AppError {
   code: string;
   message?: string;
@@ -106,6 +111,13 @@ export interface WikiLink {
   anchor: string | null;
   embedded: boolean;
   line: number;
+}
+export interface LinkIssue {
+  source: string;
+  target: string;
+  line: number;
+  kind: "missing" | "ambiguous" | "attachment";
+  candidates: string[];
 }
 export interface Inspection {
   metadata: {
@@ -332,19 +344,20 @@ export const api = {
     ),
   indexStatus: (vaultId: string) =>
     invoke<IndexStatus>("index_status", { vaultId }),
+  linkIssues: (vaultId: string, offset = 0) =>
+    invoke<{ items: LinkIssue[]; hasMore: boolean }>("link_issues", {
+      vaultId,
+      offset,
+    }),
   inspect: (vaultId: string, path: string) =>
     invoke<Inspection>("inspect_note", { vaultId, path }),
   search: (vaultId: string, query: SearchQuery) =>
     invoke<SearchPage>("search_notes", { vaultId, query }),
-  linkSuggestions: (vaultId: string, text: string) =>
-    invoke<
-      {
-        path: string;
-        alias: string | null;
-      }[]
-    >("link_suggestions", {
+  linkSuggestions: (vaultId: string, text: string, titlesOnly = false) =>
+    invoke<NoteSuggestion[]>("link_suggestions", {
       vaultId,
       text,
+      titlesOnly,
     }),
   resolve: (vaultId: string, source: string, target: string) =>
     invoke<Resolution>("resolve_link", { vaultId, source, target }),

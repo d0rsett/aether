@@ -127,9 +127,11 @@ export function layoutGraphLabels(
   size: number,
   scale: number,
   measure: MeasureText = measureGraphText,
+  alwaysVisible = false,
 ): Map<string, GraphLabel> {
   const result = new Map<string, GraphLabel>();
-  if (!graphLabelOpacity(scale)) return result;
+  if (!alwaysVisible && !graphLabelOpacity(scale)) return result;
+  if (!Number.isFinite(scale) || scale <= 0) return result;
   const fontScale = 1 / scale;
   for (const node of nodes) {
     const prepared = prepareTitle(node.title || node.path, measure);

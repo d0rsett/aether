@@ -682,3 +682,31 @@ it("autosaves canvases while leaving note drafts alone and stops retrying a conf
     vi.useRealTimers();
   }
 });
+
+it("captures a thought into a new inbox note without activating or saving the editor draft", async () => {
+  const { result } = renderHook(() => useWorkspace(ask));
+  await waitFor(() => expect(result.current.vault?.id).toBe(vault.id));
+  await act(async () => result.current.open(note.path));
+  act(() =>
+    result.current.dispatch({
+      type: "edit",
+      path: note.path,
+      content: "Unsaved editor",
+    }),
+  );
+  vi.mocked(api.mkdir).mockResolvedValue(undefined);
+  vi.mocked(api.create).mockImplementation(async (_vault, path, content) => ({
+    path,
+    content: content ?? "",
+    revision: "new",
+  }));
+  let path: string | undefined;
+  await act(async () => {
+    path = await result.current.capture("Thought");
+  });
+  expect(path).toMatch(/^Входящие\/.+\.md$/);
+  expect(api.create).toHaveBeenCalledWith(vault.id, path, "Thought");
+  expect(api.save).not.toHaveBeenCalled();
+  expect(result.current.active?.path).toBe(note.path);
+  expect(result.current.active?.content).toBe("Unsaved editor");
+});

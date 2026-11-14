@@ -308,3 +308,53 @@
   color: var(--accent);
   background: var(--selected);
 }
+
+.note-picker-list {
+  max-height: min(42vh, 340px);
+  overflow-y: auto;
+}
+
+.note-picker-list button[role="option"] {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+}
+
+.note-picker-list button[aria-selected="true"] {
+  background: var(--selected);
+  box-shadow: inset 2px 0 var(--accent);
+}
+
+.note-picker-list strong,
+.note-picker-list small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-picker-list strong {
+  font-weight: 500;
+}
+
+.note-picker-list small,
+.note-picker-caption,
+.note-picker-keys {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.note-picker-caption {
+  margin: 0 0 8px;
+}
+
+.note-picker-keys,
+.note-picker-keys kbd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.note-picker-keys {
+  margin-top: 12px;
+}

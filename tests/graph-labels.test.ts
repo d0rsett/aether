@@ -76,3 +76,13 @@ it("never drops a caption because its title is blank or another caption occupies
   expect(labels.size).toBe(3);
   expect(labels.get("B")?.lines).toEqual(["B"]);
 });
+
+it("keeps sparse sidebar captions readable at a small viewport scale", () => {
+  const nodes = [node("A.md", 0, 0, "A"), node("B.md", 100, 100, "B")];
+  const scale = 0.5;
+  expect(layoutGraphLabels(nodes, new Map(), 1, scale, measure).size).toBe(0);
+  const labels = layoutGraphLabels(nodes, new Map(), 1, scale, measure, true);
+  expect(labels.size).toBe(2);
+  expect(labels.get("A.md")!.fontScale * scale).toBeCloseTo(1);
+  expect(layoutGraphLabels(nodes, new Map(), 1, 0, measure, true).size).toBe(0);
+});

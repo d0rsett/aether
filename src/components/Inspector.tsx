@@ -11,6 +11,7 @@ export function Inspector({
   app,
   inspection,
   knowledgeError,
+  showHeader = true,
 }: {
   app: Pick<
     Controller,
@@ -18,15 +19,18 @@ export function Inspector({
   >;
   inspection: Inspection | null;
   knowledgeError: string;
+  showHeader?: boolean;
 }) {
   useLocale();
   const context = useContextMenu(app.setError);
   return (
     <aside className="inspector">
-      <div className="inspector-header">
-        <Link2 size={15} />
-        <span>{t("Связи")}</span>
-      </div>
+      {showHeader && (
+        <div className="inspector-header">
+          <Link2 size={15} />
+          <span>{t("Связи")}</span>
+        </div>
+      )}
       <div className="inspector-content">
         {app.active ? (
           <>

@@ -220,12 +220,39 @@ async fn link_suggestions(
     state: State<'_, AppState>,
     vault_id: String,
     text: String,
+    titles_only: Option<bool>,
 ) -> Result<Vec<LinkSuggestion>> {
     with_index(state.inner().clone(), vault_id, move |index| {
-        index.link_suggestions(&text)
+        if titles_only.unwrap_or(false) {
+            index.suggest_notes(&text, true)
+        } else {
+            index.link_suggestions(&text)
+        }
     })
     .await
 }
+#[tauri::command]
+async fn link_issues(
+    state: State<'_, AppState>,
+    vault_id: String,
+    offset: usize,
+) -> Result<aether_core::indexing::LinkIssues> {
+    let state = state.inner().clone();
+    blocking(move || {
+        let guard = state.vault.lock().map_err(|_| Error::NoVault)?;
+        let session = guard.as_ref().ok_or(Error::NoVault)?;
+        if session.vault.info().id != vault_id {
+            return Err(Error::NoVault);
+        }
+        let index = session
+            .index
+            .as_ref()
+            .ok_or_else(|| Error::Index("Дождитесь завершения индексации.".into()))?;
+        index.link_issues(&session.vault, offset.min(1_000_000))
+    })
+    .await
+}
+
 #[tauri::command]
 async fn graph_snapshot(state: State<'_, AppState>, vault_id: String) -> Result<GraphSnapshot> {
     with_index(state.inner().clone(), vault_id, |index| index.graph()).await
@@ -1167,6 +1194,7 @@ pub fn run() {
             link_suggestions,
             inspect_note,
             graph_snapshot,
+            link_issues,
             resolve_link,
             index_status
         ])

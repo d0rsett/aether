@@ -84,6 +84,10 @@ it("fits the camera to the graph bounding box and centers it", () => {
   expect(camera.zoom).toBeCloseTo(2);
   expect(camera.x).toBeCloseTo(-200);
   expect(camera.y).toBeCloseTo(-100);
+  const sidebar = fitGraphCamera([list[0]], 1000, 700, 160, 5);
+  expect(sidebar.zoom).toBeGreaterThan(2);
+  expect(sidebar.x / sidebar.zoom).toBeCloseTo(100);
+  expect(sidebar.y / sidebar.zoom).toBeCloseTo(50);
   expect(fitGraphCamera([])).toEqual({ x: 0, y: 0, zoom: 1 });
   expect(
     fitGraphCamera([{ path: "A.md", title: "A", x: 100, y: 40, vx: 0, vy: 0 }]),

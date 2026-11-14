@@ -1,3 +1,10 @@
+import {
+  reduceGroups,
+  reconcileGroups,
+  type GroupLayout,
+  type GroupAction,
+  type GroupId,
+} from "./groups";
 import type { Note } from "../services/api";
 
 export interface Tab extends Note {
@@ -7,9 +14,12 @@ export interface Tab extends Note {
 export interface Workspace {
   tabs: Tab[];
   active: string | null;
+  groups?: GroupLayout;
+  lastGroup?: GroupId;
 }
 export type Action =
-  | { type: "open"; note: Note; background?: boolean }
+  | GroupAction
+  | { type: "open"; note: Note; background?: boolean; group?: GroupId }
   | { type: "openImage"; path: string }
   | { type: "relocateImage"; path: string; destination: string }
   | { type: "activate"; path: string }
@@ -33,12 +43,36 @@ export const titleOf = (path: string): string =>
 
 export function workspaceReducer(state: Workspace, action: Action): Workspace {
   switch (action.type) {
+    case "moveToGroup":
+    case "openBeside":
+    case "closeGroupTab":
+    case "activateGroupTab":
+    case "focusGroup":
+    case "resizeGroups":
+    case "mergeGroups":
+    case "restoreGroups":
+    case "closeGroupGraph":
+    case "registerGroupGraph":
+      return reduceGroups(state, action);
+    default: {
+      const next = reduceWorkspace(state, action);
+      return action.type === "reset"
+        ? next
+        : reconcileGroups(state, next, action);
+    }
+  }
+}
+function reduceWorkspace(
+  state: Workspace,
+  action: Exclude<Action, GroupAction>,
+): Workspace {
+  switch (action.type) {
     case "showRecent":
       return { ...state, active: null };
     case "openInTab": {
       const previous = state.tabs.find((tab) => tab.path === action.previous);
       if (!previous || dirty(previous) || previous.path === action.note.path)
-        return workspaceReducer(state, { type: "open", note: action.note });
+        return reduceWorkspace(state, { type: "open", note: action.note });
       if (state.tabs.some((tab) => tab.path === action.note.path))
         return {
           tabs: state.tabs.filter((tab) => tab !== previous),

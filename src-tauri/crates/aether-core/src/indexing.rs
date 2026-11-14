@@ -41,6 +41,7 @@ pub struct SearchHit {
 pub struct LinkSuggestion {
     pub path: String,
     pub alias: Option<String>,
+    pub title: String,
 }
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -77,6 +78,22 @@ pub struct GraphNode {
 pub struct GraphSnapshot {
     pub nodes: Vec<GraphNode>,
     pub edges: Vec<(String, String)>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LinkIssue {
+    pub source: String,
+    pub target: String,
+    pub line: i64,
+    pub kind: String,
+    pub candidates: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkIssues {
+    pub items: Vec<LinkIssue>,
+    pub has_more: bool,
 }
 
 pub struct Index {
@@ -370,17 +387,56 @@ impl Index {
     }
 
     pub fn link_suggestions(&self, text: &str) -> Result<Vec<LinkSuggestion>> {
+        self.suggest_notes(text, false)
+    }
+
+    pub fn suggest_notes(&self, text: &str, titles_only: bool) -> Result<Vec<LinkSuggestion>> {
         let db = self.connection()?;
         let query: String = text.trim().to_lowercase().chars().take(256).collect();
-        let mut statement = db.prepare("SELECT path,NULL AS alias,CASE WHEN path_key=?2 OR stem_key=?2 THEN 0 ELSE 2 END AS rank FROM notes WHERE instr(path_key,?2)>0 UNION ALL SELECT path,alias,CASE WHEN alias_key=?1 THEN 1 ELSE 3 END AS rank FROM aliases WHERE ?1<>'' AND instr(alias_key,?1)>0 ORDER BY rank,path,alias LIMIT 100")?;
+        let mut statement = db.prepare(
+            "SELECT path,NULL AS alias,title,CASE WHEN path_key=?2 OR stem_key=?2 THEN 0 ELSE 2 END AS rank
+             FROM notes WHERE instr(path_key,?2)>0
+             UNION ALL
+             SELECT aliases.path,alias,title,CASE WHEN alias_key=?1 THEN 1 ELSE 3 END
+             FROM aliases JOIN notes ON notes.path=aliases.path
+             WHERE ?1<>'' AND instr(alias_key,?1)>0
+             ORDER BY rank,path,alias LIMIT 100",
+        )?;
         let mut suggestions = statement
             .query_map(params![query, links::key(&query)], |row| {
                 Ok(LinkSuggestion {
                     path: row.get(0)?,
                     alias: row.get(1)?,
+                    title: row.get(2)?,
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
+        if titles_only {
+            let terms = search_terms(&query);
+            if !terms.is_empty() && suggestions.len() < 100 {
+                let mut titles = db.prepare(
+                    "SELECT notes.path,notes.title FROM notes_fts JOIN notes ON notes.id=notes_fts.rowid
+                     WHERE notes_fts MATCH ?1 ORDER BY bm25(notes_fts),notes.path LIMIT 100",
+                )?;
+                let hits = titles.query_map([format!("title : ({terms})")], |row| {
+                    Ok(LinkSuggestion {
+                        path: row.get(0)?,
+                        title: row.get(1)?,
+                        alias: None,
+                    })
+                })?;
+                for hit in hits {
+                    let hit = hit?;
+                    if !suggestions.iter().any(|item| item.path == hit.path) {
+                        suggestions.push(hit);
+                    }
+                    if suggestions.len() == 100 {
+                        break;
+                    }
+                }
+            }
+            return Ok(suggestions);
+        }
         // Preserve existing title/body search matches alongside filename and
         // alias matches, including names containing punctuation that FTS splits.
         for hit in self
@@ -400,10 +456,115 @@ impl Index {
                 suggestions.push(LinkSuggestion {
                     path: hit.path,
                     alias: None,
+                    title: hit.title,
                 });
             }
         }
         Ok(suggestions)
+    }
+
+    pub fn link_issues(&self, vault: &Vault, offset: usize) -> Result<LinkIssues> {
+        let db = self.connection()?;
+        let paths = db
+            .prepare("SELECT path FROM notes ORDER BY path")?
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        let mut rows = Vec::new();
+        for source in paths {
+            let content = vault.read_note(&source)?.content;
+            let parsed = markdown::parse(&content);
+            for link in &parsed.links {
+                rows.push((source.clone(), link.target.clone(), link.line as i64, true));
+            }
+            let prepared = crate::obsidian::prepare(&content);
+            for (event, range) in
+                pulldown_cmark::Parser::new(&prepared[parsed.body_offset..]).into_offset_iter()
+            {
+                match event {
+                    pulldown_cmark::Event::Start(pulldown_cmark::Tag::Link {
+                        dest_url, ..
+                    })
+                    | pulldown_cmark::Event::Start(pulldown_cmark::Tag::Image {
+                        dest_url, ..
+                    }) => {
+                        let target = dest_url.to_string();
+                        let line = prepared[..parsed.body_offset + range.start]
+                            .bytes()
+                            .filter(|byte| *byte == b'\n')
+                            .count() as i64
+                            + 1;
+                        rows.push((source.clone(), target, line, false));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        rows.sort_by(|a, b| (&a.0, a.2, &a.1).cmp(&(&b.0, b.2, &b.1)));
+        let mut items = Vec::new();
+        let mut skipped = 0;
+        for (source, raw_target, line, wiki) in rows {
+            let target = if wiki {
+                raw_target
+            } else {
+                let path = raw_target.split('#').next().unwrap_or("");
+                if path.is_empty() || path.contains(':') {
+                    continue;
+                }
+                match crate::attachments::relative_target(&source, path) {
+                    Ok(target) => target,
+                    Err(_) => raw_target,
+                }
+            };
+            if target.starts_with("http:")
+                || target.starts_with("https:")
+                || target.starts_with("mailto:")
+            {
+                continue;
+            }
+            let resolution = links::resolve(&db, &source, &target)?;
+            if resolution.path.is_some() {
+                continue;
+            }
+            let raw = target.split('#').next().unwrap_or(&target);
+            let extension = Path::new(raw)
+                .extension()
+                .and_then(|value| value.to_str())
+                .unwrap_or("");
+            let attachment = !extension.is_empty()
+                && !["md", "markdown"].contains(&extension.to_ascii_lowercase().as_str());
+            if attachment && crate::attachments::resolve(vault, &source, &target, true).is_ok() {
+                continue;
+            }
+            if skipped < offset {
+                skipped += 1;
+                continue;
+            }
+            items.push(LinkIssue {
+                source,
+                target,
+                line,
+                kind: if attachment {
+                    "attachment"
+                } else if resolution.status == "ambiguous" {
+                    "ambiguous"
+                } else {
+                    "missing"
+                }
+                .into(),
+                candidates: resolution.candidates,
+            });
+            if items.len() > 100 {
+                items.pop();
+                return Ok(LinkIssues {
+                    items,
+                    has_more: true,
+                });
+            }
+        }
+        Ok(LinkIssues {
+            items,
+            has_more: false,
+        })
     }
 
     pub fn graph(&self) -> Result<GraphSnapshot> {
@@ -458,22 +619,7 @@ impl Index {
 
     pub fn search(&self, query: &SearchQuery) -> Result<SearchPage> {
         let db = self.connection()?;
-        let terms = query
-            .text
-            .split_whitespace()
-            .filter(|term| term.chars().any(char::is_alphanumeric))
-            .take(20)
-            .map(|term| {
-                format!(
-                    "\"{}\"*",
-                    term.chars()
-                        .take(256)
-                        .collect::<String>()
-                        .replace('"', "\"\"")
-                )
-            })
-            .collect::<Vec<_>>()
-            .join(" AND ");
+        let terms = search_terms(&query.text);
         let path = format!(
             "{}%",
             links::key(&query.path.replace('\\', "/"))
@@ -513,6 +659,23 @@ impl Index {
     }
 }
 
+fn search_terms(text: &str) -> String {
+    text.split_whitespace()
+        .filter(|term| term.chars().any(char::is_alphanumeric))
+        .take(20)
+        .map(|term| {
+            format!(
+                "\"{}\"*",
+                term.chars()
+                    .take(256)
+                    .collect::<String>()
+                    .replace('"', "\"\"")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" AND ")
+}
+
 pub fn cache_name(root: &str) -> String {
     format!("v1-{}.sqlite", revision(root.as_bytes()))
 }
@@ -520,6 +683,38 @@ pub fn cache_name(root: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn issues_include_missing_and_ambiguous_notes_and_broken_attachments() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let root = temp.path().join("vault");
+        std::fs::create_dir_all(root.join("A"))?;
+        std::fs::create_dir_all(root.join("B"))?;
+        let vault = Vault::open(&root)?;
+        vault.create_note("A/Same.md", "")?;
+        vault.create_note("B/Same.md", "")?;
+        vault.create_note(
+            "Main.md",
+            "[[Missing]] [[Same]] ![[lost.png]]\n[broken](absent.pdf)\n![good](image.png)",
+        )?;
+        std::fs::write(root.join("image.png"), b"image")?;
+        let index = Index::open(&temp.path().join("index.sqlite"))?;
+        index.scan(&vault, &AtomicBool::new(false), &|| {})?;
+        let result = index.link_issues(&vault, 0)?;
+        assert_eq!(result.items.len(), 4);
+        assert!(result
+            .items
+            .iter()
+            .any(|item| item.target == "Missing" && item.kind == "missing"));
+        assert!(result.items.iter().any(|item| item.target == "Same"
+            && item.kind == "ambiguous"
+            && item.candidates.len() == 2));
+        assert!(result
+            .items
+            .iter()
+            .any(|item| item.target == "absent.pdf" && item.kind == "attachment"));
+        Ok(())
+    }
+
     #[test]
     fn aliases_resolve_complete_refresh_backlinks_and_migrate_without_writing_notes() -> Result<()>
     {
@@ -611,6 +806,29 @@ mod tests {
             .link_suggestions("ИИ")?
             .iter()
             .all(|item| item.alias.is_none()));
+        Ok(())
+    }
+
+    #[test]
+    fn quick_open_finds_titles_and_aliases_without_matching_body_text() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let vault = Vault::open(temp.path())?;
+        vault.create_note(
+            "Roadmap.md",
+            "---\naliases: [План]\n---\n# Новый проект\nСодержимое\n",
+        )?;
+        vault.create_note("Other.md", "# Другое\nНовый проект\n")?;
+        let index = Index::open(&temp.path().join("quick-open.sqlite"))?;
+        index.scan(&vault, &AtomicBool::new(false), &|| {})?;
+        let titles = index.suggest_notes("НОВ ПРО", true)?;
+        assert_eq!(titles.len(), 1);
+        assert_eq!(titles[0].title, "Новый проект");
+        assert_eq!(
+            index.suggest_notes("пла", true)?[0].alias.as_deref(),
+            Some("План")
+        );
+        assert_eq!(index.suggest_notes("Roadmap", true)?[0].path, "Roadmap.md");
+        assert!(index.suggest_notes("Содержимое", true)?.is_empty());
         Ok(())
     }
     #[test]

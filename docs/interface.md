@@ -79,3 +79,15 @@ Reorder note and image tabs by dragging or by pressing Alt+Shift+Left/Right on a
 The graph tab participates in the shared tab order. Drag it, move it with Alt+Shift+Left/Right, or close it through its context menu or Ctrl+W. Its position restores separately for each vault.
 
 Editor settings set the default mode for new tabs. Workspace settings select the startup note, recent files, link opening behavior, and the tab overflow menu. Opening a link in the current tab keeps tabs with unsaved drafts open. Attachment settings choose a folder inside the vault and Wiki or Markdown links, with an option to use Obsidian settings. Keyboard shortcuts can be reassigned for application and editor commands, checked for conflicts, and reset individually.
+
+## Experimental workspace tools
+
+Drag a tab onto the left or right half of the editor to create two independent tab groups. The highlighted half shows where the tab will go. Each group has its own tab strip, selected file and reading mode. Drop a tab into the other strip to transfer it, or between tabs to choose its position. New notes open in the focused group. Closing or moving its last tab removes the empty group. The separator resizes with the mouse or arrow keys; Merge panes keeps every open buffer. Group membership, tab order, selected files, focus and width restore with the vault session. Note, image, canvas and graph tabs can be moved between groups.
+
+**Open in second pane** in a note tab’s context menu shows the same note beside the original. Both editors share the draft and undo history, with separate cursors, scrolling, and modes. Closing one view keeps the draft in the other.
+
+Press Ctrl+P (Command+P on macOS) for **Quick open**. Search by note title, filename, or alias, or pick a recent note. Arrow keys and Enter open the result in the focused pane. The command palette defaults to Ctrl+Shift+P or Command+Shift+P. Select plain text and use Ctrl+K or Command+K to choose a note and turn the phrase into a wiki link.
+
+Quick capture opens from the left activity rail, command palette, or its configurable shortcut. The default is Ctrl+Shift+C (Command+Shift+C on macOS). The draft persists locally, and Save creates a unique Markdown note in the vault's `Входящие` folder without changing the active editor.
+
+The right sidebar can show a local graph rooted at the focused note. Its settings are stored separately from graph tabs. A depth selector controls the number of hops; small local graphs show captions immediately. Note relations remain below the graph. The unresolved-links view lists missing notes, ambiguous wiki links and missing attachments from saved files. Open a source at its link line, open a candidate, or create a missing note through the existing link workflow.

@@ -4,6 +4,7 @@ import {
   BookOpen,
   Check,
   ChevronDown,
+  Columns2,
   Code2,
   FileText,
   Image as ImageIcon,
@@ -27,7 +28,26 @@ export function WorkspaceTabs({
   onActivateNote,
   showTabList = false,
   closeShortcut = "Ctrl W",
+  split,
+  sharedDrag,
+  onDragTab,
+  onMoveTab,
+  onActivateTab,
+  onCreateTab,
+  groupLabel,
 }: {
+  sharedDrag?: { path: string; vault: string | undefined } | null;
+  onDragTab?: (path: string | null) => void;
+  onMoveTab?: (path: string, target?: string, after?: boolean) => void;
+  onActivateTab?: (path: string) => void;
+  onCreateTab?: () => void;
+  groupLabel?: string;
+  split?: {
+    active: boolean;
+    disabled?: boolean;
+    toggle: () => void;
+    open: (path: string) => void;
+  };
   graph?: {
     active: boolean;
     position: number;
@@ -63,6 +83,10 @@ export function WorkspaceTabs({
       kind: "graph",
     });
   const activate = (path: string) => {
+    if (onActivateTab) {
+      onActivateTab(path);
+      return;
+    }
     if (path === graphPath) graph?.onActivate();
     else {
       onActivateNote?.();
@@ -72,6 +96,10 @@ export function WorkspaceTabs({
   const close = (path: string) =>
     path === graphPath ? graph?.onClose() : app.close(path);
   const move = (path: string, target: string, after: boolean) => {
+    if (onMoveTab) {
+      onMoveTab(path, target, after);
+      return;
+    }
     const paths = tabs.map((tab) => tab.path).filter((item) => item !== path);
     paths.splice(paths.indexOf(target) + Number(after), 0, path);
     if (graph) graph.onReorder(paths.indexOf(graphPath));
@@ -96,12 +124,15 @@ export function WorkspaceTabs({
   const [drop, setDrop] = useState<{ path: string; after: boolean } | null>(
     null,
   );
+  const sourceDrag = () =>
+    sharedDrag === undefined ? dragged.current : sharedDrag;
   const clearDrag = () => {
+    onDragTab?.(null);
     dragged.current = null;
     setDrop(null);
   };
   const insertionTarget = (path: string, after: boolean) => {
-    const source = dragged.current?.path;
+    const source = sourceDrag()?.path;
     if (!source || source === path) return null;
     const remaining = tabs.filter((item) => item.path !== source);
     const targetIndex = remaining.findIndex((item) => item.path === path);
@@ -164,12 +195,32 @@ export function WorkspaceTabs({
     showTabList,
   ]);
   return (
-    <div className="workspace-tabs">
+    <div
+      className="workspace-tabs"
+      aria-label={groupLabel}
+      onDragOver={(event) => {
+        const source = sourceDrag();
+        if (app.busy || !source || source.vault !== app.vault?.id) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = "move";
+        setDrop(null);
+      }}
+      onDrop={(event) => {
+        const source = sourceDrag();
+        if (app.busy || !source || source.vault !== app.vault?.id || !onMoveTab)
+          return;
+        event.preventDefault();
+        event.stopPropagation();
+        onMoveTab(source.path);
+        clearDrag();
+      }}
+    >
       <div
         className="tabs"
         ref={tabsRef}
         role="tablist"
-        aria-label={t("Открытые заметки")}
+        aria-label={groupLabel ?? t("Открытые заметки")}
       >
         {tabs.map((tab) => (
           <div
@@ -178,8 +229,8 @@ export function WorkspaceTabs({
             onDragOver={(event) => {
               if (
                 app.busy ||
-                !dragged.current ||
-                dragged.current.vault !== app.vault?.id
+                !sourceDrag() ||
+                sourceDrag()?.vault !== app.vault?.id
               )
                 return;
               event.preventDefault();
@@ -201,7 +252,7 @@ export function WorkspaceTabs({
               }
             }}
             onDrop={(event) => {
-              if (!dragged.current || dragged.current.vault !== app.vault?.id)
+              if (!sourceDrag() || sourceDrag()?.vault !== app.vault?.id)
                 return;
               event.preventDefault();
               event.stopPropagation();
@@ -210,8 +261,9 @@ export function WorkspaceTabs({
                 tab.path,
                 event.clientX > rect.left + rect.width / 2,
               );
-              if (!app.busy && target)
-                move(dragged.current.path, target.path, target.after);
+              const source = sourceDrag();
+              if (!app.busy && target && source)
+                move(source.path, target.path, target.after);
               clearDrag();
             }}
             onContextMenu={(event) =>
@@ -240,6 +292,11 @@ export function WorkspaceTabs({
                         run: () => {
                           activate(tab.path);
                         },
+                      },
+                      {
+                        label: t("Открыть во второй панели"),
+                        disabled: app.busy || !split || split.disabled,
+                        run: () => split?.open(tab.path),
                       },
                       {
                         label: t("Переименовать"),
@@ -271,6 +328,7 @@ export function WorkspaceTabs({
               draggable={!app.busy}
               onDragStart={(event) => {
                 dragged.current = { path: tab.path, vault: app.vault?.id };
+                onDragTab?.(tab.path);
                 event.dataTransfer.setData(
                   "application/x-aether-tab",
                   tab.path,
@@ -390,9 +448,29 @@ export function WorkspaceTabs({
           data-tooltip={t("Новая заметка")}
           aria-label={t("Открыть новую заметку")}
           disabled={app.busy}
-          onClick={() => void app.createQuick()}
+          onClick={() => (onCreateTab ? onCreateTab() : void app.createQuick())}
         >
           <Plus size={16} />
+        </button>
+      )}
+      {split && (
+        <button
+          className="icon-button workspace-split"
+          aria-label={t(
+            split.active ? "Объединить панели" : "Разделить рабочую область",
+          )}
+          data-tooltip={t(
+            split.active ? "Объединить панели" : "Разделить рабочую область",
+          )}
+          aria-pressed={split.active}
+          disabled={
+            app.busy ||
+            split.disabled ||
+            (!app.workspace.active && !graph?.active)
+          }
+          onClick={split.toggle}
+        >
+          <Columns2 size={16} />
         </button>
       )}
       {context.menu}

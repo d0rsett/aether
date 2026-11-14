@@ -1,5 +1,81 @@
 // Russian source messages are stable translation keys; note content is never translated.
 export const english: Record<string, string> = {
+  "Вкладки левой группы": "Left group tabs",
+  "Вкладки правой группы": "Right group tabs",
+  "Этот файл уже открыт в соседней панели.":
+    "This file is already open in the adjacent pane.",
+  "Не удалось открыть файл. Попробуйте ещё раз.":
+    "Could not open the file. Try again.",
+  "Открытые файлы": "Open files",
+  "Файлы хранилища": "Vault files",
+  "Возможные заметки": "Possible notes",
+  "Открыть исходную строку": "Open source line",
+  "Отсутствующих заметок и вложений нет.": "No missing notes or attachments.",
+  "Все связи на месте": "All links are connected",
+  "Проверка ссылок…": "Checking links…",
+  "Обновление индекса…": "Updating index…",
+  "Не удалось проверить ссылки.": "Could not check links.",
+  "По сохранённым заметкам": "From saved notes",
+  "Черновик можно закрыть и продолжить позже.":
+    "Close this draft and continue later.",
+  "Что хочется сохранить?": "What would you like to remember?",
+  "Сохраните мысль, не переключаясь с текущей заметки.":
+    "Capture a thought without leaving your current note.",
+  Входящие: "Входящие",
+  "Выбрать файл для панели": "Choose a file for this pane",
+  "Действия панели": "Pane actions",
+  Обновить: "Refresh",
+  "Выбрать заметку": "Choose note",
+  "Заметка не найдена": "Note missing",
+  "Неоднозначная ссылка": "Ambiguous link",
+  "Вложение не найдено": "Attachment missing",
+  "Проблемных ссылок на этой странице нет.":
+    "No unresolved links on this page.",
+  "Ссылки в сохранённых заметках. Несохранённые правки появятся после сохранения.":
+    "Links in saved notes. Save drafts to include their changes.",
+  "Откройте заметку для локального графа.":
+    "Open a note to see its local graph.",
+  "Правая панель": "Right sidebar",
+  Проблемы: "Issues",
+  "Незавершённые связи": "Unresolved links",
+  "Не удалось сохранить разделение рабочей области.":
+    "Could not save the split layout.",
+  "Выберите другой файл для второй панели.":
+    "Choose another file for the second pane.",
+  "Выберите заметку, изображение или доску.": "Choose a note, image or canvas.",
+  "Ширина панелей": "Pane width",
+  "Открыть во второй панели": "Open in second pane",
+  "Объединить панели": "Merge panes",
+  "Разделить рабочую область": "Split workspace",
+  "Мысль сохранена во входящие.": "Thought saved to inbox.",
+  "Не удалось сохранить заметку. Текст сохранён в окне захвата.":
+    "Could not save the note. The text remains in this window.",
+  "Не удалось сохранить черновик захвата.": "Could not save the capture draft.",
+  "Новая заметка будет создана в папке «Входящие».":
+    "A new note will be created in the «Входящие» folder.",
+  "Текст мысли": "Thought text",
+  "Сохранение…": "Saving…",
+  "Сохранить во входящие": "Save to inbox",
+  "Быстрый захват": "Quick capture",
+  "Быстрое открытие": "Quick open",
+  "Название или псевдоним заметки": "Note name or alias",
+  "Недавние заметки": "Recent notes",
+  "Поиск заметок…": "Searching notes…",
+  "Заметки не найдены.": "No notes found.",
+  "Не удалось открыть заметку. Выберите другой файл или повторите попытку.":
+    "Could not open the note. Choose another file or try again.",
+  Заметки: "Notes",
+  Выбрать: "Select",
+  Подтвердить: "Confirm",
+  "Связать выделенный текст": "Link selected text",
+  "Выделите обычный текст в пределах одной строки.":
+    "Select plain text on a single line.",
+  "Имя этой заметки нельзя использовать в Wiki-ссылке.":
+    "This note name cannot be used in a wiki link.",
+  "Не удалось однозначно найти заметку для ссылки.":
+    "The link does not resolve to this note.",
+  "Выделенный текст изменился. Выделите его заново.":
+    "The selected text changed. Select it again.",
   "Привязка к карточкам": "Snap to cards",
   "Привязка к сетке": "Snap to grid",
   "Настройки доски": "Canvas settings",

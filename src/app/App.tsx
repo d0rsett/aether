@@ -44,7 +44,29 @@ import { t, useLocale, setLocale } from "../i18n";
 import { Welcome } from "../components/Welcome";
 import { FormattingToolbar } from "../components/FormattingToolbar";
 import { Templates } from "../components/Templates";
+import {
+  graphTabPath,
+  groupFor,
+  otherGroup,
+  type GroupId,
+} from "../workspace/groups";
+import { QuickCapture } from "../components/QuickCapture";
+import { NotePicker } from "../components/NotePicker";
+import { EditorView } from "@codemirror/view";
+import {
+  cancelSelectionLink,
+  insertSelectionLink,
+  startSelectionLink,
+} from "../editor/selectionLink";
+import type { SharedEditors } from "../editor/sharedViews";
+import { useEditorPanels } from "./useEditorPanels";
+import { LinkIssues } from "../components/LinkIssues";
 import { Inspector } from "../components/Inspector";
+import {
+  InspectorTools,
+  GroupDocumentToolbar,
+  type InspectorTool,
+} from "../components/WorkspaceTools";
 import { Titlebar } from "../components/Titlebar";
 import {
   lazy,
@@ -56,6 +78,7 @@ import {
 } from "react";
 import {
   Waypoints,
+  NotebookPen,
   CircleHelp,
   Command,
   FilePlus2,
@@ -134,6 +157,34 @@ export function App() {
     vault: string;
     entry: FileEntry;
   } | null>(null);
+  const groups = app.workspace.groups;
+  const editorPanels = useEditorPanels(app.vault?.id, app.workspace);
+  const activePanel = editorPanels.find(
+    ({ visible, group }) => visible && group === groups?.focused,
+  );
+  const sharedEditors = useRef<SharedEditors>(new Map());
+  const [draggedTab, setDraggedTab] = useState<{
+    path: string;
+    vault: string | undefined;
+    from?: GroupId;
+  } | null>(null);
+  const [dropGroup, setDropGroup] = useState<GroupId | null>(null);
+  const dragTab = (path: string | null, from?: GroupId) => {
+    setDraggedTab(path ? { path, vault: app.vault?.id, from } : null);
+    setDropGroup(null);
+  };
+  useEffect(() => {
+    dragTab(null);
+  }, [app.vault?.id]);
+  const [captureOpen, setCaptureOpen] = useState(false);
+  const [rightTool, setRightTool] = useState<InspectorTool>("relations");
+  const [picker, setPicker] = useState<{
+    vault: string;
+    group?: GroupId;
+    link?: { view: EditorView; path: string; text: string };
+  } | null>(null);
+  const pickerRef = useRef(picker);
+  pickerRef.current = picker;
   const [preferences, setPreferences] = useState(readPreferences);
   const [shortcuts, setShortcuts] = useState(readShortcuts);
   const hotkey = (id: ShortcutCommand) => shortcutLabel(binding(shortcuts, id));
@@ -300,7 +351,19 @@ export function App() {
     observer.observe(node);
     return () => observer.disconnect();
   }, [left]);
-  const [graph, setGraph] = useState(false);
+  const [singleGraph, setSingleGraph] = useState(false);
+  const graph = groups
+    ? groups[groups.focused].active === graphTabPath
+    : singleGraph;
+  const setGraph = (active: boolean) => {
+    setSingleGraph(active);
+    if (active && groups)
+      app.dispatch({
+        type: "activateGroupTab",
+        group: groups.focused,
+        path: graphTabPath,
+      });
+  };
   const [graphTab, setGraphTab] = useState(false);
   const [graphPosition, setGraphPosition] = useState(Number.MAX_SAFE_INTEGER);
   const graphOrder = useRef<{ vault: string | undefined; paths: string[] }>({
@@ -328,15 +391,21 @@ export function App() {
   const closeGraph = () => {
     setGraph(false);
     setGraphTab(false);
+    app.dispatch({ type: "closeGroupGraph" });
   };
   useEffect(() => {
     setGraph(false);
     setGraphTab(false);
     setGraphSessionVault(null);
   }, [app.vault?.id]);
+  const hadGroups = useRef(false);
   useEffect(() => {
-    setGraph(false);
-  }, [app.workspace.active]);
+    if (!groups) {
+      if (hadGroups.current) setSingleGraph(!app.workspace.active && graphTab);
+      else if (app.workspace.active) setSingleGraph(false);
+    }
+    hadGroups.current = !!groups;
+  }, [app.workspace.active, !!groups]);
   useEffect(() => {
     const id = app.vault?.id;
     if (!id || app.busy || graphSessionVault === id) return;
@@ -362,6 +431,12 @@ export function App() {
     graph,
     app.setError,
   ]);
+  useEffect(() => {
+    if (!app.vault || graphSessionVault !== app.vault.id || app.busy) return;
+    if (graphTab)
+      app.dispatch({ type: "registerGroupGraph", position: graphPosition });
+    else app.dispatch({ type: "closeGroupGraph" });
+  }, [app.vault?.id, graphSessionVault, app.busy, graphTab, !!groups]);
   const [paletteOpen, setPalette] = useState(false);
   const [templates, setTemplates] = useState(false);
   const [templateCommand, setTemplateCommand] = useState<{
@@ -369,6 +444,7 @@ export function App() {
     text: string;
     path: string;
     vaultId: string;
+    slot: number;
   } | null>(null);
   const [query, setQuery] = useState("");
   const [help, setHelp] = useState(false);
@@ -376,26 +452,31 @@ export function App() {
   const [noteModes, setNoteModes] = useState<Map<string, Mode>>(
     () => new Map(),
   );
-  const modeKey = JSON.stringify([app.vault?.id, app.workspace.active]);
+  const modeKey = JSON.stringify([
+    app.vault?.id,
+    app.workspace.active,
+    activePanel?.slot,
+  ]);
   const mode = noteModes.get(modeKey) ?? preferences.mode;
   const setMode = (next: Mode) => {
     setNoteModes((previous) => new Map(previous).set(modeKey, next));
   };
   useEffect(() => {
     const open = new Set(
-      app.workspace.tabs.map((tab) =>
-        JSON.stringify([app.vault?.id, tab.path]),
+      editorPanels.map(({ tab, slot }) =>
+        JSON.stringify([app.vault?.id, tab.path, slot]),
       ),
     );
     setNoteModes((previous) => {
       const retained = [...previous].filter(([key]) => open.has(key));
       return retained.length === previous.size ? previous : new Map(retained);
     });
-  }, [app.vault?.id, app.workspace.tabs]);
+  }, [app.vault?.id, app.workspace.tabs, groups]);
   const [propertyCommand, setPropertyCommand] = useState<
     | (PropertyCommand & {
         path: string;
         vaultId: string;
+        slot: number;
       })
     | null
   >(null);
@@ -405,11 +486,13 @@ export function App() {
     path: string;
     vaultId: string;
     redo: boolean;
+    slot: number;
   } | null>(null);
   const [propertyFocus, setPropertyFocus] = useState<{
     id: number;
     path: string;
     vaultId: string;
+    slot: number;
   } | null>(null);
   useEffect(
     () => setPropertyFocus(null),
@@ -429,12 +512,14 @@ export function App() {
     path: string;
     node: RenderNode;
     snapshot: string;
+    slot: number;
   } | null>(null);
   useEffect(() => setTaskCommand(null), [app.vault?.id, app.workspace.active]);
   const [formatCommand, setFormatCommand] = useState<{
     id: number;
     type: FormatCommand;
     path: string;
+    slot: number;
   } | null>(null);
   const formatId = useRef(0);
   const [formatState, setFormatState] = useState<{
@@ -442,11 +527,51 @@ export function App() {
     formats: FormatCommand[];
   }>({ path: "", formats: [] });
   const format = (type: FormatCommand) => {
-    if (app.active)
-      setFormatCommand({ id: ++formatId.current, type, path: app.active.path });
+    if (app.active && activePanel)
+      setFormatCommand({
+        id: ++formatId.current,
+        type,
+        path: app.active.path,
+        slot: activePanel.slot,
+      });
   };
   const actionRef = useRef(app);
   actionRef.current = app;
+  const closePicker = () => {
+    const current = pickerRef.current;
+    pickerRef.current = null;
+    if (current?.link) cancelSelectionLink(current.link.view);
+    setPicker(null);
+  };
+  useEffect(() => {
+    if (pickerRef.current && pickerRef.current.vault !== app.vault?.id)
+      closePicker();
+  }, [app.vault?.id]);
+  const openQuickPicker = () => {
+    const { vault, workspace, busy } = actionRef.current;
+    if (!vault || busy) return;
+    setPicker({ vault: vault.id, group: workspace.groups?.focused });
+  };
+  const openLinkPicker = (view?: EditorView) => {
+    const current = actionRef.current;
+    const path = current.active?.path;
+    if (!current.vault || !path || current.busy) return;
+    const focusedEditor = document.querySelector<HTMLElement>(
+      ".editor-tab-panel[data-pane-active='true']:not([hidden]) [data-note-editor]:not([hidden]) .cm-editor",
+    );
+    const editor =
+      view ?? (focusedEditor && EditorView.findFromDOM(focusedEditor));
+    if (!editor || !focusedEditor?.contains(editor.dom)) return;
+    try {
+      const text = startSelectionLink(editor);
+      setPicker({
+        vault: current.vault.id,
+        link: { view: editor, path, text },
+      });
+    } catch (error) {
+      current.setError(errorMessage(error));
+    }
+  };
   const knowledge = useKnowledge(
     app.vault?.id,
     app.active?.path,
@@ -500,18 +625,29 @@ export function App() {
       () => void
     > = {
       settings: () => setSettings(true),
+      quickCapture: () => {
+        if (actionRef.current.vault) setCaptureOpen(true);
+      },
       search: () => {
         setLeft(true);
         setLeftView("search");
       },
+      quickOpen: openQuickPicker,
+      linkSelection: () => openLinkPicker(),
       save: () => void actionRef.current.save(),
       openVault: () => void actionRef.current.choose(),
       newVault: () => void actionRef.current.createVault(),
       newNote: () => void actionRef.current.createQuick(),
       close: () => {
         if (graph) closeGraph();
-        else if (actionRef.current.workspace.active)
-          void actionRef.current.close(actionRef.current.workspace.active);
+        else {
+          const current = actionRef.current;
+          if (current.workspace.active)
+            void current.close(
+              current.workspace.active,
+              current.workspace.groups?.focused,
+            );
+        }
       },
       palette: () => {
         setPalette(true);
@@ -554,7 +690,105 @@ export function App() {
         ),
       );
   };
+  const moveTab = (
+    path: string,
+    group: GroupId,
+    target?: string,
+    after?: boolean,
+  ) => {
+    setSingleGraph(path === graphTabPath);
+    app.dispatch({
+      type: "moveToGroup",
+      path,
+      group,
+      from: draggedTab?.from,
+      target,
+      after,
+      graphOpen: graphTab,
+      graphPosition,
+      activeGraph: graph,
+    });
+    dragTab(null);
+  };
+  const splitTab = (path: string, from?: GroupId) => {
+    const owner = groups
+      ? (from ?? groupFor(groups, path) ?? groups.focused)
+      : "primary";
+    if (markdownFile.test(path)) {
+      app.dispatch({
+        type: "openBeside",
+        path,
+        from: owner,
+        graphOpen: graphTab,
+        graphPosition,
+        activeGraph: graph,
+      });
+    } else moveTab(path, otherGroup(owner));
+  };
+  const toggleSplit = () => {
+    if (groups) {
+      if (graphTab)
+        setGraphPosition(
+          [...groups.primary.tabs, ...groups.secondary.tabs].indexOf(
+            graphTabPath,
+          ),
+        );
+      app.dispatch({ type: "mergeGroups" });
+    } else {
+      const path = graph ? graphTabPath : app.workspace.active;
+      if (!path) return;
+      if (app.workspace.tabs.length + Number(graphTab) > 1)
+        moveTab(path, "secondary");
+      else splitTab(path);
+    }
+  };
   const commands = [
+    {
+      title: t("Быстрое открытие"),
+      shortcut: hotkey("quickOpen"),
+      enabled: !!app.vault,
+      action: openQuickPicker,
+    },
+    {
+      title: t("Связать выделенный текст"),
+      shortcut: hotkey("linkSelection"),
+      enabled: !!app.active && mode !== "reading",
+      action: () => openLinkPicker(),
+    },
+    {
+      title: t("Разделить рабочую область"),
+      shortcut: "",
+      enabled:
+        !!groups ||
+        !!app.active ||
+        app.workspace.tabs.length + Number(graphTab) > 1,
+      action: toggleSplit,
+    },
+    {
+      title: t("Быстрый захват"),
+      shortcut: hotkey("quickCapture"),
+      enabled: !!app.vault,
+      action: () => setCaptureOpen(true),
+    },
+    {
+      title: t("Локальный граф"),
+      shortcut: "",
+      enabled: !!app.vault,
+      action: () => {
+        setRight(true);
+        setRightTool("graph");
+      },
+    },
+    {
+      title: t("Незавершённые связи"),
+      shortcut: "",
+      enabled: !!app.vault,
+      action: () => {
+        setRight(true);
+        setRightTool("issues");
+      },
+    },
+
     {
       title: t("Настройки"),
       shortcut: hotkey("settings"),
@@ -730,7 +964,10 @@ export function App() {
       enabled: true,
     },
   ];
-  const openFileEntry = (path: string) => {
+  const navigateWiki = (source: string, target: string) => {
+    void app.openWiki(source, target, { newTab: !!groups });
+  };
+  const openFileEntry = async (path: string) => {
     if (!app.vault) return;
     setGraph(false);
     if (mediaFile.test(path))
@@ -803,22 +1040,24 @@ export function App() {
     );
   };
   const openPropertiesSource = () => {
-    if (!app.active || !app.vault) return;
+    if (!app.active || !app.vault || !activePanel) return;
     setMode("source");
     setPropertyFocus({
       id: ++propertyId.current,
       path: app.active.path,
+      slot: activePanel.slot,
       vaultId: app.vault.id,
     });
   };
   const changeProperty: PropertyApply = (action, expected, done) => {
-    if (!app.active || !app.vault) {
+    if (!app.active || !app.vault || !activePanel) {
       done(t("Откройте заметку заново."));
       return;
     }
     setPropertyCommand({
       id: ++propertyId.current,
       path: app.active.path,
+      slot: activePanel.slot,
       vaultId: app.vault.id,
       action,
       expected,
@@ -826,10 +1065,11 @@ export function App() {
     });
   };
   const changePropertyHistory = (redo: boolean) => {
-    if (!app.active || !app.vault) return;
+    if (!app.active || !app.vault || !activePanel) return;
     setPropertyHistory({
       id: ++propertyId.current,
       path: app.active.path,
+      slot: activePanel.slot,
       vaultId: app.vault.id,
       redo,
     });
@@ -969,6 +1209,15 @@ export function App() {
             }}
           >
             <Search size={19} />
+          </button>
+          <button
+            className="rail-button"
+            aria-label={t("Быстрый захват")}
+            data-tooltip={t("Быстрый захват") + " · " + hotkey("quickCapture")}
+            disabled={!app.vault}
+            onClick={() => setCaptureOpen(true)}
+          >
+            <NotebookPen size={19} />
           </button>
           <button
             className={`rail-button ${graph ? "active" : ""}`}
@@ -1226,46 +1475,102 @@ export function App() {
           </aside>
         )}
 
-        <main className="main-pane">
-          <WorkspaceTabs
-            showTabList={preferences.tabList}
-            closeShortcut={hotkey("close")}
-            app={app}
-            graph={
-              graphTab
-                ? {
-                    active: graph,
-                    position: graphPosition,
-                    onReorder: setGraphPosition,
-                    onActivate: () => setGraph(true),
-                    onClose: closeGraph,
-                  }
-                : undefined
+        <main
+          className="main-pane"
+          data-group-drag={!!draggedTab || undefined}
+          onDragOverCapture={(event) => {
+            if (!draggedTab || draggedTab.vault !== app.vault?.id || app.busy)
+              return;
+            if (
+              event.target instanceof Element &&
+              event.target.closest(".workspace-tabs")
+            ) {
+              setDropGroup(null);
+              return;
             }
-            onActivateNote={() => setGraph(false)}
-          />
-          {graphTab && app.vault && (
-            <div className="graph-tab-content" hidden={!graph} inert={!graph}>
-              <KnowledgeGraph
-                key={app.vault.id}
-                vaultId={app.vault.id}
-                revision={knowledge.status?.revision ?? 0}
-                indexRunning={!knowledge.status || knowledge.status.running}
-                visible={graph}
-                onOpenBackground={(path) => {
-                  void app.open(path, true);
-                }}
-                active={app.active?.path}
-                onClose={closeGraph}
-                onOpen={(path) => {
-                  setGraph(false);
-                  void app.open(path);
-                }}
-              />
-            </div>
+            event.preventDefault();
+            event.stopPropagation();
+            event.dataTransfer.dropEffect = "move";
+            const rect = event.currentTarget.getBoundingClientRect();
+            setDropGroup(
+              ((event.clientX - rect.left) / rect.width) * 100 <
+                (groups?.ratio ?? 50)
+                ? "primary"
+                : "secondary",
+            );
+          }}
+          onDragLeave={(event) => {
+            if (
+              !(event.relatedTarget instanceof Node) ||
+              !event.currentTarget.contains(event.relatedTarget)
+            )
+              setDropGroup(null);
+          }}
+          onDropCapture={(event) => {
+            if (!draggedTab || draggedTab.vault !== app.vault?.id || app.busy)
+              return;
+            if (
+              event.target instanceof Element &&
+              event.target.closest(".workspace-tabs")
+            )
+              return;
+            event.preventDefault();
+            event.stopPropagation();
+            const rect = event.currentTarget.getBoundingClientRect();
+            const destination =
+              ((event.clientX - rect.left) / rect.width) * 100 <
+              (groups?.ratio ?? 50)
+                ? "primary"
+                : "secondary";
+            moveTab(draggedTab.path, destination);
+          }}
+        >
+          {dropGroup && draggedTab && (
+            <div
+              className="workspace-group-drop"
+              data-side={dropGroup}
+              style={{
+                left: dropGroup === "primary" ? 0 : `${groups?.ratio ?? 50}%`,
+                width: `${dropGroup === "primary" ? (groups?.ratio ?? 50) : 100 - (groups?.ratio ?? 50)}%`,
+              }}
+              aria-hidden="true"
+            />
           )}
+          <div className="single-workspace-tabs" hidden={!!groups}>
+            <WorkspaceTabs
+              sharedDrag={draggedTab}
+              onDragTab={dragTab}
+              split={
+                app.vault
+                  ? {
+                      active: false,
+                      disabled:
+                        !app.active &&
+                        app.workspace.tabs.length + Number(graphTab) < 2,
+                      toggle: toggleSplit,
+                      open: splitTab,
+                    }
+                  : undefined
+              }
+              showTabList={preferences.tabList}
+              closeShortcut={hotkey("close")}
+              app={app}
+              graph={
+                graphTab
+                  ? {
+                      active: graph,
+                      position: graphPosition,
+                      onReorder: setGraphPosition,
+                      onActivate: () => setGraph(true),
+                      onClose: closeGraph,
+                    }
+                  : undefined
+              }
+              onActivateNote={() => setGraph(false)}
+            />
+          </div>
 
-          <div className="graph-workspace-content" inert={graph}>
+          <div className="graph-workspace-content">
             {app.renameState?.pending && (
               <div className="banner error" role="alert">
                 <Info size={16} />
@@ -1315,9 +1620,13 @@ export function App() {
               </div>
             )}
 
-            {app.active || app.activeImage || app.activeCanvas ? (
+            {app.active ||
+            app.activeImage ||
+            app.activeCanvas ||
+            graph ||
+            groups ? (
               <>
-                {app.activeCanvas ? (
+                {app.activeCanvas && !groups && !graph ? (
                   <div className="document-toolbar">
                     <button
                       className="save-button"
@@ -1334,7 +1643,7 @@ export function App() {
                       {t("Перечитать")}
                     </button>
                   </div>
-                ) : (
+                ) : !groups && !graph ? (
                   <NoteHeader
                     app={app}
                     mode={mode}
@@ -1342,8 +1651,8 @@ export function App() {
                     saveShortcut={hotkey("save")}
                     readingShortcut={hotkey("reading")}
                   />
-                )}
-                {app.active && formatting && mode !== "reading" && (
+                ) : null}
+                {app.active && !graph && formatting && mode !== "reading" && (
                   <FormattingToolbar
                     onTemplates={() => setTemplates(true)}
                     active={
@@ -1356,7 +1665,139 @@ export function App() {
                     onClose={() => setFormatting(false)}
                   />
                 )}
-                <div className="document-area" inert={app.busy}>
+                <div
+                  className={
+                    groups ? "document-area split-documents" : "document-area"
+                  }
+                  style={
+                    groups
+                      ? {
+                          gridTemplateColumns: `minmax(0, ${groups.ratio}fr) var(--workspace-divider-width, 1px) minmax(0, ${100 - groups.ratio}fr)`,
+                        }
+                      : undefined
+                  }
+                  inert={app.busy}
+                >
+                  {groups &&
+                    (["primary", "secondary"] as const).map((id) => {
+                      const group = groups[id];
+                      const groupHasGraph =
+                        group.tabs.includes(graphTabPath) && graphTab;
+                      return (
+                        <div
+                          className="group-tab-strip"
+                          key={id}
+                          data-focused={groups.focused === id}
+                          style={{
+                            gridColumn: id === "primary" ? 1 : 3,
+                            gridRow: 1,
+                          }}
+                        >
+                          <WorkspaceTabs
+                            groupLabel={t(
+                              id === "primary"
+                                ? "Вкладки левой группы"
+                                : "Вкладки правой группы",
+                            )}
+                            app={{
+                              ...app,
+                              close: (path) => app.close(path, id),
+                              workspace: {
+                                tabs: group.tabs.flatMap((path) =>
+                                  app.workspace.tabs.filter(
+                                    (tab) => tab.path === path,
+                                  ),
+                                ),
+                                active:
+                                  group.active === graphTabPath
+                                    ? null
+                                    : group.active,
+                              },
+                            }}
+                            showTabList={preferences.tabList}
+                            closeShortcut={hotkey("close")}
+                            sharedDrag={draggedTab}
+                            onDragTab={(path) => dragTab(path, id)}
+                            onMoveTab={(path, target, after) =>
+                              moveTab(path, id, target, after)
+                            }
+                            onActivateTab={(path) => {
+                              setSingleGraph(path === graphTabPath);
+                              app.dispatch({
+                                type: "activateGroupTab",
+                                path,
+                                group: id,
+                              });
+                            }}
+                            onCreateTab={() => {
+                              app.dispatch({ type: "focusGroup", group: id });
+                              void app.createQuick();
+                            }}
+                            split={{
+                              active: true,
+                              toggle: toggleSplit,
+                              open: (path) => splitTab(path, id),
+                            }}
+                            graph={
+                              groupHasGraph
+                                ? {
+                                    active: group.active === graphTabPath,
+                                    position: group.tabs.indexOf(graphTabPath),
+                                    onReorder: () => undefined,
+                                    onActivate: () => setGraph(true),
+                                    onClose: closeGraph,
+                                  }
+                                : undefined
+                            }
+                          />
+                        </div>
+                      );
+                    })}
+                  {groups && (
+                    <div
+                      className="split-divider"
+                      role="separator"
+                      tabIndex={0}
+                      aria-label={t("Ширина панелей")}
+                      aria-orientation="vertical"
+                      aria-valuemin={20}
+                      aria-valuemax={80}
+                      aria-valuenow={groups.ratio}
+                      onPointerDown={(event) =>
+                        event.currentTarget.setPointerCapture(event.pointerId)
+                      }
+                      onPointerMove={(event) => {
+                        if (
+                          !event.currentTarget.hasPointerCapture(
+                            event.pointerId,
+                          )
+                        )
+                          return;
+                        const rect =
+                          event.currentTarget.parentElement!.getBoundingClientRect();
+                        app.dispatch({
+                          type: "resizeGroups",
+                          ratio:
+                            ((event.clientX - rect.left) / rect.width) * 100,
+                        });
+                      }}
+                      onKeyDown={(event) => {
+                        if (
+                          event.key !== "ArrowLeft" &&
+                          event.key !== "ArrowRight"
+                        )
+                          return;
+                        event.preventDefault();
+                        app.dispatch({
+                          type: "resizeGroups",
+                          ratio:
+                            (groups?.ratio ?? 50) +
+                            (event.key === "ArrowLeft" ? -5 : 5),
+                        });
+                      }}
+                    />
+                  )}
+
                   <Suspense
                     fallback={
                       <div className="tree-loading">
@@ -1365,265 +1806,377 @@ export function App() {
                       </div>
                     }
                   >
-                    {app.workspace.tabs.map((tab) => (
-                      <div
-                        className="editor-tab-panel"
-                        role="tabpanel"
-                        hidden={tab.path !== app.workspace.active}
-                        key={`${app.vault?.id}:${tab.path}`}
-                      >
-                        {/\.canvas$/i.test(tab.path) ? (
-                          <CanvasBoard
-                            shortcuts={shortcuts}
-                            content={tab.content}
-                            refresh={app.refresh}
-                            files={
-                              app.vault
-                                ? {
-                                    context: {
-                                      vaultId: app.vault.id,
-                                      path: tab.path,
-                                      theme,
-                                      previews,
-                                      onWiki: (target) =>
-                                        void app.openWiki(tab.path, target),
-                                      onNavigate: (source, target) =>
-                                        void app.openWiki(source, target),
-                                      onError: app.setError,
-                                    },
-                                    edit: app.openCardEditor,
-                                    saveNote: (path) => void app.save(path),
-                                    convert: app.convertCard,
-                                    importFiles: (files) =>
-                                      app.importCanvasFiles(tab.path, files),
-                                    requestUrl: (initial) =>
-                                      ask({
-                                        title: t("Адрес веб-страницы"),
-                                        initial: initial ?? "https://",
-                                        label: t("Сохранить"),
-                                      }),
-                                    editor: (path) => {
-                                      const note = app.workspace.tabs.find(
-                                        (item) => item.path === path,
-                                      );
-                                      if (!note || !app.vault) return null;
-                                      return (
-                                        <div
-                                          className="canvas-note-editor"
-                                          data-canvas-note-editor={path}
-                                        >
-                                          <MarkdownEditor
-                                            content={note.content}
-                                            vaultId={app.vault.id}
-                                            path={path}
-                                            live
-                                            theme={theme}
-                                            previews={previews}
-                                            shortcuts={shortcuts}
-                                            onChange={(content) =>
-                                              app.dispatch({
-                                                type: "edit",
-                                                path,
-                                                content,
-                                              })
-                                            }
-                                            onSave={() => void app.save(path)}
-                                            onWikiLink={(target) =>
-                                              void app.openWiki(path, target)
-                                            }
-                                            onError={app.setError}
-                                          />
-                                        </div>
-                                      );
-                                    },
-                                    open: (path, subpath) => {
-                                      if (markdownFile.test(path) && subpath)
-                                        void app.open(
-                                          path,
-                                          false,
-                                          subpath.slice(1),
+                    {editorPanels.map(({ tab, group, slot, visible }) => {
+                      const tabModeKey = JSON.stringify([
+                        app.vault?.id,
+                        tab.path,
+                        slot,
+                      ]);
+                      const tabMode =
+                        noteModes.get(tabModeKey) ?? preferences.mode;
+                      const focused = visible && group === groups?.focused;
+                      const focusPanel = () => {
+                        if (visible && group && group !== groups?.focused)
+                          app.dispatch({ type: "focusGroup", group });
+                      };
+                      return (
+                        <div
+                          className="editor-tab-panel"
+                          role="tabpanel"
+                          aria-label={tab.path}
+                          hidden={!visible}
+                          style={
+                            groups
+                              ? {
+                                  gridColumn: group === "secondary" ? 3 : 1,
+                                  gridRow: 2,
+                                }
+                              : undefined
+                          }
+                          data-pane-active={focused}
+                          onFocusCapture={focusPanel}
+                          onPointerDownCapture={focusPanel}
+                          key={JSON.stringify([app.vault?.id, tab.path, slot])}
+                        >
+                          {groups && (
+                            <GroupDocumentToolbar
+                              tab={tab}
+                              active={focused}
+                              busy={app.busy}
+                              mode={tabMode}
+                              onMode={(next) =>
+                                setNoteModes((previous) =>
+                                  new Map(previous).set(tabModeKey, next),
+                                )
+                              }
+                              onSave={() => void app.save(tab.path)}
+                              onClose={toggleSplit}
+                            />
+                          )}
+                          {/\.canvas$/i.test(tab.path) ? (
+                            <CanvasBoard
+                              shortcuts={shortcuts}
+                              content={tab.content}
+                              refresh={app.refresh}
+                              files={
+                                app.vault
+                                  ? {
+                                      context: {
+                                        vaultId: app.vault.id,
+                                        path: tab.path,
+                                        theme,
+                                        previews,
+                                        onWiki: (target) =>
+                                          navigateWiki(tab.path, target),
+                                        onNavigate: (source, target) =>
+                                          navigateWiki(source, target),
+                                        onError: app.setError,
+                                      },
+                                      edit: app.openCardEditor,
+                                      saveNote: (path) => void app.save(path),
+                                      convert: app.convertCard,
+                                      importFiles: (files) =>
+                                        app.importCanvasFiles(tab.path, files),
+                                      requestUrl: (initial) =>
+                                        ask({
+                                          title: t("Адрес веб-страницы"),
+                                          initial: initial ?? "https://",
+                                          label: t("Сохранить"),
+                                        }),
+                                      editor: (path) => {
+                                        const note = app.workspace.tabs.find(
+                                          (item) => item.path === path,
                                         );
-                                      else if (
-                                        markdownFile.test(path) ||
-                                        imageExtension(path) ||
-                                        /\.canvas$/i.test(path)
-                                      )
-                                        void app.open(path);
-                                      else if (app.vault)
-                                        void api
-                                          .reveal(app.vault.id, path)
-                                          .catch((error) =>
-                                            app.setError(errorMessage(error)),
+                                        if (!note || !app.vault) return null;
+                                        return (
+                                          <div
+                                            className="canvas-note-editor"
+                                            data-canvas-note-editor={path}
+                                          >
+                                            <MarkdownEditor
+                                              content={note.content}
+                                              vaultId={app.vault.id}
+                                              path={path}
+                                              live
+                                              theme={theme}
+                                              previews={previews}
+                                              shortcuts={shortcuts}
+                                              onChange={(content) =>
+                                                app.dispatch({
+                                                  type: "edit",
+                                                  path,
+                                                  content,
+                                                })
+                                              }
+                                              onSave={() => void app.save(path)}
+                                              onWikiLink={(target) =>
+                                                void app.openWiki(path, target)
+                                              }
+                                              onError={app.setError}
+                                            />
+                                          </div>
+                                        );
+                                      },
+                                      open: (path, subpath) => {
+                                        if (markdownFile.test(path) && subpath)
+                                          void app.open(
+                                            path,
+                                            false,
+                                            subpath.slice(1),
                                           );
-                                    },
-                                  }
-                                : undefined
-                            }
-                            onChange={(content) =>
-                              app.dispatch({
-                                type: "edit",
-                                path: tab.path,
-                                content,
-                              })
-                            }
-                          />
-                        ) : tab.kind === "image" && app.vault ? (
-                          <ImageDocument
-                            vaultId={app.vault.id}
-                            path={tab.path}
-                            onError={app.setError}
-                          />
-                        ) : (
-                          <>
-                            <NoteTitle
-                              focusRequest={
-                                app.titleFocus?.path === tab.path
-                                  ? app.titleFocus.id
+                                        else if (
+                                          markdownFile.test(path) ||
+                                          imageExtension(path) ||
+                                          /\.canvas$/i.test(path)
+                                        )
+                                          void app.open(path);
+                                        else if (app.vault)
+                                          void api
+                                            .reveal(app.vault.id, path)
+                                            .catch((error) =>
+                                              app.setError(errorMessage(error)),
+                                            );
+                                      },
+                                    }
                                   : undefined
                               }
+                              onChange={(content) =>
+                                app.dispatch({
+                                  type: "edit",
+                                  path: tab.path,
+                                  content,
+                                })
+                              }
+                            />
+                          ) : tab.kind === "image" && app.vault ? (
+                            <ImageDocument
+                              vaultId={app.vault.id}
                               path={tab.path}
-                              disabled={app.busy}
-                              rename={app.rename}
                               onError={app.setError}
                             />
-                            <div
-                              className="editor-host"
-                              hidden={mode === "reading"}
-                            >
-                              <MarkdownEditor
-                                shortcuts={shortcuts}
-                                templateCommand={
-                                  templateCommand?.path === tab.path &&
-                                  templateCommand.vaultId === app.vault?.id
-                                    ? templateCommand
-                                    : null
-                                }
-                                propertyHistory={
-                                  propertyHistory?.path === tab.path &&
-                                  propertyHistory.vaultId === app.vault?.id
-                                    ? propertyHistory
-                                    : null
-                                }
-                                onPropertiesSource={openPropertiesSource}
-                                propertyFocus={
-                                  propertyFocus?.path === tab.path &&
-                                  propertyFocus.vaultId === app.vault?.id
-                                    ? propertyFocus.id
+                          ) : (
+                            <>
+                              <NoteTitle
+                                focusRequest={
+                                  focused && app.titleFocus?.path === tab.path
+                                    ? app.titleFocus.id
                                     : undefined
                                 }
-                                propertyCommand={
-                                  propertyCommand?.path === tab.path &&
-                                  propertyCommand.vaultId === app.vault?.id
-                                    ? propertyCommand
-                                    : null
-                                }
-                                previews={previews}
-                                onNavigate={(source, target) =>
-                                  void app.openWiki(source, target)
-                                }
-                                taskCommand={
-                                  taskCommand?.path === tab.path &&
-                                  taskCommand.vaultId === app.vault?.id
-                                    ? taskCommand
-                                    : null
-                                }
-                                onAttachmentsImported={() =>
-                                  app.setRefresh((value) => value + 1)
-                                }
-                                onFormatsChange={(formats) => {
-                                  if (
-                                    actionRef.current.workspace.active !==
-                                    tab.path
-                                  )
-                                    return;
-                                  setFormatState((previous) =>
-                                    previous.path === tab.path &&
-                                    previous.formats.join() === formats.join()
-                                      ? previous
-                                      : { path: tab.path, formats },
-                                  );
-                                }}
-                                typography={typography}
-                                showLineNumbers={lineNumbers}
-                                lineWrapping={lineWrapping}
-                                visible={
-                                  mode !== "reading" &&
-                                  tab.path === app.workspace.active
-                                }
-                                theme={theme}
-                                onError={app.setError}
-                                live={mode === "live"}
-                                vaultId={app.vault?.id}
                                 path={tab.path}
-                                command={
-                                  formatCommand?.path === tab.path
-                                    ? formatCommand
-                                    : null
-                                }
-                                ready={
-                                  !app.busy &&
-                                  mode !== "reading" &&
-                                  tab.path === app.workspace.active
-                                }
-                                navigation={
-                                  app.navigation?.path === tab.path
-                                    ? app.navigation
-                                    : null
-                                }
-                                content={tab.content}
-                                onChange={(content) =>
-                                  app.dispatch({
-                                    type: "edit",
-                                    path: tab.path,
-                                    content,
-                                  })
-                                }
-                                onSave={() => void app.save()}
-                                onWikiLink={(target) =>
-                                  void app.openWiki(tab.path, target)
-                                }
+                                disabled={app.busy}
+                                rename={app.rename}
+                                onError={app.setError}
                               />
-                            </div>
-                            {mode === "reading" &&
-                              tab.path === app.workspace.active &&
-                              app.vault && (
-                                <ReadingView
-                                  onProperty={changeProperty}
-                                  onPropertyHistory={changePropertyHistory}
+                              <div
+                                className="editor-host"
+                                data-note-editor
+                                hidden={tabMode === "reading"}
+                              >
+                                <MarkdownEditor
+                                  focused={focused && tabMode !== "reading"}
+                                  sharedEditors={sharedEditors.current}
+                                  onLinkSelection={openLinkPicker}
+                                  shortcuts={shortcuts}
+                                  templateCommand={
+                                    templateCommand?.slot === slot &&
+                                    templateCommand.path === tab.path &&
+                                    templateCommand.vaultId === app.vault?.id
+                                      ? templateCommand
+                                      : null
+                                  }
+                                  propertyHistory={
+                                    propertyHistory?.slot === slot &&
+                                    propertyHistory.path === tab.path &&
+                                    propertyHistory.vaultId === app.vault?.id
+                                      ? propertyHistory
+                                      : null
+                                  }
                                   onPropertiesSource={openPropertiesSource}
+                                  propertyFocus={
+                                    propertyFocus?.slot === slot &&
+                                    propertyFocus.path === tab.path &&
+                                    propertyFocus.vaultId === app.vault?.id
+                                      ? propertyFocus.id
+                                      : undefined
+                                  }
+                                  propertyCommand={
+                                    propertyCommand?.slot === slot &&
+                                    propertyCommand.path === tab.path &&
+                                    propertyCommand.vaultId === app.vault?.id
+                                      ? propertyCommand
+                                      : null
+                                  }
                                   previews={previews}
                                   onNavigate={(source, target) =>
-                                    void app.openWiki(source, target)
+                                    navigateWiki(source, target)
                                   }
-                                  onTask={(node, snapshot) =>
-                                    setTaskCommand((previous) => ({
-                                      id: (previous?.id ?? 0) + 1,
-                                      vaultId: app.vault!.id,
-                                      path: tab.path,
-                                      node,
-                                      snapshot,
-                                    }))
+                                  taskCommand={
+                                    taskCommand?.slot === slot &&
+                                    taskCommand.path === tab.path &&
+                                    taskCommand.vaultId === app.vault?.id
+                                      ? taskCommand
+                                      : null
                                   }
+                                  onAttachmentsImported={() =>
+                                    app.setRefresh((value) => value + 1)
+                                  }
+                                  onFormatsChange={(formats) => {
+                                    if (!focused) return;
+                                    setFormatState((previous) =>
+                                      previous.path === tab.path &&
+                                      previous.formats.join() === formats.join()
+                                        ? previous
+                                        : { path: tab.path, formats },
+                                    );
+                                  }}
+                                  typography={typography}
+                                  showLineNumbers={lineNumbers}
+                                  lineWrapping={lineWrapping}
+                                  visible={tabMode !== "reading" && visible}
                                   theme={theme}
-                                  vaultId={app.vault.id}
+                                  onError={app.setError}
+                                  live={tabMode === "live"}
+                                  vaultId={app.vault?.id}
                                   path={tab.path}
-                                  content={tab.content}
+                                  command={
+                                    formatCommand?.slot === slot &&
+                                    formatCommand.path === tab.path
+                                      ? formatCommand
+                                      : null
+                                  }
+                                  ready={
+                                    !app.busy &&
+                                    tabMode !== "reading" &&
+                                    focused
+                                  }
                                   navigation={
-                                    app.navigation?.path === tab.path
+                                    focused &&
+                                    app.navigation?.path === tab.path &&
+                                    app.navigation.group === group
                                       ? app.navigation
                                       : null
                                   }
-                                  onWiki={(target) =>
-                                    void app.openWiki(tab.path, target)
+                                  content={tab.content}
+                                  onChange={(content) =>
+                                    app.dispatch({
+                                      type: "edit",
+                                      path: tab.path,
+                                      content,
+                                    })
                                   }
-                                  onError={app.setError}
+                                  onSave={() => void app.save(tab.path)}
+                                  onWikiLink={(target) =>
+                                    navigateWiki(tab.path, target)
+                                  }
                                 />
-                              )}
-                          </>
-                        )}
-                      </div>
-                    ))}
+                              </div>
+                              {tabMode === "reading" &&
+                                visible &&
+                                app.vault && (
+                                  <ReadingView
+                                    onProperty={changeProperty}
+                                    onPropertyHistory={changePropertyHistory}
+                                    onPropertiesSource={openPropertiesSource}
+                                    previews={previews}
+                                    onNavigate={(source, target) =>
+                                      navigateWiki(source, target)
+                                    }
+                                    onTask={(node, snapshot) =>
+                                      setTaskCommand((previous) => ({
+                                        id: (previous?.id ?? 0) + 1,
+                                        vaultId: app.vault!.id,
+                                        path: tab.path,
+                                        slot,
+                                        node,
+                                        snapshot,
+                                      }))
+                                    }
+                                    theme={theme}
+                                    vaultId={app.vault.id}
+                                    path={tab.path}
+                                    content={tab.content}
+                                    navigation={
+                                      focused &&
+                                      app.navigation?.path === tab.path &&
+                                      app.navigation.group === group
+                                        ? app.navigation
+                                        : null
+                                    }
+                                    onWiki={(target) =>
+                                      navigateWiki(tab.path, target)
+                                    }
+                                    onError={app.setError}
+                                  />
+                                )}
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
                   </Suspense>
+                  {graphTab && app.vault && (
+                    <div
+                      className="graph-tab-content"
+                      data-grouped={!!groups || undefined}
+                      hidden={
+                        groups
+                          ? ![
+                              groups.primary.active,
+                              groups.secondary.active,
+                            ].includes(graphTabPath)
+                          : !graph
+                      }
+                      style={
+                        groups
+                          ? {
+                              gridColumn: groups.secondary.tabs.includes(
+                                graphTabPath,
+                              )
+                                ? 3
+                                : 1,
+                              gridRow: 2,
+                            }
+                          : undefined
+                      }
+                      onPointerDownCapture={() => {
+                        if (groups) {
+                          const owner = groupFor(groups, graphTabPath);
+                          if (owner)
+                            app.dispatch({
+                              type: "activateGroupTab",
+                              path: graphTabPath,
+                              group: owner,
+                            });
+                        }
+                      }}
+                    >
+                      <KnowledgeGraph
+                        key={app.vault.id}
+                        vaultId={app.vault.id}
+                        revision={knowledge.status?.revision ?? 0}
+                        indexRunning={
+                          !knowledge.status || knowledge.status.running
+                        }
+                        visible={
+                          groups
+                            ? [
+                                groups.primary.active,
+                                groups.secondary.active,
+                              ].includes(graphTabPath)
+                            : graph
+                        }
+                        onOpenBackground={(path) => {
+                          void app.open(path, true);
+                        }}
+                        active={app.active?.path}
+                        onClose={closeGraph}
+                        onOpen={(path) => {
+                          setGraph(false);
+                          void app.open(path);
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
               </>
             ) : app.vault && preferences.startup === "recent" && !app.busy ? (
@@ -1700,15 +2253,65 @@ export function App() {
               onWidth={setRightWidth}
               onCollapse={() => setRight(false)}
             />
-            <Inspector
-              app={app}
-              inspection={knowledge.inspection}
-              knowledgeError={knowledge.error}
-            />
+            <InspectorTools value={rightTool} onChange={setRightTool} />
+            {rightTool === "relations" && (
+              <Inspector
+                showHeader={false}
+                app={app}
+                inspection={knowledge.inspection}
+                knowledgeError={knowledge.error}
+              />
+            )}
+            {rightTool === "graph" && app.vault && (
+              <div className="sidebar-graph-panel">
+                <div className="sidebar-graph">
+                  {app.active ? (
+                    <KnowledgeGraph
+                      key={app.vault.id}
+                      compact
+                      vaultId={app.vault.id}
+                      active={app.active.path}
+                      revision={knowledge.status?.revision ?? 0}
+                      indexRunning={knowledge.status?.running ?? false}
+                      onOpen={(path) => void app.open(path)}
+                      onClose={() => setRightTool("relations")}
+                    />
+                  ) : (
+                    <p className="tree-empty">
+                      {t("Откройте заметку для локального графа.")}
+                    </p>
+                  )}
+                </div>
+                <Inspector
+                  showHeader={false}
+                  app={app}
+                  inspection={knowledge.inspection}
+                  knowledgeError={knowledge.error}
+                />
+              </div>
+            )}
+            {rightTool === "issues" && app.vault && (
+              <LinkIssues
+                key={app.vault.id}
+                vaultId={app.vault.id}
+                revision={knowledge.status?.revision ?? 0}
+                indexRunning={knowledge.status?.running ?? false}
+                onOpen={(path, line) => void app.openAtLine(path, line)}
+                onResolve={(source, target) => navigateWiki(source, target)}
+              />
+            )}
           </div>
         )}
       </div>
 
+      {captureOpen && app.vault && (
+        <QuickCapture
+          key={app.vault.id}
+          vaultId={app.vault.id}
+          save={app.capture}
+          onClose={() => setCaptureOpen(false)}
+        />
+      )}
       {dialog}
       {iconPicker && iconPicker.vault === app.vault?.id && (
         <EntryIconPicker
@@ -1735,13 +2338,14 @@ export function App() {
           content={app.active.content}
           onClose={() => setTemplates(false)}
           onInsert={(text) => {
-            if (!app.active || !app.vault) return;
+            if (!app.active || !app.vault || !activePanel) return;
             setMode("live");
             setTemplateCommand({
               id: Date.now(),
               text,
               path: app.active.path,
               vaultId: app.vault.id,
+              slot: activePanel.slot,
             });
           }}
         />
@@ -1749,6 +2353,64 @@ export function App() {
       {vaultCreation.dialog}
       {context.menu}
       {renameReview.dialog}
+      {picker && picker.vault === app.vault?.id && (
+        <NotePicker
+          vault={picker.vault}
+          title={t(
+            picker.link ? "Связать выделенный текст" : "Быстрое открытие",
+          )}
+          initial={picker.link?.text}
+          recent={readRecent(picker.vault).filter((path) =>
+            markdownFile.test(path),
+          )}
+          refresh={app.refresh}
+          onClose={closePicker}
+          onChoose={async (path) => {
+            const isCurrent = () =>
+              pickerRef.current === picker &&
+              actionRef.current.vault?.id === picker.vault;
+            const opened = picker.link
+              ? await insertSelectionLink(
+                  picker.link.view,
+                  picker.vault,
+                  picker.link.path,
+                  path,
+                  isCurrent,
+                )
+              : await app.open(path, false, undefined, undefined, {
+                  group: picker.group,
+                  isCurrent,
+                });
+            if (!isCurrent()) return false;
+            if (!opened)
+              throw new Error(
+                t(
+                  "Не удалось открыть заметку. Выберите другой файл или повторите попытку.",
+                ),
+              );
+            if (!picker.link) setGraph(false);
+            closePicker();
+            requestAnimationFrame(() => {
+              if (
+                document.querySelector("dialog[open]") ||
+                actionRef.current.vault?.id !== picker.vault ||
+                actionRef.current.workspace.active !==
+                  (picker.link?.path ?? path)
+              )
+                return;
+              const panel = document.querySelector<HTMLElement>(
+                ".editor-tab-panel[data-pane-active='true']:not([hidden])",
+              );
+              panel
+                ?.querySelector<HTMLElement>(
+                  "[data-note-editor]:not([hidden]) .cm-content",
+                )
+                ?.focus({ preventScroll: true });
+            });
+            return true;
+          }}
+        />
+      )}
       {paletteOpen && (
         <Modal title={t("Палитра команд")} onClose={() => setPalette(false)}>
           <div className="palette-search">
@@ -1797,6 +2459,8 @@ export function App() {
               [t("Сохранить"), hotkey("save")],
               [t("Закрыть вкладку"), hotkey("close")],
               [t("Палитра команд"), hotkey("palette")],
+              [t("Быстрое открытие"), hotkey("quickOpen")],
+              [t("Связать выделенный текст"), hotkey("linkSelection")],
               [t("Поиск в заметке"), hotkey("find")],
               [t("Замена"), "Ctrl H"],
               [t("Чтение / Live Preview"), hotkey("reading")],

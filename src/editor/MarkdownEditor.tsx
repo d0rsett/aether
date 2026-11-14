@@ -10,6 +10,8 @@ import { insertTemplate } from "./templates";
 import type { PropertyCommand } from "./properties";
 import { applyProperty } from "./propertyInput";
 import { propertyBodyStart } from "./properties";
+import { joinEditors, syncEditors, type SharedEditors } from "./sharedViews";
+import { linkSelection } from "./selectionLink";
 import type { NotePreviews } from "../services/notePreviews";
 import type { RenderNode } from "../services/api";
 import { Compartment, EditorState, Text, Transaction } from "@codemirror/state";
@@ -129,6 +131,9 @@ interface Props {
   showLineNumbers?: boolean;
   lineWrapping?: boolean;
   shortcuts?: Shortcuts;
+  sharedEditors?: SharedEditors;
+  focused?: boolean;
+  onLinkSelection?: (view: EditorView) => void;
 }
 const defaultShortcuts: Shortcuts = {};
 function editorBindings(shortcuts: Shortcuts) {
@@ -198,6 +203,9 @@ export function MarkdownEditor({
   onFormatsChange,
   onAttachmentsImported,
   onPropertiesSource,
+  sharedEditors,
+  focused = visible,
+  onLinkSelection,
 }: Props) {
   const locale = useLocale();
   const host = useRef<HTMLDivElement>(null);
@@ -217,6 +225,7 @@ export function MarkdownEditor({
     onError,
     onFormatsChange,
     visible,
+    focused,
   });
   callbacks.current = {
     onNavigate,
@@ -228,6 +237,7 @@ export function MarkdownEditor({
     onError,
     onFormatsChange,
     visible,
+    focused,
   };
   const initial = useRef(content);
   const lastText = useRef(content);
@@ -239,10 +249,22 @@ export function MarkdownEditor({
   const wrapping = useRef(new Compartment());
   const language = useRef(new Compartment());
   const shortcutBindings = useRef(new Compartment());
+  const sharedHistory = useRef(new Compartment());
+  const sharedKey = vaultId && path ? JSON.stringify([vaultId, path]) : null;
   useEffect(() => {
     if (!host.current) return;
     const view = new EditorView({
       parent: host.current,
+      dispatchTransactions(transactions, origin) {
+        origin.update(transactions);
+        const edits = transactions.filter(
+          (transaction) =>
+            transaction.docChanged &&
+            !transaction.annotation(Transaction.remote),
+        );
+        if (sharedEditors && sharedKey && !replacing.current && edits.length)
+          syncEditors(sharedEditors, sharedKey, origin, edits);
+      },
       state: EditorState.create({
         doc: initial.current,
         selection: {
@@ -253,6 +275,8 @@ export function MarkdownEditor({
           language.current.of(EditorState.phrases.of(editorPhrases(locale))),
           gutter.current.of(showLineNumbers ? lineNumbers() : []),
           history(),
+          sharedHistory.current.of([]),
+          linkSelection,
           ...(vaultId && path
             ? [
                 attachmentInput({
@@ -351,23 +375,37 @@ export function MarkdownEditor({
           EditorView.updateListener.of((update) => {
             if (
               (update.docChanged || update.selectionSet) &&
-              callbacks.current.visible
+              callbacks.current.focused
             )
               callbacks.current.onFormatsChange?.(activeFormats(update.state));
-            if (update.docChanged && !replacing.current) {
+            if (update.docChanged) {
               const text = update.state.sliceDoc();
               lastText.current = text;
-              callbacks.current.onChange(text);
+              if (
+                !replacing.current &&
+                update.transactions.some(
+                  (transaction) =>
+                    transaction.docChanged &&
+                    !transaction.annotation(Transaction.remote),
+                )
+              )
+                callbacks.current.onChange(text);
             }
           }),
         ],
       }),
     });
     editor.current = view;
-    if (callbacks.current.visible)
+    const leave =
+      sharedEditors && sharedKey
+        ? joinEditors(sharedEditors, sharedKey, view, sharedHistory.current)
+        : null;
+    if (callbacks.current.focused) {
       callbacks.current.onFormatsChange?.(activeFormats(view.state));
-    view.focus();
+      view.focus();
+    }
     return () => {
+      leave?.();
       view.destroy();
       editor.current = null;
     };
@@ -563,9 +601,9 @@ export function MarkdownEditor({
     });
   }, [shortcuts]);
   useEffect(() => {
-    if (visible && editor.current)
+    if (focused && editor.current)
       callbacks.current.onFormatsChange?.(activeFormats(editor.current.state));
-  }, [visible]);
+  }, [focused]);
   useEffect(() => {
     const view = editor.current;
     const bar = horizontalScroll.current;
@@ -675,6 +713,27 @@ export function MarkdownEditor({
                 },
               }));
           context.show(event, t("Действия редактора"), [
+            ...(onLinkSelection && !selected.empty
+              ? [
+                  {
+                    label: t("Связать выделенный текст"),
+                    shortcut: shortcutLabel(
+                      binding(shortcuts, "linkSelection"),
+                    ),
+                    disabled: view.state.readOnly,
+                    run: () => {
+                      ensureCurrent();
+                      view.dispatch({
+                        selection: {
+                          anchor: selected.anchor,
+                          head: selected.head,
+                        },
+                      });
+                      onLinkSelection(view);
+                    },
+                  },
+                ]
+              : []),
             {
               label: t("Вставить таблицу"),
               disabled: view.state.readOnly,

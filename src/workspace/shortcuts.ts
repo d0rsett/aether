@@ -3,13 +3,16 @@ import { platform } from "../services/platform";
 export const shortcutsKey = "aether.shortcuts.v1";
 export const shortcutCommands = {
   settings: ["Настройки", "Comma"],
+  quickCapture: ["Быстрый захват", "Shift+KeyC"],
   search: ["Поиск по хранилищу", "Shift+KeyF"],
   save: ["Сохранить", "KeyS"],
   openVault: ["Открыть хранилище", "KeyO"],
   newVault: ["Создать хранилище", "Shift+KeyN"],
   newNote: ["Новая заметка", "KeyN"],
   close: ["Закрыть вкладку", "KeyW"],
-  palette: ["Палитра команд", "KeyP"],
+  quickOpen: ["Быстрое открытие", "KeyP"],
+  palette: ["Палитра команд", "Shift+KeyP"],
+  linkSelection: ["Связать выделенный текст", "KeyK"],
   sidebar: ["Переключить левую панель", "Backslash"],
   reading: ["Чтение / Live Preview", "KeyE"],
   bold: ["Жирный", "KeyB"],
@@ -55,7 +58,6 @@ const reserved = new Set([
   "Shift+KeyK",
   "Shift+KeyL",
   "Shift+KeyT",
-  "Shift+KeyP",
   "Alt+KeyG",
   "Alt+Backslash",
   "Shift+Backslash",
@@ -96,6 +98,22 @@ export function readShortcuts(): Shortcuts {
         !reserved.has(value)
       )
         result[id] = value;
+    }
+    // New commands may take a key that was customized in an older version.
+    // Keep the saved binding and move the new command to an available key.
+    for (const id of ["quickOpen", "linkSelection"] as const) {
+      if (result[id] || !conflictingShortcut(result, id, binding(result, id)))
+        continue;
+      const fallback = [
+        "Alt+KeyP",
+        "Alt+KeyK",
+        "Shift+KeyK",
+        ...Array.from(
+          "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+          (letter) => `Alt+Key${letter}`,
+        ),
+      ].find((value) => !conflictingShortcut(result, id, value));
+      if (fallback) result[id] = fallback;
     }
     if (
       new Set(shortcutIds.map((id) => binding(result, id))).size !==

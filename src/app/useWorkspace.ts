@@ -23,6 +23,7 @@ import { useEntryIcons } from "../workspace/entryIconStorage";
 import { attachmentBase64 } from "../services/attachmentUploads";
 import { markdownFile } from "../services/canvasFiles";
 import { imageExtension } from "../services/images";
+import { groupFor, otherGroup, type GroupId } from "../workspace/groups";
 import {
   readPreferences,
   readRecent,
@@ -61,6 +62,7 @@ export function useWorkspace(
     | (AnchorLocation & {
         path: string;
         id: number;
+        group?: GroupId;
       })
     | null
   >(null);
@@ -169,6 +171,8 @@ export function useWorkspace(
       !failed.some((f) => f.startsWith(`${stored.active}:`))
     )
       dispatch({ type: "activate", path: stored.active });
+    if (stored.groups && preference === "last")
+      dispatch({ type: "restoreGroups", layout: stored.groups });
     if (startup) {
       if (preference === "recent") dispatch({ type: "showRecent" });
       if (preference === "note") {
@@ -316,27 +320,64 @@ export function useWorkspace(
         throw new Error(t("Введите имя папки без пути."));
       return api.createVault(options.name.trim(), options.parent.trim());
     });
-  const open = (path: string, background = false, anchor?: string) =>
+  const open = (
+    path: string,
+    background = false,
+    anchor?: string,
+    line?: number,
+    options?: { group?: GroupId; isCurrent?: () => boolean },
+  ) =>
     task(async () => {
       const current = ref.current;
-      if (!current.vault) return;
+      if (!current.vault || options?.isCurrent?.() === false) return;
+      const group = options?.group;
       const existing = current.workspace.tabs.find((tab) => tab.path === path);
       if (existing) {
-        if (!background) dispatch({ type: "activate", path });
+        if (!background)
+          dispatch(
+            group
+              ? { type: "activateGroupTab", path, group }
+              : { type: "activate", path },
+          );
       } else if (imageExtension(path)) {
         dispatch({ type: "openImage", path });
         return;
       }
       const note = existing ?? (await api.read(current.vault.id, path));
-      if (!existing) dispatch({ type: "open", note, background });
-      if (anchor) {
+      if (options?.isCurrent?.() === false) return;
+      if (!existing) dispatch({ type: "open", note, background, group });
+      const navigationGroup = current.workspace.groups
+        ? (group ??
+          groupFor(current.workspace.groups, path) ??
+          current.workspace.groups.focused)
+        : undefined;
+      if (line !== undefined) {
+        const lines = note.content.replace(/\r\n/g, "\n").split("\n");
+        const index = Math.max(0, Math.min(lines.length - 1, line - 1));
+        const from = lines
+          .slice(0, index)
+          .reduce((total, value) => total + value.length + 1, 0);
+        setNavigation({
+          path,
+          group: navigationGroup,
+          line: index + 1,
+          from,
+          to: from,
+          id: ++navigationId.current,
+        });
+      } else if (anchor) {
         const location = await api.locateAnchor(
           current.vault.id,
           path,
           note.content,
           anchor,
         );
-        setNavigation({ ...location, path, id: ++navigationId.current });
+        setNavigation({
+          ...location,
+          path,
+          group: navigationGroup,
+          id: ++navigationId.current,
+        });
       }
     });
   const saveSnapshot = useCallback(async (vaultId: string, tab: Tab) => {
@@ -509,8 +550,55 @@ export function useWorkspace(
     });
     return imported;
   };
-  const close = (path: string) =>
+  const capture = async (text: string) => {
+    let saved: string | undefined;
+    await task(async () => {
+      const current = ref.current.vault;
+      if (!current || !text.trim()) return;
+      const folder = "Входящие";
+      try {
+        await api.mkdir(current.id, folder);
+      } catch (error) {
+        if (
+          !error ||
+          typeof error !== "object" ||
+          !("code" in error) ||
+          error.code !== "AlreadyExists"
+        )
+          throw error;
+        await api.list(current.id, folder);
+      }
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      for (let index = 0; index < 100; index++) {
+        const path = folder + "/" + stamp + (index ? "-" + index : "") + ".md";
+        try {
+          saved = (await api.create(current.id, path, text)).path;
+          setRefresh((value) => value + 1);
+          setNotice(t("Мысль сохранена во входящие."));
+          return;
+        } catch (error) {
+          if (
+            !error ||
+            typeof error !== "object" ||
+            !("code" in error) ||
+            error.code !== "AlreadyExists"
+          )
+            throw error;
+        }
+      }
+      throw new Error(t("Не удалось подобрать свободное имя заметки."));
+    });
+    return saved;
+  };
+  const openAtLine = (path: string, line: number) =>
+    open(path, false, undefined, line);
+  const close = (path: string, group?: GroupId) =>
     task(async () => {
+      const groups = ref.current.workspace.groups;
+      if (group && groups?.[otherGroup(group)].tabs.includes(path)) {
+        dispatch({ type: "closeGroupTab", path, group });
+        return;
+      }
       const tab = ref.current.workspace.tabs.find((t) => t.path === path);
       if (
         tab &&
@@ -915,12 +1003,18 @@ export function useWorkspace(
         return next;
       });
     });
-  const openWiki = (source: string, target: string) =>
+  const openWiki = (
+    source: string,
+    target: string,
+    options?: { newTab?: boolean },
+  ) =>
     task(async () => {
       const current = ref.current.vault;
       if (!current) return;
+      const groups = ref.current.workspace.groups;
       const previous = ref.current.workspace.active;
-      const reuse = readPreferences().links === "current" && previous;
+      const reuse =
+        !options?.newTab && readPreferences().links === "current" && previous;
       const resolution = await api.resolve(current.id, source, target);
       if (resolution.path) {
         const existing = ref.current.workspace.tabs.find(
@@ -947,6 +1041,9 @@ export function useWorkspace(
           setNavigation({
             ...location,
             path: note.path,
+            group: groups
+              ? (groupFor(groups, note.path) ?? groups.focused)
+              : undefined,
             id: ++navigationId.current,
           });
         }
@@ -1000,6 +1097,8 @@ export function useWorkspace(
     setFolder,
     choose,
     open,
+    openAtLine,
+    capture,
     save,
     openCardEditor,
     convertCard,

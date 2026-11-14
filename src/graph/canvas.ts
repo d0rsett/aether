@@ -19,6 +19,7 @@ export interface GraphCanvasState {
   size: number;
   thickness: number;
   canvasMode: boolean;
+  alwaysVisibleLabels?: boolean;
 }
 
 /** Draw from current mutable node positions without a React render per frame. */
@@ -47,6 +48,7 @@ export function paintGraph(
       labels,
       size,
       thickness,
+      alwaysVisibleLabels,
     } = state,
     theme = getComputedStyle(document.documentElement),
     color = (name: string) => theme.getPropertyValue(name).trim(),
@@ -83,6 +85,8 @@ export function paintGraph(
           degree,
           size,
           scale / ratio,
+          undefined,
+          alwaysVisibleLabels,
         )
       : new Map<string, GraphLabel>(),
     normalEdges = new Path2D(),
@@ -146,7 +150,9 @@ export function paintGraph(
   ctx.fillStyle = color("--accent");
   ctx.fill(highlightedNodes);
   if (shownLabels.size) {
-    const labelOpacity = graphLabelOpacity(scale / ratio);
+    const labelOpacity = alwaysVisibleLabels
+      ? 1
+      : graphLabelOpacity(scale / ratio);
     ctx.fillStyle = color("--text");
     ctx.font = graphLabelFont(scale / ratio);
     ctx.strokeStyle = color("--base");
