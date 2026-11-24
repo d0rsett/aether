@@ -5704,3 +5704,244 @@ test("graph large vault: 3000 connected notes remain navigable", async () => {
     await stop(app);
   }
 });
+test("tab groups: drag, shared drafts and undo, independent modes and restart restoration", async () => {
+  const run = await mkdtemp(join(root, ".build-cache/native-tab-groups-"));
+  const vault = join(run, "Native-MVP"),
+    data = join(run, "data"),
+    profile = join(run, "profile");
+  await mkdir(vault);
+  await mkdir(data);
+  const original = "\uFEFF# B\r\n\r\nOriginal text.\r\n";
+  await writeFile(join(vault, "A.md"), "# A\n\nOriginal A.\n");
+  await writeFile(join(vault, "B.md"), original);
+  await writeFile(join(vault, "C.md"), "# C\n\nOriginal C.\n");
+  await writeFile(
+    join(data, "settings.json"),
+    JSON.stringify({ lastVault: vault }),
+  );
+  let app: RunningApp | undefined;
+  try {
+    app = await launch(data, profile, false);
+    let page = app.page;
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    for (const name of ["A", "B", "C"])
+      await page.getByRole("button", { name, exact: true }).click();
+    const area = page.locator(".document-area");
+    const bounds = await area.boundingBox();
+    if (!bounds) throw new Error("Document area missing");
+    await page.getByRole("tab", { name: "B", exact: true }).dragTo(area, {
+      targetPosition: { x: bounds.width - 24, y: 150 },
+    });
+    let left = page.getByRole("tablist", { name: "Вкладки левой группы" });
+    let right = page.getByRole("tablist", { name: "Вкладки правой группы" });
+    await expect(left.getByRole("tab")).toHaveText(["A", "C"]);
+    await expect(right.getByRole("tab")).toHaveText(["B"]);
+    await right
+      .getByRole("tab", { name: "B", exact: true })
+      .click({ button: "right" });
+    await page
+      .getByRole("menuitem", { name: "Открыть во второй панели", exact: true })
+      .click();
+    const panels = page.getByRole("tabpanel", { name: "B.md", exact: true });
+    await expect(panels).toHaveCount(2);
+    const first = panels
+      .nth(0)
+      .getByRole("textbox", { name: "Markdown-редактор" });
+    const second = panels
+      .nth(1)
+      .getByRole("textbox", { name: "Markdown-редактор" });
+    await first.press("Control+End");
+    await first.pressSequentially("Shared draft.");
+    await expect(second).toContainText("Shared draft.");
+    await second.press("Control+z");
+    await expect(first).not.toContainText("Shared draft.");
+    await first.press("Control+y");
+    await expect(second).toContainText("Shared draft.");
+    await panels
+      .nth(1)
+      .getByRole("button", { name: "Переключить режим чтения", exact: true })
+      .click();
+    await expect(
+      panels.nth(1).getByRole("region", { name: "Просмотр заметки" }),
+    ).toContainText("Shared draft.");
+    await expect(first).toBeVisible();
+    const divider = page.getByRole("separator", { name: "Ширина панелей" });
+    await divider.press("ArrowRight");
+    await expect(divider).toHaveAttribute("aria-valuenow", "55");
+    await left
+      .getByRole("tab", { name: "C", exact: true })
+      .dragTo(right.getByRole("tab", { name: "B", exact: true }), {
+        targetPosition: { x: 4, y: 12 },
+      });
+    await expect(right.getByRole("tab")).toHaveText(["C", "B"]);
+    await expect(left.getByRole("tab")).toHaveText(["A", "B"]);
+    await expect(first).toContainText("Shared draft.");
+    await page.screenshot({
+      path: test.info().outputPath("tab-groups-dark.png"),
+    });
+    await toggleTheme(page);
+    await page.setViewportSize({ width: 900, height: 700 });
+    await page.screenshot({
+      path: test.info().outputPath("tab-groups-light-narrow.png"),
+    });
+    expect(await readFile(join(vault, "B.md"), "utf8")).toBe(original);
+    await page
+      .getByRole("button", { name: "Закрыть окно", exact: true })
+      .click();
+    await closeNative(
+      app,
+      page
+        .getByRole("dialog", { name: "Закрыть приложение?", exact: true })
+        .getByRole("button", { name: "Закрыть", exact: true }),
+    );
+    app = await launch(data, profile, false);
+    page = app.page;
+    left = page.getByRole("tablist", { name: "Вкладки левой группы" });
+    right = page.getByRole("tablist", { name: "Вкладки правой группы" });
+    await expect(left.getByRole("tab")).toHaveText(["A", "B"]);
+    await expect(right.getByRole("tab")).toHaveText(["C", "B"]);
+    await expect(
+      left.getByRole("tab", { name: "B", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(
+      right.getByRole("tab", { name: "C", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(
+      page.getByRole("separator", { name: "Ширина панелей" }),
+    ).toHaveAttribute("aria-valuenow", "55");
+    await expect(
+      page.getByRole("tabpanel", { name: "B.md", exact: true }),
+    ).toContainText("Shared draft.");
+    await right.getByRole("tab", { name: "B", exact: true }).click();
+    await page
+      .locator('.group-tab-strip[data-focused="true"]')
+      .getByRole("button", { name: "Закрыть B", exact: true })
+      .click();
+    await expect(
+      left.getByRole("tab", { name: "B", exact: true }),
+    ).toBeVisible();
+    await expect(right.getByRole("tab")).toHaveText(["C"]);
+    await page
+      .getByRole("button", { name: "Объединить панели", exact: true })
+      .first()
+      .click();
+    await expect(page.getByRole("tablist")).toHaveCount(1);
+    await expect(page.getByRole("tab")).toHaveText(["A", "B", "C"]);
+    await page.getByRole("tab", { name: "B", exact: true }).click();
+    await expect(
+      page.getByRole("textbox", { name: "Markdown-редактор" }),
+    ).toContainText("Shared draft.");
+    expect(await readFile(join(vault, "B.md"), "utf8")).toBe(original);
+    expect(errors).toEqual([]);
+  } finally {
+    await stop(app);
+  }
+});
+test("tab groups refinements: pane commands, keyboard focus, drop feedback and equal widths", async () => {
+  const run = await mkdtemp(join(root, ".build-cache/native-tab-polish-"));
+  const vault = join(run, "Native-MVP"),
+    data = join(run, "data");
+  await mkdir(vault);
+  await mkdir(data);
+  const a = "---\ntitle: First\n---\n# A\n[[B]]\n";
+  const b = "---\ntitle: Second\n---\n# B\n[[A]]\n";
+  await writeFile(join(vault, "A.md"), a);
+  await writeFile(join(vault, "B.md"), b);
+  await writeFile(
+    join(data, "settings.json"),
+    JSON.stringify({ lastVault: vault }),
+  );
+  let app: RunningApp | undefined;
+  try {
+    app = await launch(data, join(run, "profile"), false);
+    const page = app.page;
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.getByRole("button", { name: "A", exact: true }).click();
+    await page.getByRole("button", { name: "B", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Разделить рабочую область", exact: true })
+      .click();
+    const left = page.getByRole("tablist", { name: "Вкладки левой группы" });
+    const right = page.getByRole("tablist", { name: "Вкладки правой группы" });
+    const leftPanel = page.getByRole("tabpanel", { name: "A.md", exact: true });
+    const rightPanel = page.getByRole("tabpanel", {
+      name: "B.md",
+      exact: true,
+    });
+    await rightPanel
+      .getByRole("button", { name: "Переключить режим чтения", exact: true })
+      .click();
+    await left.getByRole("tab", { name: "A", exact: true }).click();
+    await expect(leftPanel).toHaveAttribute("data-pane-active", "true");
+    // Accessibility activation may fire click without a preceding pointer/focus event.
+    await rightPanel
+      .getByRole("button", {
+        name: "Открыть свойства в исходнике",
+        exact: true,
+      })
+      .evaluate((button) => {
+        if (!(button instanceof HTMLButtonElement))
+          throw new Error("Property source button missing");
+        button.click();
+      });
+    await expect(
+      rightPanel.getByRole("textbox", { name: "Markdown-редактор" }),
+    ).toContainText("title: Second");
+    await expect(
+      leftPanel.getByRole("textbox", { name: "Markdown-редактор" }),
+    ).toBeVisible();
+    const divider = page.getByRole("separator", { name: "Ширина панелей" });
+    await divider.press("ArrowRight");
+    await expect(divider).toHaveAttribute("aria-valuenow", "55");
+    await divider.dblclick();
+    await expect(divider).toHaveAttribute("aria-valuenow", "50");
+    const source = right.getByRole("tab", { name: "B", exact: true });
+    const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+    await source.dispatchEvent("dragstart", { dataTransfer });
+    const ownBounds = await rightPanel.boundingBox();
+    const otherBounds = await leftPanel.boundingBox();
+    if (!ownBounds || !otherBounds) throw new Error("Pane bounds missing");
+    await rightPanel.dispatchEvent("dragover", {
+      dataTransfer,
+      clientX: ownBounds.x + 40,
+      clientY: ownBounds.y + 100,
+    });
+    await expect(page.locator(".workspace-group-drop")).toHaveCount(0);
+    await leftPanel.dispatchEvent("dragover", {
+      dataTransfer,
+      clientX: otherBounds.x + 40,
+      clientY: otherBounds.y + 100,
+    });
+    await expect(page.locator(".workspace-group-drop")).toHaveAttribute(
+      "data-side",
+      "primary",
+    );
+    await source.dispatchEvent("dragend", { dataTransfer });
+    await expect(page.locator(".workspace-group-drop")).toHaveCount(0);
+    await source.click();
+    await page
+      .getByRole("button", { name: "Граф связей", exact: true })
+      .click();
+    const graph = page.getByRole("region", {
+      name: "Граф связей",
+      exact: true,
+    });
+    await expect(graph).toBeVisible();
+    await left.getByRole("tab", { name: "A", exact: true }).click();
+    await expect(leftPanel).toHaveAttribute("data-pane-active", "true");
+    await graph.getByLabel("Полотно графа", { exact: true }).focus();
+    await expect(
+      page.locator(".group-tab-strip").filter({ has: right }),
+    ).toHaveAttribute("data-focused", "true");
+    await page.screenshot({
+      path: test.info().outputPath("tab-polish-graph-focus.png"),
+    });
+    expect(await readFile(join(vault, "A.md"), "utf8")).toBe(a);
+    expect(await readFile(join(vault, "B.md"), "utf8")).toBe(b);
+    expect(errors).toEqual([]);
+  } finally {
+    await stop(app);
+  }
+});

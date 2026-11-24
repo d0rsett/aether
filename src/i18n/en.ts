@@ -1,5 +1,13 @@
 // Russian source messages are stable translation keys; note content is never translated.
 export const english: Record<string, string> = {
+  "Двойной щелчок: равная ширина панелей": "Double-click: equal pane widths",
+  "Действия панели": "Pane actions",
+  "Ширина панелей": "Pane width",
+  "Вкладки правой группы": "Right group tabs",
+  "Вкладки левой группы": "Left group tabs",
+  "Разделить рабочую область": "Split workspace",
+  "Объединить панели": "Merge panes",
+  "Открыть во второй панели": "Open in second pane",
   "Привязка к карточкам": "Snap to cards",
   "Привязка к сетке": "Snap to grid",
   "Настройки доски": "Canvas settings",

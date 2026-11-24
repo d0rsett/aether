@@ -2,6 +2,14 @@
 
 [Русский](CHANGELOG.ru.md) · [README](README.md)
 
+## 1.1.0 - 2026-11-24
+
+- Split the editor into two tab groups by dragging a tab onto either half, move tabs between strips, and resize or merge the groups.
+- Restore group membership, tab order, selected files, focus, width and recovery drafts with each vault session.
+- Open the same Markdown note in both panes with a shared draft and undo history, independent cursors, scrolling and modes.
+- Add arrow-key, Home and End tab navigation, continuous drag-edge scrolling, clearer focus and valid-drop feedback, and double-click equal pane widths.
+- Keep property commands bound to their originating pane and transfer graph focus through keyboard navigation.
+
 ## 1.0.2 - 2026-11-24
 
 - Fit Mermaid diagrams to the note width and show their full height without internal scrolling in Live Preview and Reading mode.

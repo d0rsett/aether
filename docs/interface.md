@@ -79,3 +79,10 @@ Reorder note and image tabs by dragging or by pressing Alt+Shift+Left/Right on a
 The graph tab participates in the shared tab order. Drag it, move it with Alt+Shift+Left/Right, or close it through its context menu or Ctrl+W. Its position restores separately for each vault.
 
 Editor settings set the default mode for new tabs. Workspace settings select the startup note, recent files, link opening behavior, and the tab overflow menu. Opening a link in the current tab keeps tabs with unsaved drafts open. Attachment settings choose a folder inside the vault and Wiki or Markdown links, with an option to use Obsidian settings. Keyboard shortcuts can be reassigned for application and editor commands, checked for conflicts, and reset individually.
+
+## Tab groups
+
+Drag a tab onto the left or right half of the editor to create two independent tab groups. The highlighted half shows where the tab will go. Each group has its own tab strip, selected file and reading mode. Drop a tab into the other strip to transfer it, or between tabs to choose its position. New notes open in the focused group. Closing or moving its last tab removes the empty group. The separator resizes with the mouse or arrow keys; Merge panes keeps every open buffer. Group membership, tab order, selected files, focus and width restore with the vault session. Note, image, canvas and graph tabs can be moved between groups.
+
+**Open in second pane** in a note tab’s context menu shows the same note beside the original. Both editors share the draft and undo history, with separate cursors, scrolling, and modes. Closing one view keeps the draft in the other.
+The focused group has an accent line above its tabs. Left/Right arrows switch tabs within the group; Home and End select its first and last tabs. Alt+Shift+Left/Right still changes tab order. Holding a dragged tab near a strip edge scrolls it automatically. Editor-half highlighting appears only for a valid move. Double-clicking the separator restores equal pane widths.

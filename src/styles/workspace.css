@@ -1686,3 +1686,131 @@
   text-align: left;
   overflow-wrap: anywhere;
 }
+
+/* Tab groups reuse the existing document chrome. */
+.workspace-tabs .tabs {
+  flex: 1 1 auto;
+}
+.workspace-split {
+  flex: none;
+  margin-left: 2px;
+}
+.workspace-split[aria-pressed="true"] {
+  color: var(--accent);
+  background: var(--selected);
+}
+.split-documents {
+  display: grid;
+  overflow: hidden;
+}
+.split-documents .editor-tab-panel:not([hidden]) {
+  min-width: 0;
+  height: 100%;
+}
+.split-documents .note-title {
+  padding-right: 24px;
+  padding-left: calc(24px + var(--editor-gutter-width, 0px));
+}
+.split-documents .note-title input {
+  font-size: 24px;
+}
+.split-divider {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  position: relative;
+  cursor: col-resize;
+  background: var(--border);
+  touch-action: none;
+}
+.split-divider::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline: -3px;
+  z-index: 12;
+}
+.split-divider:hover,
+.split-divider:focus-visible {
+  background: var(--accent);
+}
+.single-workspace-tabs {
+  flex: none;
+  min-width: 0;
+}
+.single-workspace-tabs[hidden] {
+  display: none;
+}
+.split-documents {
+  grid-template-rows: var(--pane-header-height) minmax(0, 1fr);
+}
+.group-tab-strip {
+  position: relative;
+  min-width: 0;
+}
+.group-tab-strip[data-focused="true"]::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.group-tab-strip .workspace-tabs {
+  gap: 2px;
+  padding-inline: 6px;
+}
+.group-tab-strip .workspace-tabs > .icon-button {
+  flex: 0 0 26px;
+}
+.group-tab-strip .workspace-tabs .tab {
+  min-width: 88px;
+}
+.group-tab-strip .workspace-tabs {
+  height: 100%;
+}
+.group-tab-strip[data-focused="false"] .tab.active {
+  background: var(--hover);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.group-document-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+  min-height: 38px;
+  padding: 0 14px;
+  gap: 8px;
+  background: var(--base);
+}
+.group-document-toolbar .breadcrumbs {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+.group-document-toolbar .document-actions {
+  flex: none;
+}
+.workspace-group-drop {
+  position: absolute;
+  inset-block: 0;
+  z-index: 40;
+  pointer-events: none;
+  border: 2px solid var(--accent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.document-area > .graph-tab-content {
+  inset: 0;
+}
+.document-area > .graph-tab-content[data-grouped="true"] {
+  position: relative;
+  inset: auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
