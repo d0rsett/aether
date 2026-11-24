@@ -1,5 +1,5 @@
 import { t, useLocale } from "../i18n";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import katex from "katex";
 import "katex/dist/katex.min.css";
 export function MathView({
@@ -31,13 +31,45 @@ export function MathView({
   );
 }
 let serial = 0;
+const diagramThemeColors = [
+  "--surface",
+  "--hover",
+  "--border",
+  "--accent",
+  "--muted",
+  "--text",
+];
+
 export function Diagram({ code, dark }: { code: string; dark: boolean }) {
   useLocale();
   const [result, setResult] = useState<{
+    id: string;
     svg: string;
+    width: number;
     height: number;
   } | null>(null);
   const [error, setError] = useState("");
+  const [themeColors, setThemeColors] = useState("");
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    const updateColors = () => {
+      const styles = getComputedStyle(root);
+      const colors = diagramThemeColors.map((name) => {
+        const value = styles.getPropertyValue(name).trim();
+        return !value.includes("<") && CSS.supports("color", value)
+          ? `${name}: ${value};`
+          : "";
+      });
+      setThemeColors(colors.join("\n"));
+    };
+    // Live Preview mounts its widgets in separate React roots.
+    const observer = new MutationObserver(updateColors);
+    observer.observe(root, {
+      attributeFilter: ["data-theme", "data-palette", "style"],
+    });
+    updateColors();
+    return () => observer.disconnect();
+  }, []);
   useEffect(() => {
     let cancelled = false;
     setResult(null);
@@ -70,17 +102,29 @@ export function Diagram({ code, dark }: { code: string; dark: boolean }) {
         throw new Error(
           t("Настройки Mermaid внутри заметки не поддерживаются."),
         );
-      const { svg } = await mermaid.render(`aether-diagram-${++serial}`, code);
+      const id = `aether-diagram-${++serial}`;
+      const { svg } = await mermaid.render(id, code);
       const parsed = new DOMParser().parseFromString(svg, "image/svg+xml");
-      const viewBox = parsed.documentElement
+      const root = parsed.documentElement;
+      const viewBox = root
         .getAttribute("viewBox")
-        ?.split(/\s+/)
+        ?.trim()
+        .split(/[\s,]+/)
         .map(Number);
+      const width =
+        viewBox?.[2] ?? parseFloat(root.getAttribute("width") ?? "");
       const height =
-        viewBox && viewBox[2] > 0
-          ? Math.min(520, Math.max(160, (700 * viewBox[3]) / viewBox[2]))
-          : 300;
-      if (!cancelled) setResult({ svg, height });
+        viewBox?.[3] ?? parseFloat(root.getAttribute("height") ?? "");
+      if (![width, height].every((n) => Number.isFinite(n) && n > 0))
+        throw new Error("Invalid diagram dimensions");
+      if (!viewBox) root.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      if (!cancelled)
+        setResult({
+          id,
+          svg: new XMLSerializer().serializeToString(root),
+          width,
+          height,
+        });
     })().catch(() => {
       if (!cancelled)
         setError(
@@ -91,8 +135,39 @@ export function Diagram({ code, dark }: { code: string; dark: boolean }) {
       cancelled = true;
     };
   }, [code, dark]);
+  // Chromium paints an opaque canvas when the frame and document color schemes differ.
+  const colorScheme = dark ? "dark" : "light";
+  const flowchart = `#${result?.id}[aria-roledescription^="flowchart"]`;
   const srcDoc = result
-    ? `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'"><style>html,body{margin:0;background:${dark ? "#202624" : "#f5f5f1"}}svg{display:block;max-width:100%;height:auto;margin:auto}</style></head><body>${result.svg}</body></html>`
+    ? `<!doctype html><html><head><meta name="color-scheme" content="${colorScheme}"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+      <style>
+        html, body { height: 100%; margin: 0; background: transparent; overflow: hidden; }
+        body > svg { display: block; width: 100% !important; height: 100% !important; max-width: none !important; background: transparent !important; }
+        ${flowchart} {
+          ${themeColors}
+          --node-fill: var(--hover);
+          --decision-fill: color-mix(in srgb, var(--hover) 80%, var(--accent));
+          --node-border: color-mix(in srgb, var(--border) 60%, var(--muted));
+          --connector: color-mix(in srgb, var(--muted) 70%, var(--text));
+          --branch-fill: var(--surface);
+          --label: var(--text);
+        }
+        ${flowchart} .node > .label-container,
+        ${flowchart} .node .outer-path {
+          fill: var(--node-fill);
+          stroke: var(--node-border);
+          filter: none;
+        }
+        ${flowchart} .node > rect.label-container:not([rx]),
+        ${flowchart} .node > rect.label-container[rx="0"] { rx: 7px; ry: 7px; }
+        ${flowchart} .node > polygon.label-container { fill: var(--decision-fill); }
+        ${flowchart} .nodeLabel,
+        ${flowchart} .edgeLabel text { fill: var(--label); }
+        ${flowchart} .edgePaths .flowchart-link { stroke: var(--connector); }
+        ${flowchart} .marker { fill: var(--connector); stroke: var(--connector); }
+        ${flowchart} .edgeLabel { background: transparent; }
+        ${flowchart} .edgeLabel rect { fill: var(--branch-fill); opacity: 1; rx: 3px; ry: 3px; }
+      </style></head><body>${result.svg}</body></html>`
     : "";
   return (
     <figure className="reading-diagram">
@@ -101,7 +176,11 @@ export function Diagram({ code, dark }: { code: string; dark: boolean }) {
           title={t("Диаграмма Mermaid")}
           sandbox=""
           srcDoc={srcDoc}
-          style={{ height: result.height }}
+          style={{
+            colorScheme,
+            maxWidth: result.width,
+            aspectRatio: `${result.width} / ${result.height}`,
+          }}
         />
       ) : (
         <>

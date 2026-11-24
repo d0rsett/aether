@@ -2877,8 +2877,16 @@ async function setDefaultNoteMode(page: Page, mode: "source" | "reading") {
   const settings = page.getByRole("dialog", { name: "Настройки" });
   await settings.getByRole("button", { name: "Редактор", exact: true }).click();
   await settings
-    .getByRole("combobox", { name: /^Режим открытия заметок/ })
-    .selectOption(mode);
+    .locator(".settings-row")
+    .filter({ hasText: "Режим открытия заметок" })
+    .getByRole("button")
+    .click();
+  await page
+    .getByRole("option", {
+      name: mode === "source" ? "Исходник" : "Режим чтения",
+      exact: true,
+    })
+    .click();
   await page.keyboard.press("Escape");
 }
 async function formatAction(page: Page, label: string) {
@@ -3572,7 +3580,36 @@ test("stage 3: reading, local images, KaTeX, sandboxed Mermaid, live editing, co
       page.frameLocator('iframe[title="Диаграмма Mermaid"]').locator("svg"),
     ).toHaveCount(1);
     await diagram.scrollIntoViewIfNeeded();
+    const canvas = diagram.contentFrame().locator("body > svg");
+    await expect(canvas).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    const nodeShape = canvas.locator(".node > rect.label-container").first();
+    await expect(nodeShape).toHaveCSS("rx", "7px");
+    await expect(nodeShape).toHaveCSS("filter", "none");
+    expect(
+      await canvas.evaluate((element) => {
+        const svg = element as SVGSVGElement;
+        const bounds = svg.getBoundingClientRect();
+        const box = svg.viewBox.baseVal;
+        const doc = svg.ownerDocument.documentElement;
+        return (
+          Math.abs(bounds.height - (bounds.width * box.height) / box.width) <=
+            1 &&
+          doc.scrollHeight === doc.clientHeight &&
+          doc.scrollWidth === doc.clientWidth
+        );
+      }),
+    ).toBe(true);
     await page.screenshot({ path: test.info().outputPath("math-mermaid.png") });
+    await page.evaluate(() =>
+      document.documentElement.style.setProperty("--hover", "#73427a"),
+    );
+    try {
+      await expect(nodeShape).toHaveCSS("fill", "rgb(115, 66, 122)");
+    } finally {
+      await page.evaluate(() =>
+        document.documentElement.style.removeProperty("--hover"),
+      );
+    }
     expect(await page.evaluate(() => "__noteExecuted" in window)).toBe(false);
     await expect(reading.locator("script")).toHaveCount(0);
     await expect(
@@ -3683,10 +3720,13 @@ test("live rich blocks: inline/display math, table, image, Mermaid, source editi
       path: test.info().outputPath("live-rich-blocks.png"),
     });
     await toggleTheme(page);
-    await expect(page.getByTitle("Диаграмма Mermaid")).toHaveAttribute(
-      "srcdoc",
-      /background:#f5f5f1/,
+    await expect(page.getByTitle("Диаграмма Mermaid")).toHaveCSS(
+      "color-scheme",
+      "light",
     );
+    await expect(
+      page.frameLocator('iframe[title="Диаграмма Mermaid"]').locator("body"),
+    ).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await expect(display().locator(".katex")).toHaveCount(1);
     await display()
       .getByRole("button", { name: "Изменить формулу", exact: true })

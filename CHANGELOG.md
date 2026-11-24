@@ -2,6 +2,12 @@
 
 [Русский](CHANGELOG.ru.md) · [README](README.md)
 
+## 1.0.2 - 2026-11-24
+
+- Fit Mermaid diagrams to the note width and show their full height without internal scrolling in Live Preview and Reading mode.
+- Remove the diagram frame and use the note background in both themes.
+- Refine flowchart nodes and connectors and update their colors when the application palette changes.
+
 ## 1.0.1 - 2026-11-08
 
 - Keep Live Preview blocks within the visible editor width when line wrapping is disabled, instead of centering them relative to the longest source line.
