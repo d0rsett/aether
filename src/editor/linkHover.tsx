@@ -16,7 +16,7 @@ export function noteLinkHover(context: RenderContext) {
   return [
     hoverTooltip(
       async (view, position) => {
-        const node = syntaxTree(view.state).resolveInner(position, -1);
+        const node = syntaxTree(view.state).resolve(position, -1);
         let candidate = false;
         for (
           let parent: typeof node | null = node;

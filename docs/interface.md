@@ -16,6 +16,15 @@ Files in the tree share the same context menu. **Choose icon** is also available
 
 Source and Live Preview share the editor state; Reading renders the current buffer. Formatting, templates and property/table edits use transactions so undo and unsaved text remain available. Supported headings and lists can be folded. The fold control sits between line numbers and text; collapsed content uses a plain ellipsis.
 
+In Source and Live Preview, fenced code blocks have a separate background. Specify `js`, `jsx`, `ts`, `tsx`, `json`, `html` or `css` after the opening backticks for syntax highlighting and language-aware indentation in the editor. For plain code blocks, Enter carries the current line's indentation forward.
+
+Reading uses the same code block colors and syntax palette as the editor.
+Use `python`, `python3` or `py` to highlight Python.
+
+In Settings → Editor, toggle syntax colors for editing and Reading or choose whether Enter calculates indentation in a code block. With syntax-aware indentation disabled, Enter keeps the current line's indent. The indent size sets a step of 2, 4 or 8 spaces.
+
+Code palette offers a Python preview and 19 named choices, including matching palettes for the Appearance presets. Match appearance uses the selected Appearance preset or Aether syntax colors for a custom color. Choosing a preset under Code block theme applies its background and syntax colors together. To customize that combination, select a different Code palette. Match code palette follows your syntax colors. Both settings apply in editing and Reading.
+
 In tables, click a cell to edit its Markdown; unfocused cells show supported formatting. Use the bottom/right plus controls for rows/columns and right-click for context actions. Long text wraps inside the editor. Supported callout/list prefixes survive edits; ambiguous nested structures remain editable in Source.
 
 ## Properties and templates
@@ -72,7 +81,7 @@ In Appearance, choose Light, Dark, or Follow system. Follow system updates when 
 
 Editor settings also provide font size (12–24 px), line height (1.2–2.4), text width (480–1100 px), a text sample and a reset action. Preferences apply to Source, Live Preview and Reading and persist for the profile. Keyboard shortcuts lists commands with a search by title or shortcut; assignments are read-only.
 
-Appearance offers eight palette presets, a custom base color, and compact or comfortable interface density. Density adjusts spacing in the file tree, tabs, and menus. Both preferences persist for the profile.
+Appearance offers the same 19 named presets as the Code block theme menu, a custom base color, and compact or comfortable interface density. Density adjusts spacing in the file tree, tabs, and menus. These preferences persist for the profile.
 
 Reorder note and image tabs by dragging or by pressing Alt+Shift+Left/Right on a focused tab. The order persists with the workspace while each tab keeps its unsaved content.
 

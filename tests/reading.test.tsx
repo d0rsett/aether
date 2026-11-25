@@ -54,6 +54,49 @@ const node = (kind: string, text = "", target = ""): RenderNode => ({
   endLine: 1,
   children: [],
 });
+it("highlights supported code and keeps code block whitespace and HTML literal", () => {
+  const source = 'if (ready) {\n  const value = "<img src=x>";\n}\n';
+  const plain = "def greet():\n    print('hello')\n";
+  const { container } = render(
+    <>
+      {renderNode(node("codeBlock", source, "TypeScript"), context)}
+      {renderNode(node("codeBlock", plain, "text"), context)}
+    </>,
+  );
+  const [highlighted, fallback] = container.querySelectorAll(".reading-code");
+  expect(highlighted.querySelector("code")?.textContent).toBe(source);
+  expect(highlighted.querySelector(".syntax-keyword")?.textContent).toBe("if");
+  expect(highlighted.querySelector(".syntax-string")?.textContent).toBe(
+    '"<img src=x>"',
+  );
+  expect(highlighted.querySelector("img")).toBeNull();
+  expect(fallback.querySelector("code")?.textContent).toBe(plain);
+  expect(fallback.querySelector("code span")).toBeNull();
+});
+it("highlights Python code and keeps multiline strings intact", () => {
+  const source = [
+    "def greet(names):",
+    '    """Greet the guests.',
+    '    # Still a string."""',
+    "    for name in names:",
+    "        if name:",
+    '            print(f"Привет, {name}!")  # A comment',
+    "",
+  ].join("\n");
+  const { container } = render(
+    <>{renderNode(node("codeBlock", source, "python"), context)}</>,
+  );
+  const tokens = (kind: string) =>
+    Array.from(container.querySelectorAll(`.syntax-${kind}`)).map(
+      (token) => token.textContent,
+    );
+  expect(container.querySelector("code")?.textContent).toBe(source);
+  expect(tokens("keyword")).toEqual(["def", "for", "in", "if"]);
+  expect(tokens("name")).toEqual(["greet", "print"]);
+  expect(tokens("string")).toContain('f"Привет, {name}!"');
+  expect(tokens("string").join("\n")).toContain('# Still a string."""');
+  expect(tokens("comment")).toEqual(["# A comment"]);
+});
 it("discards active HTML and blocks active URL schemes", () => {
   const raw = node(
     "literalHtml",

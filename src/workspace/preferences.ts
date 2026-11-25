@@ -1,4 +1,17 @@
+import { codePalettePresets, palettePresets } from "./theme";
+
 export const preferencesKey = "aether.preferences.v1";
+
+export const codePaletteOptions = [
+  ["appearance", "Как в оформлении"],
+  ...codePalettePresets.map(({ id, name }) => [id, name] as const),
+] as const;
+
+export const codeBackgroundOptions = [
+  ["appearance", "Как в оформлении"],
+  ["syntax", "Под палитру кода"],
+  ...codePalettePresets.map(({ id, name }) => [id, name] as const),
+] as const;
 
 const defaults: Preferences = {
   mode: "live",
@@ -7,6 +20,11 @@ const defaults: Preferences = {
   tabList: true,
   attachmentFolder: undefined,
   attachmentFormat: "vault",
+  codeHighlighting: true,
+  codePalette: "appearance",
+  codeBackground: "appearance",
+  codeAutoIndent: true,
+  indentWidth: "2",
 };
 
 export interface Preferences {
@@ -16,6 +34,28 @@ export interface Preferences {
   tabList: boolean;
   attachmentFolder?: string | null;
   attachmentFormat: "vault" | "wiki" | "markdown";
+  codeHighlighting: boolean;
+  codePalette: (typeof codePaletteOptions)[number][0];
+  codeBackground: (typeof codeBackgroundOptions)[number][0];
+  codeAutoIndent: boolean;
+  indentWidth: "2" | "4" | "8";
+}
+
+export function resolveCodeAppearance(
+  codePalette: Preferences["codePalette"],
+  codeBackground: Preferences["codeBackground"],
+  appearanceColor: string | null,
+) {
+  const palette =
+    codePalette === "appearance"
+      ? (palettePresets.find(({ color }) => color === appearanceColor)?.id ??
+        "aether")
+      : codePalette;
+  const background = codeBackground === "syntax" ? palette : codeBackground;
+  return {
+    palette,
+    tint: codePalettePresets.find(({ id }) => id === background)?.color,
+  };
 }
 
 export function readPreferences(): Preferences {
@@ -27,6 +67,14 @@ export function readPreferences(): Preferences {
     const stored: Record<string, unknown> = Object.fromEntries(
       Object.entries(value),
     );
+    const codePalette =
+      codePaletteOptions.find(
+        ([palette]) => palette === stored.codePalette,
+      )?.[0] ?? defaults.codePalette;
+    const codeBackground =
+      codeBackgroundOptions.find(
+        ([background]) => background === stored.codeBackground,
+      )?.[0] ?? defaults.codeBackground;
     return {
       mode:
         stored.mode === "source" || stored.mode === "reading"
@@ -48,6 +96,14 @@ export function readPreferences(): Preferences {
         stored.attachmentFormat === "markdown"
           ? stored.attachmentFormat
           : "vault",
+      codeHighlighting: stored.codeHighlighting !== false,
+      codePalette,
+      codeBackground,
+      codeAutoIndent: stored.codeAutoIndent !== false,
+      indentWidth:
+        stored.indentWidth === "4" || stored.indentWidth === "8"
+          ? stored.indentWidth
+          : defaults.indentWidth,
     };
   } catch {
     return defaults;

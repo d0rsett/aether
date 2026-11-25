@@ -16,7 +16,12 @@ import {
   type ThemePreference,
 } from "../workspace/theme";
 import { platform } from "../services/platform";
-import type { Preferences } from "../workspace/preferences";
+import {
+  codeBackgroundOptions,
+  codePaletteOptions,
+  type Preferences,
+} from "../workspace/preferences";
+import { HighlightedCode } from "../reading/HighlightedCode";
 import {
   binding,
   conflictingShortcut,
@@ -37,6 +42,9 @@ const themeOptions = [
   { value: "dark", label: "Тёмная", previews: ["dark"] },
   { value: "system", label: "Как в системе", previews: ["light", "dark"] },
 ] as const;
+
+const codeSample =
+  '# Example\ndef greet(name, times=3):\n    return f"Hello, {name}!" * times';
 
 interface Props {
   shortcuts?: Shortcuts;
@@ -831,6 +839,98 @@ export function SettingsDialog(props: Props) {
                   }
                 />
               </Row>
+              {preferences && (
+                <>
+                  <Row
+                    label="Подсветка кода"
+                    description="Раскрашивает синтаксис в редакторе и режиме чтения."
+                  >
+                    <input
+                      type="checkbox"
+                      role="switch"
+                      checked={preferences.codeHighlighting}
+                      onChange={(event) =>
+                        props.onPreferences?.({
+                          ...preferences,
+                          codeHighlighting: event.target.checked,
+                        })
+                      }
+                    />
+                  </Row>
+                  <Row
+                    label="Палитра кода"
+                    description="Цвета подсветки в редакторе и режиме чтения."
+                  >
+                    <PreferenceSelect
+                      value={preferences.codePalette}
+                      options={codePaletteOptions}
+                      onChange={(codePalette) =>
+                        props.onPreferences?.({
+                          ...preferences,
+                          codePalette,
+                        })
+                      }
+                    />
+                  </Row>
+                  <Row
+                    label="Тема блока кода"
+                    description="Оформление фона в редакторе и режиме чтения."
+                  >
+                    <PreferenceSelect
+                      value={preferences.codeBackground}
+                      options={codeBackgroundOptions}
+                      onChange={(codeBackground) =>
+                        props.onPreferences?.({
+                          ...preferences,
+                          codeBackground,
+                          codePalette:
+                            codeBackground !== "syntax"
+                              ? codeBackground
+                              : preferences.codePalette,
+                        })
+                      }
+                    />
+                  </Row>
+                  <pre
+                    className="settings-code-preview"
+                    aria-label={t("Пример подсветки кода")}
+                  >
+                    <HighlightedCode source={codeSample} language="python" />
+                  </pre>
+                  <Row
+                    label="Автоотступ по синтаксису"
+                    description="Подбирает отступы в блоках кода. При отключении Enter сохраняет отступ текущей строки."
+                  >
+                    <input
+                      type="checkbox"
+                      role="switch"
+                      checked={preferences.codeAutoIndent}
+                      onChange={(event) =>
+                        props.onPreferences?.({
+                          ...preferences,
+                          codeAutoIndent: event.target.checked,
+                        })
+                      }
+                    />
+                  </Row>
+                  <Row
+                    label="Шаг отступа"
+                    description="Сколько пробелов добавляется за один шаг отступа."
+                  >
+                    <PreferenceSelect
+                      value={preferences.indentWidth}
+                      options={[
+                        ["2", "2"],
+                        ["4", "4"],
+                        ["8", "8"],
+                      ]}
+                      onChange={(indentWidth) =>
+                        props.onPreferences?.({ ...preferences, indentWidth })
+                      }
+                    />
+                  </Row>
+                </>
+              )}
             </>
           )}
           {section === "shortcuts" ? (

@@ -1,4 +1,10 @@
-import { render, screen, cleanup, waitFor } from "@testing-library/react";
+import {
+  render,
+  screen,
+  cleanup,
+  fireEvent,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { EditorView } from "@codemirror/view";
 import { undo } from "@codemirror/commands";
@@ -69,6 +75,160 @@ it("sizes unwrapped previews from the viewport and clears the bound on wrapping"
   );
   rerender(<MarkdownEditor {...props} lineWrapping />);
   expect(scroller.style.getPropertyValue("--editor-preview-width")).toBe("");
+});
+it.each([true, false])(
+  "highlights and indents fenced TypeScript in the editor with live=%s",
+  (live) => {
+    const fence = "```";
+    const content = [
+      fence + "typescript",
+      "if (ready) {",
+      "}",
+      fence,
+      "",
+      "After the example",
+    ].join("\r\n");
+    const { container } = render(
+      <MarkdownEditor
+        content={content}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        live={live}
+      />,
+    );
+    const view = EditorView.findFromDOM(
+      container.querySelector(".cm-editor")!,
+    )!;
+    const opening = view.state.doc.line(2);
+    expect(container.querySelectorAll(".editor-code-line")).toHaveLength(4);
+    const keyword = Array.from(
+      container.querySelectorAll(".editor-code-line span"),
+    ).find((span) => span.textContent === "if");
+    expect(keyword?.className).toBeTruthy();
+    view.dispatch({ selection: { anchor: opening.to } });
+    fireEvent.keyDown(view.contentDOM, { key: "Enter" });
+    expect(view.state.doc.line(3).text).toBe("  ");
+    expect(view.state.selection.main.head).toBe(view.state.doc.line(3).to);
+    fireEvent.keyDown(view.contentDOM, { key: "Tab" });
+    expect(view.state.doc.line(3).text).toBe("    ");
+    fireEvent.keyDown(view.contentDOM, { key: "Tab", shiftKey: true });
+    expect(view.state.doc.line(3).text).toBe("  ");
+    expect(view.state.sliceDoc()).toContain("{\r\n  \r\n}");
+    const cursor = view.state.selection.main.head;
+    view.dispatch({
+      changes: { from: cursor, insert: "}" },
+      selection: { anchor: cursor + 1 },
+      userEvent: "input.type",
+    });
+    expect(view.state.doc.line(3).text).toBe("}");
+  },
+);
+it("continues existing indentation in a plain fenced code block", () => {
+  const content = ["```text", "    example", "```"].join("\n");
+  const { container } = render(
+    <MarkdownEditor
+      content={content}
+      onChange={vi.fn()}
+      onSave={vi.fn()}
+      live
+    />,
+  );
+  const view = EditorView.findFromDOM(container.querySelector(".cm-editor")!)!;
+  view.dispatch({ selection: { anchor: view.state.doc.line(2).to } });
+  fireEvent.keyDown(view.contentDOM, { key: "Enter" });
+  expect(view.state.doc.line(3).text).toBe("    ");
+});
+it("updates code indentation for the open editor without losing history", () => {
+  const fence = "```";
+  const props = {
+    content: [fence + "js", "if (ready) {", "}", fence, "", "- Item"].join(
+      "\n",
+    ),
+    onChange: vi.fn(),
+    onSave: vi.fn(),
+  };
+  const { container, rerender } = render(<MarkdownEditor {...props} />);
+  const dom = container.querySelector<HTMLElement>(".cm-editor")!;
+  const view = EditorView.findFromDOM(dom)!;
+  view.dispatch({ selection: { anchor: view.state.doc.line(2).to } });
+  rerender(<MarkdownEditor {...props} indentWidth="4" />);
+  fireEvent.keyDown(view.contentDOM, { key: "Enter" });
+  expect(view.state.doc.line(3).text).toBe("    ");
+  rerender(
+    <MarkdownEditor {...props} indentWidth="4" codeAutoIndent={false} />,
+  );
+  expect(EditorView.findFromDOM(dom)).toBe(view);
+  expect(undo(view)).toBe(true);
+  expect(view.state.doc.toString()).toBe(props.content);
+
+  view.dispatch({ selection: { anchor: view.state.doc.line(2).to } });
+  fireEvent.keyDown(view.contentDOM, { key: "Enter" });
+  expect(view.state.doc.line(3).text).toBe("");
+  fireEvent.keyDown(view.contentDOM, { key: "Tab" });
+  expect(view.state.doc.line(3).text).toBe("    ");
+  const cursor = view.state.selection.main.head;
+  view.dispatch({
+    changes: { from: cursor, insert: "}" },
+    selection: { anchor: cursor + 1 },
+    userEvent: "input.type",
+  });
+  expect(view.state.doc.line(3).text).toBe("    }");
+
+  view.dispatch({ selection: { anchor: view.state.doc.length } });
+  fireEvent.keyDown(view.contentDOM, { key: "Enter" });
+  expect(view.state.doc.line(view.state.doc.lines).text).toBe("- ");
+});
+it("highlights Python syntax as an editor fence language", () => {
+  const content = [
+    "```py",
+    "def greet(name):",
+    '    print(f"Привет, {name}!")',
+    "```",
+  ].join("\n");
+  const { container } = render(
+    <MarkdownEditor
+      content={content}
+      onChange={vi.fn()}
+      onSave={vi.fn()}
+      live
+    />,
+  );
+  expect(container.querySelector(".syntax-keyword")?.textContent).toBe("def");
+  expect(container.querySelector(".syntax-string")?.textContent).toBe(
+    'f"Привет, {name}!"',
+  );
+});
+it("keeps wiki syntax and escaped backticks literal around fenced code", () => {
+  const tick = "`";
+  const fence = tick.repeat(3);
+  const escaped = ("\\" + tick).repeat(3);
+  const content = [
+    escaped,
+    fence + "js",
+    'const text = "[[Example]]";',
+    fence,
+    "[[Outside]]",
+  ].join("\n");
+  const { container } = render(
+    <MarkdownEditor
+      content={content}
+      onChange={vi.fn()}
+      onSave={vi.fn()}
+      live
+    />,
+  );
+  const view = EditorView.findFromDOM(container.querySelector(".cm-editor")!)!;
+  expect(container.querySelectorAll(".editor-code-line")).toHaveLength(3);
+  expect(
+    container.querySelector(".editor-code-line .live-wiki-link"),
+  ).toBeNull();
+  expect(container.querySelector(".live-wiki-link")?.textContent).toBe(
+    "Outside",
+  );
+  view.dispatch({
+    selection: { anchor: view.state.doc.line(3).from + 15 },
+  });
+  expect(activeFormats(view.state)).toContain("code");
 });
 it("keeps repeated footnote widgets visible alongside Markdown link decorations", async () => {
   const content =

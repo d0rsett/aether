@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { NoteHover } from "./NoteHover";
 import { NoteEmbed } from "./NoteEmbed";
+import { HighlightedCode } from "./HighlightedCode";
 import type { NotePreviews } from "../services/notePreviews";
 import { EditableTable } from "../components/TableEditor";
 import {
@@ -415,7 +416,7 @@ export function renderNode(
         <div className="reading-code" {...source}>
           {node.target && <small>{node.target}</small>}
           <pre>
-            <code>{text(node)}</code>
+            <HighlightedCode source={text(node)} language={node.target} />
           </pre>
         </div>
       );

@@ -23,7 +23,7 @@ export function activeFormats(state: EditorState): FormatCommand[] {
   const { from, to } = state.selection.main;
   const at = (position: number) => {
     const formats = new Set<FormatCommand>();
-    let node: ReturnType<typeof tree.resolveInner> | null = tree.resolveInner(
+    let node: ReturnType<typeof tree.resolve> | null = tree.resolve(
       position,
       1,
     );
@@ -180,7 +180,7 @@ export const wikiSyntax = ViewPlugin.fromClass(
               escapes++;
             if (escapes % 2) continue;
             const from = line.from + match.index!;
-            let node = syntaxTree(view.state).resolveInner(from, 1),
+            let node = syntaxTree(view.state).resolve(from, 1),
               literal = false;
             for (;;) {
               if (/Code|URL/.test(node.name)) literal = true;
@@ -246,7 +246,7 @@ export const livePreview = ViewPlugin.fromClass(
             )
               escapes++;
             if (escapes % 2) continue;
-            let node = syntaxTree(view.state).resolveInner(from, 1);
+            let node = syntaxTree(view.state).resolve(from, 1);
             let code = false;
             for (;;) {
               if (/Code/.test(node.name)) code = true;
@@ -395,7 +395,7 @@ export function linkCompletion(vaultId: string, path: string) {
         try {
           const match = context.matchBefore(/\[\[[^\]\n|]*/);
           if (!match) return null;
-          let syntax = syntaxTree(context.state).resolveInner(context.pos, -1);
+          let syntax = syntaxTree(context.state).resolve(context.pos, -1);
           for (;;) {
             if (/Code/.test(syntax.name)) return null;
             if (!syntax.parent) break;

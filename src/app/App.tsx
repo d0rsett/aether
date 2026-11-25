@@ -35,6 +35,7 @@ import {
   readPreferences,
   readRecent,
   readStartupNote,
+  resolveCodeAppearance,
   startupNoteKey,
   type Preferences,
 } from "../workspace/preferences";
@@ -547,6 +548,30 @@ export function App() {
   useLayoutEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    root.toggleAttribute(
+      "data-code-highlighting-off",
+      !preferences.codeHighlighting,
+    );
+    return () => root.removeAttribute("data-code-highlighting-off");
+  }, [preferences.codeHighlighting]);
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    const code = resolveCodeAppearance(
+      preferences.codePalette,
+      preferences.codeBackground,
+      palette,
+    );
+    root.dataset.codePalette = code.palette;
+    if (code.tint) root.style.setProperty("--code-tint", code.tint);
+    root.toggleAttribute("data-code-background", Boolean(code.tint));
+    return () => {
+      delete root.dataset.codePalette;
+      root.style.removeProperty("--code-tint");
+      root.removeAttribute("data-code-background");
+    };
+  }, [preferences.codePalette, preferences.codeBackground, palette]);
   useEffect(() => {
     try {
       localStorage.setItem(themeKey, themePreference);
@@ -1832,6 +1857,12 @@ export function App() {
                                               theme={theme}
                                               previews={previews}
                                               shortcuts={shortcuts}
+                                              codeAutoIndent={
+                                                preferences.codeAutoIndent
+                                              }
+                                              indentWidth={
+                                                preferences.indentWidth
+                                              }
                                               onChange={(content) =>
                                                 app.dispatch({
                                                   type: "edit",
@@ -1964,6 +1995,8 @@ export function App() {
                                   typography={typography}
                                   showLineNumbers={lineNumbers}
                                   lineWrapping={lineWrapping}
+                                  codeAutoIndent={preferences.codeAutoIndent}
+                                  indentWidth={preferences.indentWidth}
                                   visible={tabMode !== "reading" && visible}
                                   theme={theme}
                                   onError={app.setError}

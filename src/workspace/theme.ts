@@ -22,15 +22,35 @@ export function readDensity(): Density {
     return "comfortable";
   }
 }
-export const palettePresets = [
-  { name: "Графит", color: "#808080" },
-  { name: "Шалфей", color: "#7c9b80" },
-  { name: "Синий", color: "#568cda" },
-  { name: "Лаванда", color: "#a48cdb" },
-  { name: "Песочный", color: "#c5a471" },
-  { name: "Розовый", color: "#d387a4" },
-  { name: "Бирюзовый", color: "#53aaa6" },
-  { name: "Терракота", color: "#cb8668" },
+const appearancePresets = [
+  { id: "graphite", name: "Графит", color: "#808080" },
+  { id: "sage", name: "Шалфей", color: "#7c9b80" },
+  { id: "blue", name: "Синий", color: "#568cda" },
+  { id: "lavender", name: "Лаванда", color: "#a48cdb" },
+  { id: "sand", name: "Песочный", color: "#c5a471" },
+  { id: "rose", name: "Розовый", color: "#d387a4" },
+  { id: "teal", name: "Бирюзовый", color: "#53aaa6" },
+  { id: "terracotta", name: "Терракота", color: "#cb8668" },
+] as const;
+
+const codePresets = [
+  { id: "aether", name: "Aether", color: "#a4bea2" },
+  { id: "ocean", name: "Океан", color: "#4382b3" },
+  { id: "sunset", name: "Закат", color: "#d17b96" },
+  { id: "dracula", name: "Dracula", color: "#9771c9" },
+  { id: "nord", name: "Nord", color: "#81a1c1" },
+  { id: "gruvbox", name: "Gruvbox", color: "#bd8a45" },
+  { id: "solarized", name: "Solarized", color: "#2aa198" },
+  { id: "one", name: "Atom One", color: "#7486a1" },
+  { id: "catppuccin", name: "Catppuccin", color: "#ad8ad7" },
+  { id: "tokyo-night", name: "Tokyo Night", color: "#6278c5" },
+  { id: "monokai", name: "Monokai", color: "#a6a64f" },
+] as const;
+
+export const palettePresets = [...appearancePresets, ...codePresets] as const;
+export const codePalettePresets = [
+  ...codePresets,
+  ...appearancePresets,
 ] as const;
 
 export function parsePalette(value: string | null): string | null {

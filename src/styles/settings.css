@@ -287,6 +287,15 @@
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
+.settings-code-preview {
+  margin: 0 0 6px;
+  padding: 9px 12px;
+  overflow-x: auto;
+  border-radius: var(--code-radius);
+  color: var(--text);
+  background: var(--code-background);
+  font: 12px/1.55 var(--mono);
+}
 .settings-text-preview {
   margin: 20px 0 12px;
   padding: 16px;

@@ -22,6 +22,99 @@ import { createHash } from "node:crypto";
 const root = resolve(import.meta.dirname, "../..");
 const executable = resolve(root, "src-tauri/target/e2e/release/aether.exe");
 
+test("code blocks match across modes and preserve visible text selection", async () => {
+  const run = await mkdtemp(join(root, ".build-cache/native-code-blocks-"));
+  const vault = join(run, "Native-MVP"),
+    data = join(run, "data"),
+    profile = join(run, "profile");
+  await mkdir(vault);
+  await mkdir(data);
+  await writeFile(
+    join(vault, "Code.md"),
+    ["```ts", "const answer = 42;", "```", "", "const answer = 42;", ""].join(
+      "\n",
+    ),
+  );
+  await writeFile(
+    join(data, "settings.json"),
+    JSON.stringify({ lastVault: vault }),
+  );
+  let app: RunningApp | undefined;
+  try {
+    app = await launch(data, profile, false);
+    const { page } = app;
+    await page.getByRole("button", { name: "Code", exact: true }).click();
+    await setMode(page, "Live Preview");
+    const editor = page.locator(".cm-content");
+    const line = editor.locator(".editor-code-line").nth(1);
+    const color = (element: Locator) =>
+      element.evaluate((node) => getComputedStyle(node).color);
+    const alpha = (element: Locator) =>
+      element.evaluate((node) => {
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 1;
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("Canvas is unavailable");
+        context.fillStyle = getComputedStyle(node).backgroundColor;
+        context.fillRect(0, 0, 1, 1);
+        return context.getImageData(0, 0, 1, 1).data[3] / 255;
+      });
+    const selection = page.locator(".cm-selectionBackground").first();
+    const matchingText = editor.locator(".cm-selectionMatch");
+    const background = (element: Locator) =>
+      element.evaluate((node) => getComputedStyle(node).backgroundColor);
+    const selectCode = async () => {
+      await editor.press("Control+Home");
+      await editor.press("ArrowDown");
+      await editor.press("Home");
+      await editor.press("Shift+End");
+      await expect(page.locator(".cm-editor")).toHaveClass(/cm-focused/);
+      await expect(selection).toBeVisible();
+      return background(selection);
+    };
+    const defaultSelection = await selectCode();
+    await expect(line).toHaveClass(/cm-activeLine/);
+    expect(await alpha(line)).toBeLessThan(0.3);
+    expect(await alpha(selection)).toBeGreaterThan(0.3);
+    await expect(matchingText).toHaveText("const answer = 42;");
+    const defaultMatch = await background(matchingText);
+    expect(await alpha(matchingText)).toBeLessThan(await alpha(selection));
+
+    await page.keyboard.press("Control+,");
+    const settings = page.getByRole("dialog", { name: "Настройки" });
+    await settings
+      .getByRole("button", { name: "Оформление", exact: true })
+      .click();
+    await settings.getByText("Лаванда", { exact: true }).click();
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-palette",
+      "custom",
+    );
+    await page.keyboard.press("Escape");
+    await expect(settings).toBeHidden();
+    const lavenderSelection = await selectCode();
+    expect(lavenderSelection).not.toBe(defaultSelection);
+    expect(await background(matchingText)).not.toBe(defaultMatch);
+
+    await toggleTheme(page);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    expect(await selectCode()).not.toBe(lavenderSelection);
+    expect(await alpha(selection)).toBeGreaterThan(0.3);
+    const keyword = await color(line.locator(".syntax-keyword"));
+    await page.screenshot({
+      path: test.info().outputPath("code-selection.png"),
+    });
+
+    await setMode(page, "Чтение");
+    const reading = page.locator(".reading-code");
+    await expect(reading.locator("code")).toHaveText("const answer = 42;");
+    expect(await color(reading.locator(".syntax-keyword"))).toBe(keyword);
+    await page.screenshot({ path: test.info().outputPath("code-reading.png") });
+  } finally {
+    await stop(app);
+  }
+});
+
 test("workspace preferences apply to links, attachments, shortcuts and startup", async () => {
   const run = await mkdtemp(
     join(root, ".build-cache/native-workspace-preferences-"),

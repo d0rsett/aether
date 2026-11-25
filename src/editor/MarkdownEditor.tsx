@@ -4,6 +4,9 @@ import { editorPhrases } from "../i18n/editor";
 import { useEffect, useRef } from "react";
 import { toggleTask } from "./tasks";
 import { noteFolding } from "./folding";
+import { codeBlockAppearance, editorIndentation } from "./codeBlocks";
+import type { Preferences } from "../workspace/preferences";
+import { codeHighlight, codeLanguage } from "../markdown/codeSyntax";
 import { noteSearch } from "./searchPanel";
 import { noteLinkHover } from "./linkHover";
 import { insertTemplate } from "./templates";
@@ -78,12 +81,11 @@ const highlight = HighlightStyle.define([
     color: "var(--accent)",
     textDecoration: "underline",
   },
-  { tag: [tags.monospace, tags.string], color: "var(--accent)" },
+  { tag: tags.monospace, color: "var(--accent)" },
   {
-    tag: [tags.meta, tags.comment, tags.processingInstruction],
+    tag: [tags.meta, tags.processingInstruction],
     color: "var(--subtle)",
   },
-  { tag: [tags.keyword, tags.bool, tags.number], color: "var(--muted)" },
 ]);
 interface Props {
   typography?: Typography;
@@ -129,6 +131,8 @@ interface Props {
   onPropertiesSource?: () => void;
   showLineNumbers?: boolean;
   lineWrapping?: boolean;
+  codeAutoIndent?: boolean;
+  indentWidth?: Preferences["indentWidth"];
   shortcuts?: Shortcuts;
   sharedEditors?: SharedEditors;
   focused?: boolean;
@@ -197,6 +201,8 @@ export function MarkdownEditor({
   typography,
   showLineNumbers = false,
   lineWrapping = true,
+  codeAutoIndent = true,
+  indentWidth = "2",
   shortcuts = defaultShortcuts,
   onFormatsChange,
   onAttachmentsImported,
@@ -244,6 +250,7 @@ export function MarkdownEditor({
   const presentation = useRef(new Compartment());
   const gutter = useRef(new Compartment());
   const wrapping = useRef(new Compartment());
+  const indentation = useRef(new Compartment());
   const language = useRef(new Compartment());
   const shortcutBindings = useRef(new Compartment());
   const sharedHistory = useRef(new Compartment());
@@ -288,10 +295,17 @@ export function MarkdownEditor({
           highlightActiveLineGutter(),
           highlightSpecialChars(),
           rectangularSelection(),
-          markdown({ extensions: [Strikethrough, TaskList] }),
+          markdown({
+            extensions: [Strikethrough, TaskList],
+            codeLanguages: codeLanguage,
+          }),
+          codeBlockAppearance,
           noteFolding,
           noteSearch,
           indentOnInput(),
+          indentation.current.of(
+            editorIndentation(indentWidth, codeAutoIndent),
+          ),
           bracketMatching(),
           closeBrackets(),
           EditorState.languageData.of(() => [
@@ -300,6 +314,7 @@ export function MarkdownEditor({
           keymap.of(closeBracketsKeymap),
           wikiSyntax,
           syntaxHighlighting(highlight),
+          syntaxHighlighting(codeHighlight),
           highlightSelectionMatches(),
           wrapping.current.of(lineWrapping ? EditorView.lineWrapping : []),
           presentation.current.of(live ? livePreview : []),
@@ -330,7 +345,7 @@ export function MarkdownEditor({
               });
               if (position === null) return false;
               let node: ReturnType<typeof syntaxTree>["topNode"] | null =
-                syntaxTree(view.state).resolveInner(position, -1);
+                syntaxTree(view.state).resolve(position, -1);
               while (node) {
                 if (/Code/.test(node.name)) return false;
                 node = node.parent;
@@ -588,6 +603,13 @@ export function MarkdownEditor({
       ),
     });
   }, [lineWrapping]);
+  useEffect(() => {
+    editor.current?.dispatch({
+      effects: indentation.current.reconfigure(
+        editorIndentation(indentWidth, codeAutoIndent),
+      ),
+    });
+  }, [indentWidth, codeAutoIndent]);
   useEffect(() => {
     editor.current?.requestMeasure();
   }, [typography]);

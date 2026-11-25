@@ -618,6 +618,26 @@ export const english: Record<string, string> = {
   Чтение: "Reading",
   "Действия с заметкой": "Note actions",
   "Перенос строк": "Line wrapping",
+  "Подсветка кода": "Code highlighting",
+  "Палитра кода": "Code palette",
+  "Тема блока кода": "Code block theme",
+  "Оформление фона в редакторе и режиме чтения.":
+    "Background style in the editor and Reading view.",
+  "Как в оформлении": "Match appearance",
+  "Под палитру кода": "Match code palette",
+  "Цвета подсветки в редакторе и режиме чтения.":
+    "Syntax colors in the editor and Reading view.",
+  "Пример подсветки кода": "Code highlighting preview",
+  Океан: "Ocean",
+  Закат: "Sunset",
+  "Раскрашивает синтаксис в редакторе и режиме чтения.":
+    "Colors code syntax in the editor and Reading view.",
+  "Автоотступ по синтаксису": "Syntax-aware indentation",
+  "Подбирает отступы в блоках кода. При отключении Enter сохраняет отступ текущей строки.":
+    "Adjusts indentation in code blocks. When disabled, Enter keeps the current line's indentation.",
+  "Шаг отступа": "Indent size",
+  "Сколько пробелов добавляется за один шаг отступа.":
+    "Number of spaces in one indentation step.",
   "Новое изображение.{0}": "New image.{0}",
   "Не удалось прочитать {0}": "Unable to read {0}",
   "За один раз можно вставить до 20 файлов общим размером до 50 МБ.":

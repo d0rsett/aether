@@ -1,11 +1,23 @@
-import { cleanup, render, screen, fireEvent } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  fireEvent,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { SettingsDialog } from "../src/components/SettingsDialog";
 import { shortcutLabel } from "../src/workspace/shortcuts";
+import {
+  preferencesKey,
+  readPreferences,
+  resolveCodeAppearance,
+} from "../src/workspace/preferences";
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  localStorage.removeItem(preferencesKey);
 });
 it("switches sections and applies editor preferences through the shared dialog", async () => {
   Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
@@ -25,14 +37,20 @@ it("switches sections and applies editor preferences through the shared dialog",
   const onClose = vi.fn();
   const setTypography = vi.fn();
   const setTheme = vi.fn();
+  const setPaletteColor = vi.fn();
   const onShortcuts = vi.fn();
+  const preferences = readPreferences();
+  const onPreferences = vi.fn();
   render(
     <SettingsDialog
       setTypography={setTypography}
       shortcuts={{ save: "Shift+KeyS" }}
       onShortcuts={onShortcuts}
+      preferences={preferences}
+      onPreferences={onPreferences}
       theme="dark"
       setTheme={setTheme}
+      setPaletteColor={setPaletteColor}
       locale="ru"
       setLanguage={setLanguage}
       formatting={false}
@@ -60,6 +78,83 @@ it("switches sections and applies editor preferences through the shared dialog",
   await userEvent.click(screen.getByRole("button", { name: "Редактор" }));
   await userEvent.click(screen.getByRole("switch", { name: /Номера строк/ }));
   expect(setLineNumbers).toHaveBeenCalledWith(true);
+  await userEvent.click(screen.getByRole("switch", { name: /Подсветка кода/ }));
+  expect(onPreferences).toHaveBeenLastCalledWith({
+    ...preferences,
+    codeHighlighting: false,
+  });
+  expect(
+    screen
+      .getByLabelText("Пример подсветки кода")
+      .querySelector(".syntax-keyword")?.textContent,
+  ).toBe("def");
+  const palette = screen.getByRole("button", { name: /Палитра кода/ });
+  await userEvent.click(palette);
+  expect(
+    screen.getAllByRole("option").map((option) => option.textContent),
+  ).toEqual([
+    "Как в оформлении",
+    "Aether",
+    "Океан",
+    "Закат",
+    "Dracula",
+    "Nord",
+    "Gruvbox",
+    "Solarized",
+    "Atom One",
+    "Catppuccin",
+    "Tokyo Night",
+    "Monokai",
+    "Графит",
+    "Шалфей",
+    "Синий",
+    "Лаванда",
+    "Песочный",
+    "Розовый",
+    "Бирюзовый",
+    "Терракота",
+  ]);
+  await userEvent.click(screen.getByRole("option", { name: "Monokai" }));
+  expect(onPreferences).toHaveBeenLastCalledWith({
+    ...preferences,
+    codePalette: "monokai",
+  });
+  expect(
+    screen.queryByRole("switch", { name: /Синхронизировать цвета кода/ }),
+  ).toBeNull();
+  await userEvent.click(
+    screen.getByRole("button", { name: /Тема блока кода/ }),
+  );
+  await userEvent.click(
+    screen.getByRole("option", { name: "Под палитру кода" }),
+  );
+  expect(onPreferences).toHaveBeenLastCalledWith({
+    ...preferences,
+    codeBackground: "syntax",
+  });
+  await userEvent.click(
+    screen.getByRole("button", { name: /Тема блока кода/ }),
+  );
+  await userEvent.click(screen.getByRole("option", { name: "Dracula" }));
+  expect(onPreferences).toHaveBeenLastCalledWith({
+    ...preferences,
+    codeBackground: "dracula",
+    codePalette: "dracula",
+  });
+  await userEvent.click(
+    screen.getByRole("switch", { name: /Автоотступ по синтаксису/ }),
+  );
+  expect(onPreferences).toHaveBeenLastCalledWith({
+    ...preferences,
+    codeAutoIndent: false,
+  });
+  await userEvent.click(screen.getByRole("button", { name: /Шаг отступа/ }));
+  fireEvent.keyDown(screen.getByRole("listbox"), { key: "ArrowDown" });
+  fireEvent.keyDown(screen.getByRole("listbox"), { key: "Enter" });
+  expect(onPreferences).toHaveBeenLastCalledWith({
+    ...preferences,
+    indentWidth: "4",
+  });
   fireEvent.change(screen.getByRole("slider", { name: "Размер шрифта" }), {
     target: { value: "20" },
   });
@@ -75,6 +170,14 @@ it("switches sections and applies editor preferences through the shared dialog",
   ).toBeTruthy();
   await userEvent.click(screen.getByText("Светлая"));
   expect(setTheme).toHaveBeenCalledWith("light");
+  const appearancePalettes = within(
+    screen.getByRole("group", { name: "Цветовая гамма" }),
+  );
+  expect(appearancePalettes.getAllByRole("radio")).toHaveLength(19);
+  await userEvent.click(
+    appearancePalettes.getByRole("radio", { name: "Dracula" }),
+  );
+  expect(setPaletteColor).toHaveBeenLastCalledWith("#9771c9");
   await userEvent.click(
     screen.getByRole("button", { name: "Горячие клавиши" }),
   );
@@ -101,4 +204,64 @@ it("switches sections and applies editor preferences through the shared dialog",
   expect(onShortcuts).toHaveBeenCalledWith({});
   await userEvent.click(screen.getByRole("button", { name: "Закрыть диалог" }));
   expect(onClose).toHaveBeenCalledOnce();
+});
+it("restores code preferences and uses safe defaults for older profiles", () => {
+  localStorage.setItem(preferencesKey, JSON.stringify({ mode: "reading" }));
+  expect(readPreferences()).toMatchObject({
+    mode: "reading",
+    codeHighlighting: true,
+    codePalette: "appearance",
+    codeBackground: "appearance",
+    codeAutoIndent: true,
+    indentWidth: "2",
+  });
+  localStorage.setItem(
+    preferencesKey,
+    JSON.stringify({
+      codeHighlighting: false,
+      codePalette: "tokyo-night",
+      codeBackground: "lavender",
+      syncCodeColors: false,
+      codeAutoIndent: false,
+      indentWidth: "8",
+    }),
+  );
+  expect(readPreferences()).toMatchObject({
+    codeHighlighting: false,
+    codePalette: "tokyo-night",
+    codeBackground: "lavender",
+    codeAutoIndent: false,
+    indentWidth: "8",
+  });
+  localStorage.setItem(
+    preferencesKey,
+    JSON.stringify({
+      indentWidth: "100",
+      codePalette: "unknown",
+      codeBackground: "unknown",
+    }),
+  );
+  expect(readPreferences()).toMatchObject({
+    indentWidth: "2",
+    codePalette: "appearance",
+    codeBackground: "appearance",
+  });
+});
+it("matches code colors and backgrounds independently to the selected presets", () => {
+  expect(resolveCodeAppearance("appearance", "syntax", "#9771c9")).toEqual({
+    palette: "dracula",
+    tint: "#9771c9",
+  });
+  expect(resolveCodeAppearance("appearance", "syntax", "#a48cdb")).toEqual({
+    palette: "lavender",
+    tint: "#a48cdb",
+  });
+  expect(resolveCodeAppearance("dracula", "sand", "#a48cdb")).toEqual({
+    palette: "dracula",
+    tint: "#c5a471",
+  });
+  expect(resolveCodeAppearance("appearance", "appearance", "#123456")).toEqual({
+    palette: "aether",
+    tint: undefined,
+  });
 });

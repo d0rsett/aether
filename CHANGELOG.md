@@ -2,6 +2,13 @@
 
 [Русский](CHANGELOG.ru.md) · [README](README.md)
 
+## 1.2.0 - 2026-11-25
+
+- Add syntax highlighting and tinted code blocks in Source, Live Preview, and Reading. Supported languages include JavaScript, TypeScript, JSON, HTML, CSS, and Python.
+- Configure syntax-aware indentation and choose an indent size of 2, 4, or 8 spaces.
+- Offer 19 named presets for both workspace appearance and code blocks, with a live Python code preview and options to match the workspace or the syntax palette.
+- Match selected text and highlighted occurrences to the current workspace palette.
+
 ## 1.1.0 - 2026-11-24
 
 - Split the editor into two tab groups by dragging a tab onto either half, move tabs between strips, and resize or merge the groups.
