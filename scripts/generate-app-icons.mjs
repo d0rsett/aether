@@ -1,4 +1,4 @@
-// Render the checked-in SVG so the desktop PNG and Windows ICO stay in sync.
+// Render the checked-in SVG so PNG, Windows ICO and macOS ICNS stay in sync.
 import {
   copyFile,
   mkdir,

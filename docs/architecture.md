@@ -64,7 +64,7 @@ The locale store in `src/i18n` provides English/Russian translations and a persi
 
 ## macOS window chrome
 
-`tauri.macos.conf.json` enables an overlay title bar with native traffic lights and AppKit window corners. The frontend reserves space before the logo and omits Windows controls on macOS; the target flag is supplied by Vite from Tauri’s build environment. The traffic-light Y inset is 23 logical points: Tao measures the native title-bar container rather than the buttons’ top edge, centering the controls in the 40-point frontend header. Native close requests still use the workspace draft guard. macOS bundles use the PNG icon and app/DMG targets.
+`tauri.macos.conf.json` enables an overlay title bar with native traffic lights and AppKit window corners. The frontend reserves space before the logo and omits Windows controls on macOS; the target flag is supplied by Vite from Tauri’s build environment. The traffic-light Y inset is 23 logical points: Tao measures the native title-bar container rather than the buttons’ top edge, centering the controls in the 40-point frontend header. Native close requests still use the workspace draft guard. macOS bundles use the generated ICNS icon family and app/DMG targets; see [visual identity](branding.md) for source assets and generation.
 
 ## Graph layout
 
