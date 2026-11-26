@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { defaultTypography, type Typography } from "../workspace/typography";
 import {
+  defaultPaletteColor,
   palettePresets,
   type Density,
   type ThemePreference,
@@ -460,8 +461,14 @@ export function SettingsDialog(props: Props) {
                         <input
                           type="radio"
                           name="palette-preset"
-                          checked={props.palette === color}
-                          onChange={() => props.setPaletteColor?.(color)}
+                          checked={
+                            (props.palette ?? defaultPaletteColor) === color
+                          }
+                          onChange={() =>
+                            props.setPaletteColor?.(
+                              color === defaultPaletteColor ? null : color,
+                            )
+                          }
                         />
                         <span className="palette-preset-card">
                           <span
@@ -489,7 +496,7 @@ export function SettingsDialog(props: Props) {
                 >
                   <input
                     type="color"
-                    value={props.palette ?? "#7c9b80"}
+                    value={props.palette ?? defaultPaletteColor}
                     onChange={(event) =>
                       props.setPaletteColor?.(event.target.value)
                     }

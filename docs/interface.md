@@ -6,7 +6,7 @@
 
 The ribbon opens files, search and commands. Tabs and the note toolbar sit above the editor; the vault menu is below the file tree. The right sidebar contains relations and attachments. Properties appear in the note, not in a separate inspector editor.
 
-Sidebars are resizable and collapsible; themes, line numbers and formatting controls are optional. Use the language icon near the window controls or the language command to switch English/Russian. The choice persists in `aether.ui.language`. It changes interface labels, dialogs, accessibility text and supported errors, never note content or filenames. A failed preference write is reported; the selected language remains usable for the current session.
+Sidebars are resizable and collapsible; themes, line numbers and formatting controls are optional. Use Settings → General → Interface language or the language command to switch English/Russian. The choice persists in `aether.ui.language`. It changes interface labels, dialogs, accessibility text and supported errors, never note content or filenames. A failed preference write is reported; the selected language remains usable for the current session.
 
 ![English workspace](screenshots/en/workspace-dark.png)
 
@@ -77,9 +77,11 @@ Ordinary notes stay smaller than highly connected hubs. Collision spacing reserv
 
 Open Settings from the gear at the bottom of the ribbon, the command palette, or Ctrl+, (Cmd+, on macOS). The modal groups language under General, theme under Appearance, and line numbers, line wrapping and formatting-toolbar visibility under Editor. Changes apply immediately and retain existing preference keys. Escape closes the window and returns focus to the previous control.
 
-In Appearance, choose Light, Dark, or Follow system. Follow system updates when the operating system changes its color scheme.
+In Appearance, choose Light, Dark, or Follow system. Follow system updates when the operating system changes its color scheme. Graphite is the default palette in both themes; **Restore default palette** returns to it without replacing editor buffers. Existing custom colors remain selected until you change or reset them. The flat Constellation logo follows theme colors; the [frosted desktop icon](branding.md) contains its own blurred background graph.
 
-Editor settings also provide font size (12–24 px), line height (1.2–2.4), text width (480–1100 px), a text sample and a reset action. Preferences apply to Source, Live Preview and Reading and persist for the profile. Keyboard shortcuts lists commands with a search by title or shortcut; assignments are read-only.
+![Graphite appearance settings](screenshots/en/appearance.png)
+
+Editor settings also provide font size (12–24 px), line height (1.2–2.4), text width (480–1100 px), a text sample and a reset action. Preferences apply to Source, Live Preview and Reading and persist for the profile. Keyboard shortcuts lists commands with a search by title or shortcut and supports reassignment with conflict checks.
 
 Appearance offers the same 19 named presets as the Code block theme menu, a custom base color, and compact or comfortable interface density. Density adjusts spacing in the file tree, tabs, and menus. These preferences persist for the profile.
 

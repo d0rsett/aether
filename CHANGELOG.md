@@ -2,6 +2,13 @@
 
 [Русский](CHANGELOG.ru.md) · [README](README.md)
 
+## 1.2.1 - 2026-11-26
+
+- Replace the default green-tinted workspace with graphite light and dark themes, including matching code colors, selections and appearance previews.
+- Add the Constellation logo and a frosted glass desktop icon with a blurred knowledge graph inside the tile. Update Windows, macOS and browser icon assets.
+- Keep custom appearance choices and recognize the previous graphite preset when matching code colors. Resetting the palette restores the new graphite default.
+- Refresh the English and Russian documentation and screenshots using isolated synthetic vaults, with checks for personal paths and account names.
+
 ## 1.2.0 - 2026-11-25
 
 - Add syntax highlighting and tinted code blocks in Source, Live Preview, and Reading. Supported languages include JavaScript, TypeScript, JSON, HTML, CSS, and Python.

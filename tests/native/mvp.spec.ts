@@ -450,8 +450,11 @@ for (const language of ["en", "ru"] as const)
         await page.keyboard.press("Control+,");
         await page
           .getByRole("dialog", { name: "Настройки" })
-          .getByRole("combobox")
-          .selectOption("en");
+          .getByRole("button", { name: /Язык интерфейса/ })
+          .click();
+        await page
+          .getByRole("option", { name: "English", exact: true })
+          .click();
         await page.keyboard.press("Escape");
       }
       await page.getByRole("button", { name: title, exact: true }).click();
@@ -464,8 +467,23 @@ for (const language of ["en", "ru"] as const)
           .click();
       };
       const audit = async () => {
+        await expect(page.locator(".status-bar > div").last()).toContainText(
+          String(content.length),
+        );
+        const text = await page.locator("body").innerText();
+        expect(text).not.toMatch(/[A-Z]:[\\/]|\/(?:Users|home)\//i);
+        const privateValues = [
+          root,
+          run,
+          process.env.USERNAME,
+          process.env.USERPROFILE,
+          process.env.COMPUTERNAME,
+        ].filter((value): value is string =>
+          Boolean(value && value.length > 2),
+        );
+        for (const value of privateValues)
+          expect(text.toLowerCase()).not.toContain(value.toLowerCase());
         if (en) {
-          const text = await page.locator("body").innerText();
           expect(text).not.toMatch(/[А-Яа-яЁё]/);
         }
       };
@@ -521,6 +539,21 @@ for (const language of ["en", "ru"] as const)
       ).toBeVisible();
       await audit();
       await page.screenshot({ path: join(destination, "templates.png") });
+      await page.keyboard.press("Escape");
+      await page.keyboard.press("Control+,");
+      await page
+        .getByRole("dialog", { name: en ? "Settings" : "Настройки" })
+        .getByRole("button", {
+          name: en ? "Appearance" : "Оформление",
+          exact: true,
+        })
+        .click();
+      await expect(
+        page.getByRole("radio", { name: en ? "Graphite" : "Графит" }),
+      ).toBeChecked();
+      await page.mouse.move(0, 0);
+      await audit();
+      await page.screenshot({ path: join(destination, "appearance.png") });
       expect(await readFile(join(vault, title + ".md"), "utf8")).toBe(content);
     } finally {
       await stop(app);

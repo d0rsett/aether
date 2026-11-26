@@ -174,6 +174,12 @@ it("switches sections and applies editor preferences through the shared dialog",
     screen.getByRole("group", { name: "Цветовая гамма" }),
   );
   expect(appearancePalettes.getAllByRole("radio")).toHaveLength(19);
+  expect(
+    appearancePalettes.getByRole("radio", { name: "Графит", checked: true }),
+  ).toBeTruthy();
+  expect(
+    document.querySelector<HTMLInputElement>('input[type="color"]')?.value,
+  ).toBe("#454752");
   await userEvent.click(
     appearancePalettes.getByRole("radio", { name: "Dracula" }),
   );
@@ -248,6 +254,14 @@ it("restores code preferences and uses safe defaults for older profiles", () => 
   });
 });
 it("matches code colors and backgrounds independently to the selected presets", () => {
+  expect(resolveCodeAppearance("appearance", "syntax", null)).toEqual({
+    palette: "graphite",
+    tint: "#454752",
+  });
+  expect(resolveCodeAppearance("appearance", "appearance", "#808080")).toEqual({
+    palette: "graphite",
+    tint: undefined,
+  });
   expect(resolveCodeAppearance("appearance", "syntax", "#9771c9")).toEqual({
     palette: "dracula",
     tint: "#9771c9",

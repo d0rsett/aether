@@ -1,4 +1,8 @@
-import { codePalettePresets, palettePresets } from "./theme";
+import {
+  codePalettePresets,
+  defaultPaletteColor,
+  palettePresets,
+} from "./theme";
 
 export const preferencesKey = "aether.preferences.v1";
 
@@ -48,8 +52,12 @@ export function resolveCodeAppearance(
 ) {
   const palette =
     codePalette === "appearance"
-      ? (palettePresets.find(({ color }) => color === appearanceColor)?.id ??
-        "aether")
+      ? (palettePresets.find(
+          ({ id, color }) =>
+            color === (appearanceColor ?? defaultPaletteColor) ||
+            // Keep code colors for profiles using the previous graphite swatch.
+            (id === "graphite" && appearanceColor === "#808080"),
+        )?.id ?? "aether")
       : codePalette;
   const background = codeBackground === "syntax" ? palette : codeBackground;
   return {

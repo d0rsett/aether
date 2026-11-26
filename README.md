@@ -1,3 +1,5 @@
+<img src="src-tauri/icons/icon.png" width="72" height="72" alt="Aether icon" />
+
 # Aether
 
 **A calm, local workspace for connected notes.** Write in Markdown, keep supporting material beside your ideas, and follow links without losing your place. Your vault is an ordinary folder. No account or cloud service is required.
@@ -5,7 +7,7 @@
 [Русский](README.ru.md) · [Documentation](docs/README.md) · [Contributing](CONTRIBUTING.md)
 
 [![Checks](https://img.shields.io/github/actions/workflow/status/d0rsett/aether/checks.yml?branch=main&label=checks&logo=githubactions&style=flat-square)](https://github.com/d0rsett/aether/actions/workflows/checks.yml)
-![Aether 1.0.0](https://img.shields.io/badge/Aether-1.0.0-83bfa6?style=flat-square)
+![Aether 1.2.1](https://img.shields.io/badge/Aether-1.2.1-454752?style=flat-square)
 [![Tauri 2.12.5](https://img.shields.io/badge/Tauri-2.12.5-24C8D8?logo=tauri&logoColor=white&style=flat-square)](https://v2.tauri.app/)
 [![React 19.3.1](https://img.shields.io/badge/React-19.3.1-61DAFB?logo=react&logoColor=white&style=flat-square)](https://react.dev/)
 [![TypeScript 5.9.3](https://img.shields.io/badge/TypeScript-5.9.3-3178C6?logo=typescript&logoColor=white&style=flat-square)](https://www.typescriptlang.org/)
@@ -21,14 +23,15 @@
 - **Connected notes:** wiki links, aliases, heading and block references, suggestions, backlinks and previews of linked notes, including unsaved open buffers.
 - **Editing inside the note:** Markdown tables with row/column controls and right-click actions; YAML properties with type icons, lists, suggestions and renaming.
 - **Rich content:** note embeds, images, audio/video players, PDF search and selectable text, password prompts and read-only annotations, callouts, named/inline footnotes, KaTeX and Mermaid.
-- **Your workspace:** tabs, resizable sidebars, light/dark themes, English/Russian interface and full-text search with path, tag and property filters.
+- **Your workspace:** persistent tab groups with shared drafts, resizable sidebars, graphite light/dark themes, custom palettes, English/Russian interface and full-text search with path, tag and property filters.
+- **Code beside your writing:** syntax highlighting, 19 code palettes, tinted blocks and syntax-aware indentation in Source, Live Preview and Reading.
 - **Recoverable file operations:** explicit, revision-checked saves; drafts; moves and renames that update supported links; operation journals with Undo; vault-local trash.
 
 ## Obsidian vaults
 
 Open an existing vault folder directly. Aether reads ordinary Markdown and attachments, supported wiki/Markdown links, aliases, heading/block targets, attachment preferences, template folder settings and vault-wide property types. Changing a property type explicitly updates its entry in Obsidian's type settings while preserving unrelated fields. Notes are saved only when you request it.
 
-Compatibility is incremental: Aether does not run Obsidian community plugins, Bases or Canvas. Complex YAML can remain source-only; arbitrary HTML scripts, web-page embeds and executable PDF actions are restricted. See [compatibility and writing](docs/interface.md) for boundaries.
+Compatibility is incremental: Aether supports portable JSON Canvas boards, but does not run Obsidian community plugins or Bases. Complex YAML can remain source-only; arbitrary HTML scripts, web-page embeds and executable PDF actions are restricted. See [compatibility and writing](docs/interface.md) for boundaries.
 
 ## A closer look
 
@@ -40,11 +43,15 @@ Compatibility is incremental: Aether does not run Obsidian community plugins, Ba
 
 Screenshots use synthetic notes and the actual English interface. The [Russian edition](README.ru.md) has Russian interface and note screenshots.
 
+![Graphite appearance settings](docs/screenshots/en/appearance.png)
+
+The [Constellation logo and frosted glass icon](docs/branding.md) reflect the same idea: thoughts connected in a workspace you own. Blur stays inside the icon.
+
 ## Run and build
 
-[Download Aether 1.0.0 for Windows and macOS](https://github.com/d0rsett/aether/releases/tag/v1.0.0) · [Changelog](CHANGELOG.md)
+[Download Aether 1.2.1](https://github.com/d0rsett/aether/releases/tag/v1.2.1) · [Changelog](CHANGELOG.md)
 
-Version **1.0.0**. **Windows is the tested platform**; macOS builds are available for testing, and Linux remains unvalidated. Windows requires Microsoft Edge WebView2 Runtime. There is no configured automatic updater or signed release pipeline; performance targets have not been benchmarked.
+Version **1.2.1**. **Windows is the tested platform**; macOS builds are intended for testing, and Linux remains unvalidated. See the release page for available assets. Windows requires Microsoft Edge WebView2 Runtime. Releases are unsigned; macOS builds are not notarized. No automatic updater is configured, and performance targets have not been benchmarked.
 
 For development install Node.js **22.12+** (CI uses 24), Rust **1.90+**, Visual Studio Build Tools with Desktop development with C++, and the Windows SDK.
 
@@ -63,7 +70,7 @@ Output: `src-tauri/target/release/aether.exe`. To build the configured Windows i
 
 ## Everyday controls
 
-Open or create a vault from the welcome screen or the vault menu. Use the globe/language icon near the window controls to switch English/Russian; the choice persists locally. Markdown content, filenames and property names are never translated.
+Open or create a vault from the welcome screen or the vault menu. Use Settings → General → Interface language to switch English/Russian; the choice persists locally. Markdown content, filenames and property names are never translated. Appearance starts with graphite; **Restore default palette** returns to it after choosing another palette.
 
 | Shortcut        | Action                   |
 | --------------- | ------------------------ |
@@ -79,7 +86,7 @@ Use the note menu for modes, line numbers and the formatting toolbar. Hover a su
 
 Markdown and attachments remain in the vault. The disposable SQLite index and app settings live in application data. WebView storage keeps interface preferences, per-vault sessions and recovery drafts. Rename journals and recoverable deletions live under the vault's `.aether/` directory. Drafts and trash are not backups.
 
-External images and media load only on request; regular web links open in the browser. Core writing, navigation and search work locally. Keep personal vaults outside the repository or inside ignored `vaults/`; never publish local profiles or note content.
+External images and media load only on request; regular web links open in the browser. Core writing, navigation and search work locally. Keep personal vaults outside the repository or inside ignored `test-local-vaults/`; never publish local profiles or note content. The versioned `vault/` is a synthetic English demonstration vault.
 
 ## Development and documentation
 

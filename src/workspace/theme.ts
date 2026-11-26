@@ -2,6 +2,7 @@ export type ThemePreference = "dark" | "light" | "system";
 
 export const themeKey = "aether.theme";
 export const paletteKey = "aether.palette";
+export const defaultPaletteColor = "#454752";
 export const densityKey = "aether.density";
 export const dividerKey = "aether.dividerWidth";
 export function readDividerWidth(): number {
@@ -23,7 +24,7 @@ export function readDensity(): Density {
   }
 }
 const appearancePresets = [
-  { id: "graphite", name: "Графит", color: "#808080" },
+  { id: "graphite", name: "Графит", color: defaultPaletteColor },
   { id: "sage", name: "Шалфей", color: "#7c9b80" },
   { id: "blue", name: "Синий", color: "#568cda" },
   { id: "lavender", name: "Лаванда", color: "#a48cdb" },

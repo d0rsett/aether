@@ -36,6 +36,6 @@ npm run test:e2e -- --grep 'documentation screenshots'
 Remove-Item Env:AETHER_DOC_SCREENSHOTS
 ```
 
-These opt-in captures create separate English/Russian demo vaults, select the actual interface language and save `workspace-dark.png`, `workspace-light.png`, `link-preview.png` and `templates.png` under `docs/screenshots/en/` and `ru/`. They assert that English screens contain no Russian text and original note files remain unchanged. Review both languages and themes visually before publication; screenshots are intentional documentation assets, not personal vault exports.
+These opt-in captures create separate English/Russian demo vaults, select the actual interface language and save `workspace-dark.png`, `workspace-light.png`, `link-preview.png`, `templates.png` and `appearance.png` under `docs/screenshots/en/` and `ru/`. They assert that visible text contains no absolute home paths, current account or computer names; English screens contain no Russian text, and original note files remain unchanged. Review every image in both languages and themes visually before publication, including tooltips and dialogs. Screenshots are intentional documentation assets, not personal vault exports. Never capture a personal vault or the user's ordinary profile.
 
 ![English preview capture](screenshots/en/link-preview.png)
