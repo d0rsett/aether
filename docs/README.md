@@ -12,6 +12,8 @@ Start with the [project overview](../README.md) and [development guide](../CONTR
 | [Live Preview](live-blocks.md)              | Transactions, rich widgets, mapping and cleanup                             |
 | [Native testing](native-testing.md)         | Isolated Windows tests and bilingual screenshot capture                     |
 | [Visual identity](branding.md)              | Graphite themes, Constellation mark and reproducible desktop icons          |
+| [Git workflow](git-workflow.md)             | Conventional Commits, staging, privacy checks and releases                  |
+| [Release template](release-template.md)     | Release notes in English followed by Russian, matching version 1.2.1        |
 
 Historical engineering records: [acceptance baseline](acceptance.md), [stage 2](stage2-completion.md), [stage 3](stage3-editor.md). These record earlier milestones; current guides supersede their old feature limits.
 

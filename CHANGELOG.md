@@ -2,6 +2,12 @@
 
 [Русский](CHANGELOG.ru.md) · [README](README.md)
 
+## 1.2.2 - 2026-11-26
+
+- Use the Constellation icon for the Windows installer and uninstaller, and notify Windows Shell to refresh application icons after installation or upgrade without deleting icon caches or restarting Explorer.
+- Include a versioned portable Windows executable in release build artifacts alongside the installer; retain universal macOS DMG and portable application archives.
+- Document Conventional Commits and a fixed English-then-Russian release template, requiring all four distributions and verified SHA-256 checksums.
+
 ## 1.2.1 - 2026-11-26
 
 - Replace the default green-tinted workspace with graphite light and dark themes, including matching code colors, selections and appearance previews.

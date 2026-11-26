@@ -93,74 +93,15 @@ Aether is a local-first Markdown desktop application built with Tauri 2, Rust, R
 - Do not amend published commits, force-push, or rewrite shared history unless explicitly requested.
 - Do not discard unrelated changes or include them silently in a task-specific commit.
 
-## Commit Message Format
+## Commits, Pushes, and Releases
 
-Write commit messages in English. Each message must explain the changes to a reviewer who has not read the conversation.
-
-### Title
-
-- Use a short, specific title describing the main outcome.
-- Start with an action verb such as `Add`, `Fix`, `Improve`, or `Refactor`.
-- Aim for approximately 72 characters or fewer when practical.
-- Avoid vague titles such as `Update`, `Fix stuff`, or `Various improvements`.
-- Describe the final scope. If the implementation changes during development, update the message accordingly.
-
-### Short Introduction
-
-- After a blank line, write one or two sentences explaining the problem or user need and the resulting behavior.
-- Keep this introduction brief; put detailed changes in the list that follows.
-- Explain what a user can now do or which incorrect behavior is fixed.
-
-### List of Changes
-
-- Follow the introduction with a bullet list of meaningful changes.
-- Explain what was added, fixed, removed, or reorganized and how the application now behaves.
-- Group related implementation details under the behavior they support.
-- For a broad feature, cover the relevant editor behavior, interface changes, persistence, compatibility, and error handling when those areas actually changed.
-- Mention important edge cases or design decisions when they help a reviewer assess the implementation.
-- Include technical details when they explain behavior, constraints, or maintenance concerns. Avoid turning the description into a list of filenames.
-- Describe the completed implementation. Omit abandoned approaches, conversational history, speculative claims, and unrelated future plans.
-- Scale the detail to the change. Small fixes need a brief explanation; larger features need enough detail to review their full scope.
-
-### Validation and Limitations
-
-- Finish with a short account of the checks actually performed and their results.
-- Distinguish unit tests, production builds, native integration tests, and manual checks when relevant.
-- If only selected integration scenarios were run, describe them as targeted checks. Do not claim the entire suite passed.
-- Mention significant known limitations or checks that could not be completed.
-- Do not invent test results or imply that a successful build verifies all runtime behavior.
-- Record test counts only when confirmed by the relevant run's output.
-
-### Example
-
-```text
-Add Obsidian-compatible attachment workflows
-
-Allow users to insert attachments into notes while preserving existing
-Obsidian vault settings and keeping attachment links editable in Live Preview.
-
-- Import dropped files using the configured attachment folder and link format.
-- Save pasted images in the vault root with unique filenames.
-- Keep source links visible above attachment cards while editing their aliases.
-- Open images from the file tree in workspace tabs and restore those tabs.
-- Group repeated attachment references in the inspector by their resolved file.
-- Validate imported paths and file sizes before writing to the vault.
-
-Validation: frontend tests and the production build passed. Targeted native
-checks covered clipboard insertion, image tabs, and Live Preview editing.
-```
-
-This example illustrates structure. Use only claims and checks that apply to the actual commit.
-
-## Repository Checks Before Committing
-
-- Inspect the working tree and diff to understand the complete scope of pending changes.
-- Stage only files belonging to the requested work. Review the staged diff and check it for whitespace errors before committing.
-- Run checks appropriate to the change. Application code needs relevant tests and build checks; documentation-only changes generally need formatting and content review.
-- Resolve failures introduced by the change. Report remaining failures accurately instead of hiding them or describing checks as successful.
-- Use a message file or a structured tool argument for multiline descriptions to preserve real line breaks and literal text.
-- After committing, verify the resulting commit and working-tree status.
-- After pushing, verify that the intended branch was updated and report the commit identifier and destination.
+- Before creating a commit, pushing changes, or preparing a release, read and follow `docs/git-workflow.md`.
+- Use English Conventional Commits: `<type>[optional scope][optional !]: <description>`. Keep descriptions imperative and lowercase; aim for 72 characters or fewer for the whole title.
+- Keep commits focused, review staged and outgoing changes, and report only checks actually performed. The detailed format, type/scope guidance, privacy checks, and release procedure are in that guide.
+- Release notes must follow `docs/release-template.md`, preserving the structure of release 1.2.1: the complete English block first (changes, Downloads, Verification, checks/build/source links), then the complete Russian block with corresponding changes, download information, and verification. Replace placeholders and historical results with current facts; do not interleave languages.
+- Each ordinary release must include four distributions from the exact final release commit: the Windows x64 NSIS installer (`Aether_<version>_x64-setup.exe`), Windows x64 portable executable (`Aether_<version>_Windows_x64.exe`), macOS universal DMG (`Aether_<version>_universal.dmg`), and macOS universal portable application archive (`Aether-macos-universal.app.zip` containing `Aether.app`). Both macOS distributions must include Intel and Apple Silicon architectures.
+- Attach `SHA256SUMS.txt` for all four distributions and verify uploaded sizes and digests. Do not silently omit a required distribution or substitute test/older builds; resolve build failures before publication unless the user explicitly changes the release scope. Keep all binaries and installers in release attachments, outside Git.
+- The workflow guide does not authorize a commit, push, or release; follow the user's latest instruction and the authorization rules above.
 
 ## Local Data and Privacy
 

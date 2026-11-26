@@ -35,7 +35,7 @@ Use `npm run format` for frontend, documentation and scripts, and Cargo fmt for 
 
 Explain the user-visible result, checks actually performed and remaining limits. Review the complete diff and staged content; stage only related work. Do not include local vaults, profiles, caches, databases, generated binaries, credentials or private paths. `npm run repo:check` helps with repository hygiene but does not replace review.
 
-Inspect the current branch, upstream and remote before an authorized commit/push. Do not force-push or rewrite shared history without explicit authorization. Commit messages use English: an action-led title, brief context, meaningful change bullets, and actual validation/limitations.
+Before committing, pushing, or preparing a release, read [Git workflow](docs/git-workflow.md). Use English Conventional Commits, for example `fix(editor): preserve selection during formatting`. Inspect the branch, upstream, remote, staged diff and outgoing commits; do not force-push or rewrite shared history without explicit authorization. Scale the body to the change and include actual validation and material limitations.
 
 ## Builds and releases
 
