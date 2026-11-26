@@ -1,5 +1,13 @@
 // Render the checked-in SVG so the desktop PNG and Windows ICO stay in sync.
-import { readFile, writeFile } from "node:fs/promises";
+import {
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  writeFile,
+} from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 
@@ -39,8 +47,27 @@ try {
     new URL("icon.ico", icons),
     Buffer.concat([header, ...images]),
   );
+  // The macOS bundler cannot convert a lone 1024px PNG into an ICNS family.
+  // Use Tauri's generator to include its supported standard and Retina sizes.
+  const cache = new URL("../.build-cache/", import.meta.url);
+  await mkdir(cache, { recursive: true });
+  const generated = await mkdtemp(join(fileURLToPath(cache), "app-icons-"));
+  execFileSync(
+    process.execPath,
+    [
+      fileURLToPath(
+        new URL("../node_modules/@tauri-apps/cli/tauri.js", import.meta.url),
+      ),
+      "icon",
+      fileURLToPath(new URL("icon.png", icons)),
+      "--output",
+      generated,
+    ],
+    { windowsHide: true, stdio: "pipe" },
+  );
+  await copyFile(join(generated, "icon.icns"), new URL("icon.icns", icons));
   console.log(
-    `Generated PNG and seven Windows icon sizes in ${fileURLToPath(icons)}`,
+    `Generated PNG, Windows ICO and macOS ICNS in ${fileURLToPath(icons)}`,
   );
 } finally {
   await browser.close();
